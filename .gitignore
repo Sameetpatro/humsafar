@@ -1,0 +1,49 @@
+# Gradle files
+.gradle/
+build/
+*/build/
+
+# Local configuration
+local.properties
+
+# IDE files
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Android Studio specific
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Generated files
+*.log
+*.apk
+*.ap_
+*.aab
+*.dex
+
+# Keystore files (VERY IMPORTANT)
+*.jks
+*.keystore
+
+# Google services (if using Firebase and don’t want to expose keys)
+google-services.json
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Kotlin
+out/
+
+# Navigation Safe Args
+generated/
+
+# NDK
+obj/
+
+# Temporary files
+*.tmp
+*.swp
