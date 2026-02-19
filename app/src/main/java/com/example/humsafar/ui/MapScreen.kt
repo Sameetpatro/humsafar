@@ -31,8 +31,9 @@ import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView
 
-private const val MAP_STYLE =
-    "https://api.maptiler.com/maps/streets/style.json?key=\"\\\"\${localProperties.getProperty(\"MAPTILER_KEY\", \")}\\\"\""
+
+private val MAP_STYLE
+    get() = "https://api.maptiler.com/maps/streets/style.json?key=${BuildConfig.MAPTILER_KEY}"
 
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
@@ -182,7 +183,11 @@ fun MapContent() {
                 .padding(12.dp)
         ) {
             if (insideSite != null) {
-                InsideSitePanel(site = insideSite!!, context = context)
+                InsideSitePanel(
+                    site = insideSite!!,
+                    sortedSites = sortedSites,
+                    context = context
+                )
             } else {
                 NearbyPanel(sortedSites = sortedSites, context = context)
             }
@@ -191,33 +196,104 @@ fun MapContent() {
 }
 
 @Composable
-fun InsideSitePanel(site: HeritageSite, context: android.content.Context) {
-    Column {
-        Text(
-            text = "📍 Welcome to ${site.name}!",
-            fontSize = 20.sp,
-            color = Color(0xFF0A1F44)
-        )
-        Spacer(Modifier.height(8.dp))
-        Text(
-            text = "You are inside this heritage zone.",
-            fontSize = 14.sp,
-            color = Color.Gray
-        )
-        Spacer(Modifier.height(12.dp))
-        Button(
-            onClick = {
-                val uri = Uri.parse(
-                    "geo:${site.latitude},${site.longitude}?q=${site.latitude},${site.longitude}(${site.name})"
-                )
-                val intent = Intent(Intent.ACTION_VIEW, uri).apply {
-                    setPackage("com.google.android.apps.maps")
-                }
-                val chooser = Intent.createChooser(intent, "Open with")
-                context.startActivity(chooser)
-            }
+fun InsideSitePanel(
+    site: HeritageSite,
+    sortedSites: List<Pair<HeritageSite, Double>>,
+    context: android.content.Context
+) {
+
+    var showNearby by remember { mutableStateOf(false) }
+
+    Column(Modifier.fillMaxSize()) {
+
+        // Header row with site name + toggle button
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("Open in Google Maps")
+            Text(
+                text = "📍 ${site.name}",
+                fontSize = 18.sp,
+                color = Color(0xFF0A1F44),
+                modifier = Modifier.weight(1f)
+            )
+            TextButton(onClick = { showNearby = !showNearby }) {
+                Text(
+                    text = if (showNearby) "◀ Back" else "Nearby ▶",
+                    fontSize = 13.sp,
+                    color = Color(0xFF0A1F44)
+                )
+            }
+        }
+
+        Spacer(Modifier.height(4.dp))
+
+        if (!showNearby) {
+            // ── Current site info ──
+            Text(
+                text = "You are inside this heritage zone.",
+                fontSize = 13.sp,
+                color = Color.Gray
+            )
+            Spacer(Modifier.height(10.dp))
+            Button(
+                onClick = {
+                    val uri = Uri.parse(
+                        "geo:${site.latitude},${site.longitude}?q=${site.latitude},${site.longitude}(${site.name})"
+                    )
+                    val intent = Intent(Intent.ACTION_VIEW, uri).apply {
+                        setPackage("com.google.android.apps.maps")
+                    }
+                    context.startActivity(Intent.createChooser(intent, "Open with"))
+                }
+            ) {
+                Text("Open in Google Maps")
+            }
+        } else {
+            val nearby = sortedSites.filter { (s, _) -> s.id != site.id }
+
+            if (nearby.isEmpty()) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("No other sites found nearby.", color = Color.Gray)
+                }
+            } else {
+                Text(
+                    text = "Other Heritage Sites",
+                    fontSize = 14.sp,
+                    color = Color(0xFF0A1F44)
+                )
+                Spacer(Modifier.height(6.dp))
+                LazyColumn {
+                    items(nearby) { (nearbySite, distance) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 5.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(nearbySite.name, fontSize = 14.sp)
+                                Text(
+                                    text = formatDistance(distance),
+                                    fontSize = 12.sp,
+                                    color = Color.Gray
+                                )
+                            }
+                            TextButton(onClick = {
+                                val uri = Uri.parse(
+                                    "geo:${nearbySite.latitude},${nearbySite.longitude}?q=${nearbySite.latitude},${nearbySite.longitude}(${nearbySite.name})"
+                                )
+                                context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+                            }) {
+                                Text("Maps", fontSize = 12.sp)
+                            }
+                        }
+                        HorizontalDivider()
+                    }
+                }
+            }
         }
     }
 }
@@ -250,7 +326,7 @@ fun NearbyPanel(
                     Column(Modifier.weight(1f)) {
                         Text(site.name, fontSize = 14.sp)
                         Text(
-                            "${distance.toInt()} m away",
+                            text = formatDistance(distance),
                             fontSize = 12.sp,
                             color = Color.Gray
                         )
@@ -259,8 +335,7 @@ fun NearbyPanel(
                         val uri = Uri.parse(
                             "geo:${site.latitude},${site.longitude}?q=${site.latitude},${site.longitude}(${site.name})"
                         )
-                        val intent = Intent(Intent.ACTION_VIEW, uri)
-                        context.startActivity(intent)
+                        context.startActivity(Intent(Intent.ACTION_VIEW, uri))
                     }) {
                         Text("Maps", fontSize = 12.sp)
                     }
@@ -268,5 +343,12 @@ fun NearbyPanel(
                 HorizontalDivider()
             }
         }
+    }
+}
+private fun formatDistance(meters: Double): String {
+    return if (meters >= 1000) {
+        "${"%.1f".format(meters / 1000)} km away"
+    } else {
+        "${meters.toInt()} m away"
     }
 }
