@@ -13,12 +13,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.example.humsafar.BuildConfig
+import com.example.humsafar.ChatbotActivity
 import com.example.humsafar.data.HeritageRepository
 import com.example.humsafar.location.HumsafarLocationManager
 import com.example.humsafar.models.HeritageSite
@@ -30,7 +32,6 @@ import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView
-
 
 private val MAP_STYLE
     get() = "https://api.maptiler.com/maps/streets/style.json?key=${BuildConfig.MAPTILER_KEY}"
@@ -47,9 +48,7 @@ fun MapScreen() {
     }
 
     when {
-        locationPermission.status.isGranted -> {
-            MapContent()
-        }
+        locationPermission.status.isGranted -> MapContent()
         locationPermission.status.shouldShowRationale -> {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -78,7 +77,6 @@ fun MapContent() {
     var userLng by remember { mutableStateOf<Double?>(null) }
     var insideSite by remember { mutableStateOf<HeritageSite?>(null) }
     var sortedSites by remember { mutableStateOf<List<Pair<HeritageSite, Double>>>(emptyList()) }
-
     var mapLibreMap by remember { mutableStateOf<MapLibreMap?>(null) }
     var userMarkerAdded by remember { mutableStateOf(false) }
 
@@ -97,9 +95,7 @@ fun MapContent() {
             var found: HeritageSite? = null
             val distances = HeritageRepository.sites.map { site ->
                 val dist = haversineDistance(lat, lng, site.latitude, site.longitude)
-                if (dist < site.radius && found == null) {
-                    found = site
-                }
+                if (dist < site.radius && found == null) found = site
                 site to dist
             }.sortedBy { it.second }
 
@@ -107,15 +103,11 @@ fun MapContent() {
             sortedSites = distances
 
             val userLatLng = LatLng(lat, lng)
-            mapLibreMap?.animateCamera(
-                CameraUpdateFactory.newLatLngZoom(userLatLng, 14.0)
-            )
+            mapLibreMap?.animateCamera(CameraUpdateFactory.newLatLngZoom(userLatLng, 14.0))
 
             if (!userMarkerAdded) {
                 mapLibreMap?.addMarker(
-                    MarkerOptions()
-                        .position(userLatLng)
-                        .title("You are here")
+                    MarkerOptions().position(userLatLng).title("You are here")
                 )
                 userMarkerAdded = true
             }
@@ -125,10 +117,10 @@ fun MapContent() {
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_START -> mapView.onStart()
+                Lifecycle.Event.ON_START  -> mapView.onStart()
                 Lifecycle.Event.ON_RESUME -> mapView.onResume()
-                Lifecycle.Event.ON_PAUSE -> mapView.onPause()
-                Lifecycle.Event.ON_STOP -> mapView.onStop()
+                Lifecycle.Event.ON_PAUSE  -> mapView.onPause()
+                Lifecycle.Event.ON_STOP   -> mapView.onStop()
                 Lifecycle.Event.ON_DESTROY -> {
                     locationManager.stopUpdates()
                     mapView.onDestroy()
@@ -138,7 +130,6 @@ fun MapContent() {
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         mapView.onCreate(Bundle())
-
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
             locationManager.stopUpdates()
@@ -147,35 +138,67 @@ fun MapContent() {
 
     Column(Modifier.fillMaxSize()) {
 
-        AndroidView(
-            factory = { mapView },
+        // ── Map (top 60%) with floating Explore button ──
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(0.6f)
-        ) { mv ->
-            mv.getMapAsync { map ->
-                mapLibreMap = map
-                map.setStyle(MAP_STYLE) {
-                    HeritageRepository.sites.forEach { site ->
-                        map.addMarker(
-                            MarkerOptions()
-                                .position(LatLng(site.latitude, site.longitude))
-                                .title(site.name)
-                                .snippet("Radius: ${site.radius.toInt()}m")
-                        )
-                    }
-
-                    userLat?.let { lat ->
-                        userLng?.let { lng ->
-                            map.moveCamera(
-                                CameraUpdateFactory.newLatLngZoom(LatLng(lat, lng), 14.0)
+        ) {
+            AndroidView(
+                factory = { mapView },
+                modifier = Modifier.fillMaxSize()
+            ) { mv ->
+                mv.getMapAsync { map ->
+                    mapLibreMap = map
+                    map.setStyle(MAP_STYLE) {
+                        HeritageRepository.sites.forEach { site ->
+                            map.addMarker(
+                                MarkerOptions()
+                                    .position(LatLng(site.latitude, site.longitude))
+                                    .title(site.name)
+                                    .snippet("Radius: ${site.radius.toInt()}m")
                             )
+                        }
+                        userLat?.let { lat ->
+                            userLng?.let { lng ->
+                                map.moveCamera(
+                                    CameraUpdateFactory.newLatLngZoom(LatLng(lat, lng), 14.0)
+                                )
+                            }
                         }
                     }
                 }
             }
+
+            // ✅ Explore button — floats at bottom-center of map, only when inside a site
+            if (insideSite != null) {
+                Button(
+                    onClick = {
+                        val intent = Intent(context, ChatbotActivity::class.java).apply {
+                            putExtra("SITE_NAME", insideSite!!.name)
+                            putExtra("SITE_ID", insideSite!!.id)
+                        }
+                        context.startActivity(intent)
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFFFFD54F),
+                        contentColor = Color(0xFF0A1F44)
+                    ),
+                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 6.dp),
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 16.dp)
+                ) {
+                    Text(
+                        text = "🏛️  Explore ${insideSite!!.name}",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp
+                    )
+                }
+            }
         }
 
+        // ── Bottom info panel (40%) ──
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -201,12 +224,10 @@ fun InsideSitePanel(
     sortedSites: List<Pair<HeritageSite, Double>>,
     context: android.content.Context
 ) {
-
     var showNearby by remember { mutableStateOf(false) }
 
     Column(Modifier.fillMaxSize()) {
 
-        // Header row with site name + toggle button
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -215,6 +236,7 @@ fun InsideSitePanel(
             Text(
                 text = "📍 ${site.name}",
                 fontSize = 18.sp,
+                fontWeight = FontWeight.SemiBold,
                 color = Color(0xFF0A1F44),
                 modifier = Modifier.weight(1f)
             )
@@ -230,12 +252,7 @@ fun InsideSitePanel(
         Spacer(Modifier.height(4.dp))
 
         if (!showNearby) {
-            // ── Current site info ──
-            Text(
-                text = "You are inside this heritage zone.",
-                fontSize = 13.sp,
-                color = Color.Gray
-            )
+            Text("You are inside this heritage zone.", fontSize = 13.sp, color = Color.Gray)
             Spacer(Modifier.height(10.dp))
             Button(
                 onClick = {
@@ -246,23 +263,22 @@ fun InsideSitePanel(
                         setPackage("com.google.android.apps.maps")
                     }
                     context.startActivity(Intent.createChooser(intent, "Open with"))
-                }
+                },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF0A1F44),
+                    contentColor = Color.White
+                )
             ) {
                 Text("Open in Google Maps")
             }
         } else {
             val nearby = sortedSites.filter { (s, _) -> s.id != site.id }
-
             if (nearby.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text("No other sites found nearby.", color = Color.Gray)
                 }
             } else {
-                Text(
-                    text = "Other Heritage Sites",
-                    fontSize = 14.sp,
-                    color = Color(0xFF0A1F44)
-                )
+                Text("Other Heritage Sites", fontSize = 14.sp, color = Color(0xFF0A1F44))
                 Spacer(Modifier.height(6.dp))
                 LazyColumn {
                     items(nearby) { (nearbySite, distance) ->
@@ -275,11 +291,7 @@ fun InsideSitePanel(
                         ) {
                             Column(Modifier.weight(1f)) {
                                 Text(nearbySite.name, fontSize = 14.sp)
-                                Text(
-                                    text = formatDistance(distance),
-                                    fontSize = 12.sp,
-                                    color = Color.Gray
-                                )
+                                Text(formatDistance(distance), fontSize = 12.sp, color = Color.Gray)
                             }
                             TextButton(onClick = {
                                 val uri = Uri.parse(
@@ -308,11 +320,7 @@ fun NearbyPanel(
             Text("Fetching your location...", color = Color.Gray)
         }
     } else {
-        Text(
-            text = "Nearby Heritage Sites",
-            fontSize = 16.sp,
-            color = Color(0xFF0A1F44)
-        )
+        Text("Nearby Heritage Sites", fontSize = 16.sp, color = Color(0xFF0A1F44))
         Spacer(Modifier.height(8.dp))
         LazyColumn {
             items(sortedSites) { (site, distance) ->
@@ -325,11 +333,7 @@ fun NearbyPanel(
                 ) {
                     Column(Modifier.weight(1f)) {
                         Text(site.name, fontSize = 14.sp)
-                        Text(
-                            text = formatDistance(distance),
-                            fontSize = 12.sp,
-                            color = Color.Gray
-                        )
+                        Text(formatDistance(distance), fontSize = 12.sp, color = Color.Gray)
                     }
                     TextButton(onClick = {
                         val uri = Uri.parse(
@@ -345,10 +349,7 @@ fun NearbyPanel(
         }
     }
 }
-private fun formatDistance(meters: Double): String {
-    return if (meters >= 1000) {
-        "${"%.1f".format(meters / 1000)} km away"
-    } else {
-        "${meters.toInt()} m away"
-    }
-}
+
+private fun formatDistance(meters: Double): String =
+    if (meters >= 1000) "${"%.1f".format(meters / 1000)} km away"
+    else "${meters.toInt()} m away"
