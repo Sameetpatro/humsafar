@@ -23,8 +23,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.humsafar.ui.theme.HumsafarTheme
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
+import java.io.OutputStreamWriter
+import java.net.HttpURLConnection
+import java.net.URL
 
 data class ChatMessage(
     val text: String,
@@ -52,6 +59,72 @@ class ChatbotActivity : ComponentActivity() {
     }
 }
 
+// ── Real API call to your Render backend ──
+suspend fun callBackend(
+    message: String,
+    siteName: String,
+    siteId: String,
+    history: List<ChatMessage>
+): String = withContext(Dispatchers.IO) {
+    try {
+        val baseUrl = "https://humsafar-backend-59ic.onrender.com"
+
+        // Step 1: Wake up the server (Render free tier spins down)
+        try {
+            val wakeUrl = URL("$baseUrl/")
+            val wakeConn = wakeUrl.openConnection() as HttpURLConnection
+            wakeConn.connectTimeout = 60000  // wait up to 60s for wake-up
+            wakeConn.readTimeout = 60000
+            wakeConn.requestMethod = "GET"
+            wakeConn.responseCode  // actually triggers the connection
+            wakeConn.disconnect()
+        } catch (e: Exception) {
+            // ignore wake-up errors, still try the main request
+        }
+
+        // Step 2: Send the actual chat request
+        val url = URL("$baseUrl/chat")
+        val connection = url.openConnection() as HttpURLConnection
+        connection.requestMethod = "POST"
+        connection.setRequestProperty("Content-Type", "application/json")
+        connection.doOutput = true
+        connection.connectTimeout = 30000
+        connection.readTimeout = 120000
+
+        val historyArray = JSONArray()
+        history.filter { !it.isLoading }.forEach { msg ->
+            val obj = JSONObject()
+            obj.put("role", if (msg.isUser) "user" else "assistant")
+            obj.put("content", msg.text)
+            historyArray.put(obj)
+        }
+
+        val body = JSONObject()
+        body.put("message", message)
+        body.put("site_name", siteName)
+        body.put("site_id", siteId)
+        body.put("history", historyArray)
+
+        val writer = OutputStreamWriter(connection.outputStream)
+        writer.write(body.toString())
+        writer.flush()
+        writer.close()
+
+        val responseCode = connection.responseCode
+        if (responseCode == HttpURLConnection.HTTP_OK) {
+            val response = connection.inputStream.bufferedReader().readText()
+            val json = JSONObject(response)
+            json.getString("reply")
+        } else {
+            val error = connection.errorStream?.bufferedReader()?.readText() ?: "Unknown error"
+            "Server error $responseCode: $error"
+        }
+
+    } catch (e: Exception) {
+        "Connection failed: ${e.message}"
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatbotScreen(
@@ -59,53 +132,61 @@ fun ChatbotScreen(
     siteId: String,
     onBack: () -> Unit
 ) {
-    val NavyBlue    = Color(0xFF0A1F44)
+    val NavyBlue     = Color(0xFF0A1F44)
     val AccentYellow = Color(0xFFFFD54F)
 
-    val scope         = rememberCoroutineScope()
-    val listState     = rememberLazyListState()
-    var inputText     by remember { mutableStateOf("") }
-    val messages      = remember {
+    val scope     = rememberCoroutineScope()
+    val listState = rememberLazyListState()
+    var inputText by remember { mutableStateOf("") }
+    val messages  = remember {
         mutableStateListOf(
             ChatMessage(
-                text = "👋 Welcome to **$siteName**! I'm your AI heritage guide.\n\nAsk me anything — history, architecture, legends, visiting tips, or fun facts!",
+                text = "👋 Welcome to $siteName! I'm your AI heritage guide.\n\nAsk me anything — history, architecture, legends, visiting tips, or fun facts!",
                 isUser = false
             )
         )
     }
 
-    val quickQuestions = listOf(
-        "Tell me the history",
-        "Who built it?",
-        "Best time to visit",
-        "Fun facts"
-    )
+    val quickQuestions = listOf("Tell me the history", "Who built it?", "Best time to visit", "Fun facts")
+
+    fun sendMessage(userText: String) {
+        if (userText.isBlank()) return
+
+        messages.add(ChatMessage(text = userText, isUser = true))
+        val loadingMsg = ChatMessage(text = "", isUser = false, isLoading = true)
+        messages.add(loadingMsg)
+
+        scope.launch {
+            listState.animateScrollToItem(messages.size - 1)
+
+            // Snapshot history BEFORE adding loading bubble (exclude the loading msg itself)
+            val historySnapshot = messages.filter { it != loadingMsg && !it.isLoading }
+
+            val reply = callBackend(
+                message  = userText,
+                siteName = siteName,
+                siteId   = siteId,
+                history  = historySnapshot.dropLast(1) // drop the user msg we just added, backend adds it
+            )
+
+            messages.remove(loadingMsg)
+            messages.add(ChatMessage(text = reply, isUser = false))
+            listState.animateScrollToItem(messages.size - 1)
+        }
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
                     Column {
-                        Text(
-                            text = siteName,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp,
-                            color = Color.White
-                        )
-                        Text(
-                            text = "Heritage Guide",
-                            fontSize = 12.sp,
-                            color = Color.White.copy(alpha = 0.75f)
-                        )
+                        Text(text = siteName, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color.White)
+                        Text(text = "Heritage Guide", fontSize = 12.sp, color = Color.White.copy(alpha = 0.75f))
                     }
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
-                            tint = Color.White
-                        )
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = NavyBlue)
@@ -113,20 +194,11 @@ fun ChatbotScreen(
         },
         containerColor = Color(0xFFF5F5F5)
     ) { padding ->
+        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
 
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-        ) {
-
-            // ── Chat messages ──
             LazyColumn(
                 state = listState,
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp),
+                modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 contentPadding = PaddingValues(vertical = 12.dp)
             ) {
@@ -135,25 +207,15 @@ fun ChatbotScreen(
                 }
             }
 
-            // ── Quick suggestion chips (only show if last message is from bot & no loading) ──
+            // Quick suggestion chips
             if (messages.lastOrNull()?.isUser == false && messages.lastOrNull()?.isLoading == false) {
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 4.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     quickQuestions.take(4).forEach { suggestion ->
                         SuggestionChip(
-                            onClick = {
-                                sendMessage(
-                                    userText  = suggestion,
-                                    siteName  = siteName,
-                                    messages  = messages,
-                                    scope     = scope,
-                                    listState = listState
-                                )
-                            },
+                            onClick = { sendMessage(suggestion) },
                             label = { Text(suggestion, fontSize = 11.sp) }
                         )
                     }
@@ -162,10 +224,7 @@ fun ChatbotScreen(
 
             HorizontalDivider()
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color.White)
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                modifier = Modifier.fillMaxWidth().background(Color.White).padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 OutlinedTextField(
@@ -180,33 +239,18 @@ fun ChatbotScreen(
                         unfocusedBorderColor = Color.LightGray
                     )
                 )
-
                 Spacer(Modifier.width(8.dp))
-
                 IconButton(
                     onClick = {
                         val text = inputText.trim()
                         if (text.isNotEmpty()) {
                             inputText = ""
-                            sendMessage(
-                                userText  = text,
-                                siteName  = siteName,
-                                messages  = messages,
-                                scope     = scope,
-                                listState = listState
-                            )
+                            sendMessage(text)
                         }
                     },
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(RoundedCornerShape(50))
-                        .background(NavyBlue)
+                    modifier = Modifier.size(48.dp).clip(RoundedCornerShape(50)).background(NavyBlue)
                 ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.Send,
-                        contentDescription = "Send",
-                        tint = AccentYellow
-                    )
+                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send", tint = AccentYellow)
                 }
             }
         }
@@ -214,105 +258,32 @@ fun ChatbotScreen(
 }
 
 @Composable
-fun ChatBubble(
-    message: ChatMessage,
-    accentYellow: Color,
-    navyBlue: Color
-) {
-    val alignment  = if (message.isUser) Alignment.End else Alignment.Start
+fun ChatBubble(message: ChatMessage, accentYellow: Color, navyBlue: Color) {
+    val alignment   = if (message.isUser) Alignment.End else Alignment.Start
     val bubbleColor = if (message.isUser) navyBlue else Color.White
     val textColor   = if (message.isUser) Color.White else Color(0xFF1A1A1A)
 
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalAlignment = alignment
-    ) {
+    Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = alignment) {
         Box(
             modifier = Modifier
                 .widthIn(max = 280.dp)
-                .clip(
-                    RoundedCornerShape(
-                        topStart = 16.dp, topEnd = 16.dp,
-                        bottomStart = if (message.isUser) 16.dp else 4.dp,
-                        bottomEnd   = if (message.isUser) 4.dp else 16.dp
-                    )
-                )
+                .clip(RoundedCornerShape(
+                    topStart = 16.dp, topEnd = 16.dp,
+                    bottomStart = if (message.isUser) 16.dp else 4.dp,
+                    bottomEnd   = if (message.isUser) 4.dp else 16.dp
+                ))
                 .background(bubbleColor)
                 .padding(horizontal = 14.dp, vertical = 10.dp)
         ) {
             if (message.isLoading) {
-                // Animated typing indicator
                 var dots by remember { mutableStateOf("") }
                 LaunchedEffect(Unit) {
-                    while (true) {
-                        dots = "."; delay(400)
-                        dots = ".."; delay(400)
-                        dots = "..."; delay(400)
-                    }
+                    while (true) { dots = "."; delay(400); dots = ".."; delay(400); dots = "..."; delay(400) }
                 }
                 Text("Thinking$dots", color = Color.Gray, fontSize = 14.sp)
             } else {
-                Text(
-                    text = message.text,
-                    color = textColor,
-                    fontSize = 14.sp,
-                    lineHeight = 20.sp
-                )
+                Text(text = message.text, color = textColor, fontSize = 14.sp, lineHeight = 20.sp)
             }
         }
-    }
-}
-
-private fun sendMessage(
-    userText: String,
-    siteName: String,
-    messages: MutableList<ChatMessage>,
-    scope: kotlinx.coroutines.CoroutineScope,
-    listState: androidx.compose.foundation.lazy.LazyListState
-) {
-    // Add user message
-    messages.add(ChatMessage(text = userText, isUser = true))
-
-    // Add loading bubble
-    val loadingMsg = ChatMessage(text = "", isUser = false, isLoading = true)
-    messages.add(loadingMsg)
-
-    scope.launch {
-        listState.animateScrollToItem(messages.size - 1)
-
-        // Simulate network delay (replace this with real API call)
-        delay(1200)
-
-        // Remove loading bubble
-        messages.remove(loadingMsg)
-
-        // Generate mock response (swap this with your actual AI call)
-        val reply = generateMockReply(userText, siteName)
-        messages.add(ChatMessage(text = reply, isUser = false))
-
-        listState.animateScrollToItem(messages.size - 1)
-    }
-}
-
-private fun generateMockReply(question: String, siteName: String): String {
-    val q = question.lowercase()
-    return when {
-        q.contains("history") || q.contains("tell me") ->
-            "$siteName has a rich history spanning several centuries. It has witnessed empires rise and fall, and remains one of India's most treasured cultural landmarks.\n\n(Connect your AI backend to get the full story!)"
-
-        q.contains("built") || q.contains("who") ->
-            "$siteName was built by rulers who wanted to leave a lasting legacy. The construction involved thousands of artisans and took many years to complete.\n\n(Plug in your AI for the real details!)"
-
-        q.contains("visit") || q.contains("time") || q.contains("best") ->
-            "The best time to visit $siteName is from October to March when the weather is pleasant. Early mornings offer great light and fewer crowds."
-
-        q.contains("fact") || q.contains("fun") ->
-            "Fun fact: $siteName attracts millions of visitors every year and has appeared on numerous UNESCO heritage lists. Its architectural details hide many secrets waiting to be discovered!"
-
-        q.contains("ticket") || q.contains("entry") || q.contains("fee") ->
-            "️Entry fees and timings for $siteName vary. It's best to check the ASI (Archaeological Survey of India) website or local tourism boards for the latest information."
-
-        else ->
-            "That's a great question about $siteName! I'd love to give you a detailed answer — connect me to your AI backend and I'll have all the answers ready for you. 😊"
     }
 }

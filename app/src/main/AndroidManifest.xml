@@ -28,7 +28,6 @@
             </intent-filter>
         </activity>
 
-        <!-- ✅ ChatbotActivity registered here -->
         <activity
             android:name=".ChatbotActivity"
             android:exported="false"
