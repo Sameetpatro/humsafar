@@ -5,6 +5,7 @@ import androidx.navigation.compose.*
 import com.example.humsafar.ui.LoginScreen
 import com.example.humsafar.ui.SignUpScreen
 import com.example.humsafar.ui.HomeScreen
+import com.example.humsafar.ui.MapScreen
 
 @Composable
 fun AppNavigation() {
@@ -38,7 +39,7 @@ fun AppNavigation() {
         }
 
         composable("home") {
-            HomeScreen()
+            MapScreen()
         }
     }
 }
