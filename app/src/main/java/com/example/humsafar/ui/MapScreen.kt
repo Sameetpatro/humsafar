@@ -3,19 +3,24 @@ package com.example.humsafar.ui
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.*
+import androidx.compose.ui.draw.*
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.*
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.*
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -24,6 +29,8 @@ import com.example.humsafar.ChatbotActivity
 import com.example.humsafar.data.HeritageRepository
 import com.example.humsafar.location.HumsafarLocationManager
 import com.example.humsafar.models.HeritageSite
+import com.example.humsafar.ui.components.*
+import com.example.humsafar.ui.theme.*
 import com.example.humsafar.utils.haversineDistance
 import com.google.accompanist.permissions.*
 import org.maplibre.android.MapLibre
@@ -39,31 +46,36 @@ private val MAP_STYLE
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun MapScreen() {
-    val locationPermission = rememberPermissionState(
-        android.Manifest.permission.ACCESS_FINE_LOCATION
-    )
+    val locationPermission = rememberPermissionState(android.Manifest.permission.ACCESS_FINE_LOCATION)
 
-    LaunchedEffect(Unit) {
-        locationPermission.launchPermissionRequest()
-    }
+    LaunchedEffect(Unit) { locationPermission.launchPermissionRequest() }
 
     when {
         locationPermission.status.isGranted -> MapContent()
-        locationPermission.status.shouldShowRationale -> {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Location permission is needed to detect nearby heritage sites.")
-                    Spacer(Modifier.height(8.dp))
-                    Button(onClick = { locationPermission.launchPermissionRequest() }) {
-                        Text("Grant Permission")
-                    }
-                }
-            }
-        }
-        else -> {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Location permission denied. Please enable it in Settings.")
-            }
+        else -> PermissionGate(locationPermission)
+    }
+}
+
+@OptIn(ExperimentalPermissionsApi::class)
+@Composable
+private fun PermissionGate(state: PermissionState) {
+    Box(Modifier.fillMaxSize()) {
+        AnimatedOrbBackground(Modifier.fillMaxSize())
+        Column(
+            Modifier.align(Alignment.Center).padding(32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text("📍", fontSize = 48.sp)
+            Spacer(Modifier.height(16.dp))
+            Text("Location Access", color = TextPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Humsafar needs your location to detect nearby heritage sites",
+                color = TextSecondary, fontSize = 14.sp,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+            Spacer(Modifier.height(32.dp))
+            GlassPrimaryButton("Allow Location", onClick = { state.launchPermissionRequest() })
         }
     }
 }
@@ -80,271 +92,349 @@ fun MapContent() {
     var mapLibreMap by remember { mutableStateOf<MapLibreMap?>(null) }
     var userMarkerAdded by remember { mutableStateOf(false) }
 
-    val mapView = remember {
-        MapLibre.getInstance(context)
-        MapView(context)
-    }
-
+    val mapView = remember { MapLibre.getInstance(context); MapView(context) }
     val locationManager = remember { HumsafarLocationManager(context) }
 
     LaunchedEffect(Unit) {
         locationManager.startUpdates { lat, lng ->
-            userLat = lat
-            userLng = lng
-
+            userLat = lat; userLng = lng
             var found: HeritageSite? = null
             val distances = HeritageRepository.sites.map { site ->
                 val dist = haversineDistance(lat, lng, site.latitude, site.longitude)
                 if (dist < site.radius && found == null) found = site
                 site to dist
             }.sortedBy { it.second }
-
-            insideSite = found
-            sortedSites = distances
-
-            val userLatLng = LatLng(lat, lng)
-            mapLibreMap?.animateCamera(CameraUpdateFactory.newLatLngZoom(userLatLng, 14.0))
-
+            insideSite = found; sortedSites = distances
+            val ll = LatLng(lat, lng)
+            mapLibreMap?.animateCamera(CameraUpdateFactory.newLatLngZoom(ll, 14.0))
             if (!userMarkerAdded) {
-                mapLibreMap?.addMarker(
-                    MarkerOptions().position(userLatLng).title("You are here")
-                )
+                mapLibreMap?.addMarker(MarkerOptions().position(ll).title("You are here"))
                 userMarkerAdded = true
             }
         }
     }
 
     DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            when (event) {
-                Lifecycle.Event.ON_START  -> mapView.onStart()
-                Lifecycle.Event.ON_RESUME -> mapView.onResume()
-                Lifecycle.Event.ON_PAUSE  -> mapView.onPause()
-                Lifecycle.Event.ON_STOP   -> mapView.onStop()
-                Lifecycle.Event.ON_DESTROY -> {
-                    locationManager.stopUpdates()
-                    mapView.onDestroy()
-                }
+        val obs = LifecycleEventObserver { _, e ->
+            when (e) {
+                Lifecycle.Event.ON_START   -> mapView.onStart()
+                Lifecycle.Event.ON_RESUME  -> mapView.onResume()
+                Lifecycle.Event.ON_PAUSE   -> mapView.onPause()
+                Lifecycle.Event.ON_STOP    -> mapView.onStop()
+                Lifecycle.Event.ON_DESTROY -> { locationManager.stopUpdates(); mapView.onDestroy() }
                 else -> Unit
             }
         }
-        lifecycleOwner.lifecycle.addObserver(observer)
+        lifecycleOwner.lifecycle.addObserver(obs)
         mapView.onCreate(Bundle())
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-            locationManager.stopUpdates()
-        }
+        onDispose { lifecycleOwner.lifecycle.removeObserver(obs); locationManager.stopUpdates() }
     }
 
-    Column(Modifier.fillMaxSize()) {
+    Box(Modifier.fillMaxSize()) {
 
-        // ── Map (top 60%) with floating Explore button ──
+        // ── Map fills everything ──
+        AndroidView(
+            factory = { mapView },
+            modifier = Modifier.fillMaxSize()
+        ) { mv ->
+            mv.getMapAsync { map ->
+                mapLibreMap = map
+                map.setStyle(MAP_STYLE) {
+                    HeritageRepository.sites.forEach { site ->
+                        map.addMarker(
+                            MarkerOptions()
+                                .position(LatLng(site.latitude, site.longitude))
+                                .title(site.name)
+                        )
+                    }
+                    userLat?.let { lat -> userLng?.let { lng ->
+                        map.moveCamera(CameraUpdateFactory.newLatLngZoom(LatLng(lat, lng), 14.0))
+                    }}
+                }
+            }
+        }
+
+        // ── Top status pill ──
         Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .weight(0.6f)
-        ) {
-            AndroidView(
-                factory = { mapView },
-                modifier = Modifier.fillMaxSize()
-            ) { mv ->
-                mv.getMapAsync { map ->
-                    mapLibreMap = map
-                    map.setStyle(MAP_STYLE) {
-                        HeritageRepository.sites.forEach { site ->
-                            map.addMarker(
-                                MarkerOptions()
-                                    .position(LatLng(site.latitude, site.longitude))
-                                    .title(site.name)
-                                    .snippet("Radius: ${site.radius.toInt()}m")
-                            )
-                        }
-                        userLat?.let { lat ->
-                            userLng?.let { lng ->
-                                map.moveCamera(
-                                    CameraUpdateFactory.newLatLngZoom(LatLng(lat, lng), 14.0)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            // ✅ Explore button — floats at bottom-center of map, only when inside a site
-            if (insideSite != null) {
-                Button(
-                    onClick = {
-                        val intent = Intent(context, ChatbotActivity::class.java).apply {
-                            putExtra("SITE_NAME", insideSite!!.name)
-                            putExtra("SITE_ID", insideSite!!.id)
-                        }
-                        context.startActivity(intent)
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFFFFD54F),
-                        contentColor = Color(0xFF0A1F44)
-                    ),
-                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 6.dp),
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = 16.dp)
-                ) {
-                    Text(
-                        text = "🏛️  Explore ${insideSite!!.name}",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp
-                    )
-                }
-            }
-        }
-
-        // ── Bottom info panel (40%) ──
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(0.4f)
-                .padding(12.dp)
-        ) {
-            if (insideSite != null) {
-                InsideSitePanel(
-                    site = insideSite!!,
-                    sortedSites = sortedSites,
-                    context = context
+                .align(Alignment.TopCenter)
+                .padding(top = 56.dp)
+                .clip(RoundedCornerShape(50))
+                .background(
+                    Brush.linearGradient(listOf(Color(0xCC050D1A), Color(0xBB0A1628)))
                 )
-            } else {
-                NearbyPanel(sortedSites = sortedSites, context = context)
+                .border(0.7.dp, GlassBorder, RoundedCornerShape(50))
+                .padding(horizontal = 20.dp, vertical = 10.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // Pulsing dot
+                val pulse by rememberInfiniteTransition(label = "pulse").animateFloat(
+                    0.4f, 1f,
+                    infiniteRepeatable(tween(900, easing = EaseInOut), RepeatMode.Reverse),
+                    label = "p"
+                )
+                Box(
+                    Modifier
+                        .size(8.dp)
+                        .scale(pulse)
+                        .clip(CircleShape)
+                        .background(if (insideSite != null) Color(0xFF4ADE80) else AccentYellow)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = if (insideSite != null) "Inside ${insideSite!!.name}" else "Scanning for heritage sites…",
+                    color = TextPrimary,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium
+                )
             }
         }
+
+        // ── Bottom glass panel ──
+        BottomGlassPanel(
+            insideSite = insideSite,
+            sortedSites = sortedSites,
+            context = context,
+            modifier = Modifier.align(Alignment.BottomCenter)
+        )
     }
 }
 
 @Composable
-fun InsideSitePanel(
-    site: HeritageSite,
+private fun BottomGlassPanel(
+    insideSite: HeritageSite?,
     sortedSites: List<Pair<HeritageSite, Double>>,
-    context: android.content.Context
+    context: android.content.Context,
+    modifier: Modifier = Modifier
 ) {
     var showNearby by remember { mutableStateOf(false) }
 
-    Column(Modifier.fillMaxSize()) {
+    // Reset tab when site changes
+    LaunchedEffect(insideSite) { showNearby = false }
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "📍 ${site.name}",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = Color(0xFF0A1F44),
-                modifier = Modifier.weight(1f)
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp))
+            .background(
+                Brush.verticalGradient(listOf(Color(0xDD050D1A), Color(0xF5050D1A)))
             )
-            TextButton(onClick = { showNearby = !showNearby }) {
-                Text(
-                    text = if (showNearby) "◀ Back" else "Nearby ▶",
-                    fontSize = 13.sp,
-                    color = Color(0xFF0A1F44)
-                )
-            }
-        }
+            .border(
+                width = 0.7.dp,
+                brush = Brush.verticalGradient(listOf(GlassBorderBright, Color.Transparent)),
+                shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
+            )
+    ) {
+        // Handle bar
+        Box(
+            Modifier
+                .align(Alignment.CenterHorizontally)
+                .padding(top = 12.dp, bottom = 8.dp)
+                .size(width = 36.dp, height = 4.dp)
+                .clip(RoundedCornerShape(50))
+                .background(GlassWhite30)
+        )
 
-        Spacer(Modifier.height(4.dp))
+        Column(modifier = Modifier.padding(horizontal = 20.dp).padding(bottom = 32.dp)) {
 
-        if (!showNearby) {
-            Text("You are inside this heritage zone.", fontSize = 13.sp, color = Color.Gray)
-            Spacer(Modifier.height(10.dp))
-            Button(
-                onClick = {
-                    val uri = Uri.parse(
-                        "geo:${site.latitude},${site.longitude}?q=${site.latitude},${site.longitude}(${site.name})"
-                    )
-                    val intent = Intent(Intent.ACTION_VIEW, uri).apply {
-                        setPackage("com.google.android.apps.maps")
-                    }
-                    context.startActivity(Intent.createChooser(intent, "Open with"))
-                },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF0A1F44),
-                    contentColor = Color.White
-                )
-            ) {
-                Text("Open in Google Maps")
-            }
-        } else {
-            val nearby = sortedSites.filter { (s, _) -> s.id != site.id }
-            if (nearby.isEmpty()) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("No other sites found nearby.", color = Color.Gray)
-                }
-            } else {
-                Text("Other Heritage Sites", fontSize = 14.sp, color = Color(0xFF0A1F44))
-                Spacer(Modifier.height(6.dp))
-                LazyColumn {
-                    items(nearby) { (nearbySite, distance) ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 5.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(Modifier.weight(1f)) {
-                                Text(nearbySite.name, fontSize = 14.sp)
-                                Text(formatDistance(distance), fontSize = 12.sp, color = Color.Gray)
-                            }
-                            TextButton(onClick = {
-                                val uri = Uri.parse(
-                                    "geo:${nearbySite.latitude},${nearbySite.longitude}?q=${nearbySite.latitude},${nearbySite.longitude}(${nearbySite.name})"
-                                )
-                                context.startActivity(Intent(Intent.ACTION_VIEW, uri))
-                            }) {
-                                Text("Maps", fontSize = 12.sp)
-                            }
-                        }
-                        HorizontalDivider()
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun NearbyPanel(
-    sortedSites: List<Pair<HeritageSite, Double>>,
-    context: android.content.Context
-) {
-    if (sortedSites.isEmpty()) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("Fetching your location...", color = Color.Gray)
-        }
-    } else {
-        Text("Nearby Heritage Sites", fontSize = 16.sp, color = Color(0xFF0A1F44))
-        Spacer(Modifier.height(8.dp))
-        LazyColumn {
-            items(sortedSites) { (site, distance) ->
+            if (insideSite != null) {
+                // ── Inside site header ──
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 6.dp),
+                    Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(Modifier.weight(1f)) {
-                        Text(site.name, fontSize = 14.sp)
-                        Text(formatDistance(distance), fontSize = 12.sp, color = Color.Gray)
+                        SectionLabel("You are here")
+                        Spacer(Modifier.height(4.dp))
+                        Text(insideSite.name, color = TextPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                     }
-                    TextButton(onClick = {
-                        val uri = Uri.parse(
-                            "geo:${site.latitude},${site.longitude}?q=${site.latitude},${site.longitude}(${site.name})"
-                        )
-                        context.startActivity(Intent(Intent.ACTION_VIEW, uri))
-                    }) {
-                        Text("Maps", fontSize = 12.sp)
+                    // Tab toggle pill
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(GlassWhite15)
+                            .border(0.5.dp, GlassBorder, RoundedCornerShape(50))
+                    ) {
+                        Row {
+                            listOf("Site" to false, "Nearby" to true).forEach { (label, target) ->
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(50))
+                                        .background(if (showNearby == target) GlassWhite30 else Color.Transparent)
+                                        .clickable { showNearby = target }
+                                        .padding(horizontal = 14.dp, vertical = 8.dp)
+                                ) {
+                                    Text(label, color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                }
+                            }
+                        }
                     }
                 }
-                HorizontalDivider()
+
+                Spacer(Modifier.height(16.dp))
+
+                AnimatedContent(targetState = showNearby, label = "panel") { nearby ->
+                    if (!nearby) {
+                        // ── Site panel ──
+                        Column {
+                            // Explore button — HERO
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(20.dp))
+                                    .background(
+                                        Brush.linearGradient(listOf(Color(0xFFFFD54F), Color(0xFFFFC107)))
+                                    )
+                                    .border(
+                                        0.7.dp,
+                                        Brush.verticalGradient(listOf(Color(0x66FFFFFF), Color(0x11FFFFFF))),
+                                        RoundedCornerShape(20.dp)
+                                    )
+                                    .clickable {
+                                        val intent = Intent(context, ChatbotActivity::class.java).apply {
+                                            putExtra("SITE_NAME", insideSite.name)
+                                            putExtra("SITE_ID", insideSite.id)
+                                        }
+                                        context.startActivity(intent)
+                                    }
+                                    .padding(vertical = 20.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Box(
+                                    Modifier.matchParentSize()
+                                        .clip(RoundedCornerShape(20.dp))
+                                        .background(Brush.verticalGradient(listOf(Color(0x44FFFFFF), Color.Transparent)))
+                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("🏛️", fontSize = 22.sp)
+                                    Spacer(Modifier.width(10.dp))
+                                    Column {
+                                        Text("Explore with AI Guide", color = DeepNavy, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                                        Text("History, architecture & more", color = Color(0x99050D1A), fontSize = 12.sp)
+                                    }
+                                }
+                            }
+
+                            Spacer(Modifier.height(12.dp))
+
+                            // Maps button
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(GlassWhite15)
+                                    .border(0.7.dp, GlassBorder, RoundedCornerShape(16.dp))
+                                    .clickable {
+                                        val uri = Uri.parse("geo:${insideSite.latitude},${insideSite.longitude}?q=${insideSite.latitude},${insideSite.longitude}(${insideSite.name})")
+                                        context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+                                    }
+                                    .padding(vertical = 16.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("Open in Google Maps", color = TextSecondary, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                            }
+                        }
+                    } else {
+                        // ── Nearby sites ──
+                        val nearby = sortedSites.filter { (s, _) -> s.id != insideSite.id }
+                        LazyColumn(
+                            modifier = Modifier.heightIn(max = 220.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(nearby) { (site, dist) ->
+                                GlassCard(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    cornerRadius = 16.dp,
+                                    tint = GlassWhite10
+                                ) {
+                                    Row(
+                                        Modifier.padding(16.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(Modifier.weight(1f)) {
+                                            Text(site.name, color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                                            Text(formatDistance(dist), color = TextTertiary, fontSize = 13.sp)
+                                        }
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(12.dp))
+                                                .background(GlassWhite15)
+                                                .border(0.5.dp, GlassBorder, RoundedCornerShape(12.dp))
+                                                .clickable {
+                                                    val uri = Uri.parse("geo:${site.latitude},${site.longitude}")
+                                                    context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+                                                }
+                                                .padding(horizontal = 14.dp, vertical = 8.dp)
+                                        ) {
+                                            Text("Maps", color = AccentYellow, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+            } else {
+                // ── Not inside any site ──
+                Text("Nearby Heritage Sites", color = TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    if (sortedSites.isEmpty()) "Acquiring GPS signal…" else "Sorted by distance from you",
+                    color = TextTertiary, fontSize = 13.sp
+                )
+                Spacer(Modifier.height(16.dp))
+
+                if (sortedSites.isEmpty()) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        val spin by rememberInfiniteTransition(label = "s").animateFloat(
+                            0f, 360f,
+                            infiniteRepeatable(tween(1200, easing = LinearEasing)),
+                            label = "rot"
+                        )
+                        Text("◌", color = AccentYellow, fontSize = 20.sp,
+                            modifier = Modifier.rotate(spin))
+                        Spacer(Modifier.width(12.dp))
+                        Text("Searching for your location…", color = TextSecondary, fontSize = 14.sp)
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.heightIn(max = 240.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(sortedSites) { (site, dist) ->
+                            GlassCard(
+                                modifier = Modifier.fillMaxWidth(),
+                                cornerRadius = 16.dp,
+                                tint = GlassWhite10
+                            ) {
+                                Row(
+                                    Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(site.name, color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                                        Text(formatDistance(dist), color = TextTertiary, fontSize = 12.sp)
+                                    }
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(GlassWhite15)
+                                            .border(0.5.dp, GlassBorder, RoundedCornerShape(12.dp))
+                                            .clickable {
+                                                val uri = Uri.parse("geo:${site.latitude},${site.longitude}")
+                                                context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+                                            }
+                                            .padding(horizontal = 14.dp, vertical = 8.dp)
+                                    ) {
+                                        Text("Maps", color = AccentYellow, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
