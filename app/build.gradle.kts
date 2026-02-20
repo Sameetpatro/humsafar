@@ -1,3 +1,12 @@
+// app/build.gradle.kts  ← REPLACE EXISTING FILE
+//
+// CHANGES vs original:
+//   + okhttp3:okhttp:4.12.0        (explicit dep, needed by VoiceRetrofitClient)
+//   + material-icons-extended      (Mic, Stop, Settings icons in VoiceChatScreen)
+//   + lifecycle-viewmodel-compose  (viewModel() in composables)
+//   + lifecycle-runtime-compose    (collectAsStateWithLifecycle)
+//   + packaging { excludes }       (avoids META-INF conflicts from OkHttp)
+
 import java.util.Properties
 
 val localProperties = Properties()
@@ -55,6 +64,11 @@ android {
         compose = true
         buildConfig = true
     }
+    packaging {
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
+    }
 }
 
 dependencies {
@@ -69,6 +83,9 @@ dependencies {
     implementation(libs.androidx.material3)
     implementation("androidx.navigation:navigation-compose:2.7.7")
 
+    // NEW: extended icons — needed for Mic, Stop, Settings in VoiceChatScreen
+    implementation("androidx.compose.material:material-icons-extended:1.6.8")
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
@@ -78,20 +95,20 @@ dependencies {
     debugImplementation(libs.androidx.ui.test.manifest)
 
     implementation("org.maplibre.gl:android-sdk:11.0.0")
-
-    // FIX: upgraded from 21.0.1 to 21.3.0 for latest geofencing API stability
     implementation("com.google.android.gms:play-services-location:21.3.0")
-
     implementation("com.google.accompanist:accompanist-permissions:0.34.0")
 
+    // Retrofit + OkHttp
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
     implementation("com.squareup.retrofit2:converter-gson:2.9.0")
-    implementation("com.squareup.okhttp3:logging-interceptor:4.9.3")
+    // NEW: explicit OkHttp dep — VoiceRetrofitClient uses OkHttpClient.Builder directly
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
 
-    // FIX BUG 1: LocalBroadcastManager is NOT part of core AndroidX.
-    // It must be declared separately. Without this the project won't compile.
     implementation("androidx.localbroadcastmanager:localbroadcastmanager:1.1.0")
-
-    // Coroutines (needed for GeofenceSyncManager)
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+
+    // NEW: ViewModel + Compose lifecycle integration
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.0")
 }
