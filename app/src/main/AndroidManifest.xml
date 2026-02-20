@@ -1,10 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- AndroidManifest.xml — COMPLETE FINAL VERSION -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <uses-permission android:name="android.permission.INTERNET"/>
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+
+    <!--
+        THIS WAS MISSING IN PREVIOUS VERSION.
+        Required for ActivityRecognition API on API 29+.
+        Without this: ActivityRecognition.getClient().requestActivityUpdates() silently fails.
+        Shows in system UI as "Physical activity" permission.
+    -->
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
 
     <application
         android:allowBackup="true"
@@ -33,6 +47,49 @@
             android:exported="false"
             android:label="Heritage Guide"
             android:theme="@style/Theme.Humsafar" />
+
+        <!-- Geofence transition receiver -->
+        <receiver
+            android:name=".geofence.GeofenceTransitionReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.example.humsafar.ACTION_GEOFENCE_EVENT" />
+            </intent-filter>
+        </receiver>
+
+        <!--
+            THIS WAS MISSING IN PREVIOUS VERSION.
+            Receives activity updates from ActivityRecognitionManager.
+            Without this entry the BroadcastReceiver is never found by the OS
+            and CurrentActivityHolder is never updated → motion detection is dead.
+        -->
+        <receiver
+            android:name=".geofence.ActivityTransitionReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.example.humsafar.ACTION_ACTIVITY_UPDATE" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Boot receiver — re-registers geofences + restarts activity tracking after reboot -->
+        <receiver
+            android:name=".geofence.BootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Foreground service for heritage site notifications -->
+        <service
+            android:name=".geofence.GeofenceHandlerService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="location" />
 
     </application>
 

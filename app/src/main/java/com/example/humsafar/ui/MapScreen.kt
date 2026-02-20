@@ -1,5 +1,7 @@
 package com.example.humsafar.ui
 
+import android.content.BroadcastReceiver
+import android.content.IntentFilter
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -24,9 +26,12 @@ import androidx.compose.ui.unit.*
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.example.humsafar.BuildConfig
 import com.example.humsafar.ChatbotActivity
 import com.example.humsafar.data.HeritageRepository
+import com.example.humsafar.geofence.GeofencePermissionHandler
+import com.example.humsafar.geofence.GeofenceTransitionReceiver
 import com.example.humsafar.location.HumsafarLocationManager
 import com.example.humsafar.models.HeritageSite
 import com.example.humsafar.ui.components.*
@@ -95,6 +100,40 @@ fun MapContent() {
     val mapView = remember { MapLibre.getInstance(context); MapView(context) }
     val locationManager = remember { HumsafarLocationManager(context) }
 
+    // ── ADD 1: Geofence setup ─────────────────────────────────────────────
+    // Handles the full permission chain (fine → background → notifications)
+    // and registers all HeritageRepository sites as OS-managed geofences.
+    // One line — all logic lives in GeofencePermissionHandler.
+    GeofencePermissionHandler()
+
+    // ── ADD 2: React to background geofence transitions in the UI ─────────
+    // When the OS fires a geofence transition (even while app is backgrounded),
+    // GeofenceTransitionReceiver sends a LocalBroadcast. This observer catches
+    // it and updates insideSite so the bottom panel reacts immediately —
+    // without depending on the 3-second GPS polling loop below.
+    DisposableEffect(context) {
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(ctx: android.content.Context, intent: Intent) {
+                val siteId     = intent.getStringExtra(GeofenceTransitionReceiver.EXTRA_SITE_ID) ?: return
+                val transition = intent.getStringExtra(GeofenceTransitionReceiver.EXTRA_TRANSITION)
+                when (transition) {
+                    GeofenceTransitionReceiver.TRANSITION_ENTER -> {
+                        insideSite = HeritageRepository.sites.find { it.id == siteId }
+                    }
+                    GeofenceTransitionReceiver.TRANSITION_EXIT -> {
+                        if (insideSite?.id == siteId) insideSite = null
+                    }
+                }
+            }
+        }
+        val filter = IntentFilter(GeofenceTransitionReceiver.ACTION_GEOFENCE_UI_UPDATE)
+        LocalBroadcastManager.getInstance(context).registerReceiver(receiver, filter)
+        onDispose {
+            LocalBroadcastManager.getInstance(context).unregisterReceiver(receiver)
+        }
+    }
+
+    // ── Existing location polling (unchanged — drives UI distance labels) ──
     LaunchedEffect(Unit) {
         locationManager.startUpdates { lat, lng ->
             userLat = lat; userLng = lng
@@ -167,7 +206,6 @@ fun MapContent() {
                 .padding(horizontal = 20.dp, vertical = 10.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                // Pulsing dot
                 val pulse by rememberInfiniteTransition(label = "pulse").animateFloat(
                     0.4f, 1f,
                     infiniteRepeatable(tween(900, easing = EaseInOut), RepeatMode.Reverse),
@@ -192,10 +230,10 @@ fun MapContent() {
 
         // ── Bottom glass panel ──
         BottomGlassPanel(
-            insideSite = insideSite,
+            insideSite  = insideSite,
             sortedSites = sortedSites,
-            context = context,
-            modifier = Modifier.align(Alignment.BottomCenter)
+            context     = context,
+            modifier    = Modifier.align(Alignment.BottomCenter)
         )
     }
 }
@@ -209,7 +247,6 @@ private fun BottomGlassPanel(
 ) {
     var showNearby by remember { mutableStateOf(false) }
 
-    // Reset tab when site changes
     LaunchedEffect(insideSite) { showNearby = false }
 
     Column(
@@ -225,7 +262,6 @@ private fun BottomGlassPanel(
                 shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
             )
     ) {
-        // Handle bar
         Box(
             Modifier
                 .align(Alignment.CenterHorizontally)
@@ -238,7 +274,6 @@ private fun BottomGlassPanel(
         Column(modifier = Modifier.padding(horizontal = 20.dp).padding(bottom = 32.dp)) {
 
             if (insideSite != null) {
-                // ── Inside site header ──
                 Row(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -249,7 +284,6 @@ private fun BottomGlassPanel(
                         Spacer(Modifier.height(4.dp))
                         Text(insideSite.name, color = TextPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                     }
-                    // Tab toggle pill
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(50))
@@ -276,9 +310,7 @@ private fun BottomGlassPanel(
 
                 AnimatedContent(targetState = showNearby, label = "panel") { nearby ->
                     if (!nearby) {
-                        // ── Site panel ──
                         Column {
-                            // Explore button — HERO
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -318,7 +350,6 @@ private fun BottomGlassPanel(
 
                             Spacer(Modifier.height(12.dp))
 
-                            // Maps button
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -336,7 +367,6 @@ private fun BottomGlassPanel(
                             }
                         }
                     } else {
-                        // ── Nearby sites ──
                         val nearby = sortedSites.filter { (s, _) -> s.id != insideSite.id }
                         LazyColumn(
                             modifier = Modifier.heightIn(max = 220.dp),
@@ -377,7 +407,6 @@ private fun BottomGlassPanel(
                 }
 
             } else {
-                // ── Not inside any site ──
                 Text("Nearby Heritage Sites", color = TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(4.dp))
                 Text(

@@ -72,19 +72,26 @@ dependencies {
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
-
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.ui.test.junit4)
-
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
 
     implementation("org.maplibre.gl:android-sdk:11.0.0")
-    implementation("com.google.android.gms:play-services-location:21.0.1")
+
+    // FIX: upgraded from 21.0.1 to 21.3.0 for latest geofencing API stability
+    implementation("com.google.android.gms:play-services-location:21.3.0")
+
     implementation("com.google.accompanist:accompanist-permissions:0.34.0")
 
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
     implementation("com.squareup.retrofit2:converter-gson:2.9.0")
     implementation("com.squareup.okhttp3:logging-interceptor:4.9.3")
 
+    // FIX BUG 1: LocalBroadcastManager is NOT part of core AndroidX.
+    // It must be declared separately. Without this the project won't compile.
+    implementation("androidx.localbroadcastmanager:localbroadcastmanager:1.1.0")
+
+    // Coroutines (needed for GeofenceSyncManager)
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 }
