@@ -1,11 +1,7 @@
 // app/build.gradle.kts  ← REPLACE EXISTING FILE
 //
-// CHANGES vs original:
-//   + okhttp3:okhttp:4.12.0        (explicit dep, needed by VoiceRetrofitClient)
-//   + material-icons-extended      (Mic, Stop, Settings icons in VoiceChatScreen)
-//   + lifecycle-viewmodel-compose  (viewModel() in composables)
-//   + lifecycle-runtime-compose    (collectAsStateWithLifecycle)
-//   + packaging { excludes }       (avoids META-INF conflicts from OkHttp)
+// CHANGES vs previous:
+//   + media3-exoplayer, media3-ui  (ExoPlayer video playback for video feature)
 
 import java.util.Properties
 
@@ -47,27 +43,17 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-    buildFeatures {
-        compose = true
-        buildConfig = true
-    }
+    kotlinOptions { jvmTarget = "17" }
+    buildFeatures { compose = true; buildConfig = true }
     packaging {
-        resources {
-            excludes += "/META-INF/{AL2.0,LGPL2.1}"
-        }
+        resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
     }
 }
 
@@ -82,8 +68,6 @@ dependencies {
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
     implementation("androidx.navigation:navigation-compose:2.7.7")
-
-    // NEW: extended icons — needed for Mic, Stop, Settings in VoiceChatScreen
     implementation("androidx.compose.material:material-icons-extended:1.6.8")
 
     testImplementation(libs.junit)
@@ -101,14 +85,18 @@ dependencies {
     // Retrofit + OkHttp
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
     implementation("com.squareup.retrofit2:converter-gson:2.9.0")
-    // NEW: explicit OkHttp dep — VoiceRetrofitClient uses OkHttpClient.Builder directly
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
 
     implementation("androidx.localbroadcastmanager:localbroadcastmanager:1.1.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 
-    // NEW: ViewModel + Compose lifecycle integration
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.0")
+
+    // NEW: ExoPlayer / Media3 — fullscreen cinematic video playback
+    val media3Version = "1.3.1"
+    implementation("androidx.media3:media3-exoplayer:$media3Version")
+    implementation("androidx.media3:media3-ui:$media3Version")
+    implementation("androidx.media3:media3-common:$media3Version")
 }

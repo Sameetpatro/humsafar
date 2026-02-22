@@ -1,3 +1,8 @@
+// app/src/main/java/com/example/humsafar/ChatbotActivity.kt
+// UPDATED: Integrated video feature — WatchVideoButton, CinematicLoaderOverlay, VideoPlayerOverlay
+// ChatMessage model updated with video flags.
+// VideoViewModel injected via viewModel().
+
 package com.example.humsafar
 
 import android.os.Bundle
@@ -27,7 +32,16 @@ import androidx.compose.ui.graphics.*
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.humsafar.models.ChatMessage
+import com.example.humsafar.models.VideoType
+import com.example.humsafar.models.VideoUiState
+import com.example.humsafar.ui.VideoViewModel
 import com.example.humsafar.ui.components.AnimatedOrbBackground
+import com.example.humsafar.ui.components.CinematicLoaderOverlay
+import com.example.humsafar.ui.components.VideoPlayerOverlay
+import com.example.humsafar.ui.components.WatchVideoButton
 import com.example.humsafar.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -38,15 +52,6 @@ import org.json.JSONObject
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Data model
-// ─────────────────────────────────────────────────────────────────────────────
-data class ChatMessage(
-    val text: String,
-    val isUser: Boolean,
-    val isLoading: Boolean = false
-)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Activity
@@ -66,7 +71,7 @@ class ChatbotActivity : ComponentActivity() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Network
+// Network helper (unchanged)
 // ─────────────────────────────────────────────────────────────────────────────
 suspend fun callBackend(
     message: String,
@@ -76,62 +81,38 @@ suspend fun callBackend(
 ): String = withContext(Dispatchers.IO) {
     try {
         val baseUrl = "https://humsafar-backend-59ic.onrender.com"
-
-        // Wake Render free-tier (may be sleeping)
         try {
             (URL("$baseUrl/").openConnection() as HttpURLConnection).apply {
-                connectTimeout = 60_000
-                readTimeout    = 60_000
-                requestMethod  = "GET"
-                responseCode   // triggers the connection
-                disconnect()
+                connectTimeout = 60_000; readTimeout = 60_000; requestMethod = "GET"; responseCode; disconnect()
             }
-        } catch (_: Exception) { /* ignore — still try real request */ }
+        } catch (_: Exception) {}
 
-        // Build history JSON
         val historyArray = JSONArray()
         history.filter { !it.isLoading }.forEach { msg ->
-            historyArray.put(
-                JSONObject().apply {
-                    put("role",    if (msg.isUser) "user" else "assistant")
-                    put("content", msg.text)
-                }
-            )
+            historyArray.put(JSONObject().apply {
+                put("role",    if (msg.isUser) "user" else "assistant")
+                put("content", msg.text)
+            })
         }
 
-        // POST /chat
         val conn = (URL("$baseUrl/chat").openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
             setRequestProperty("Content-Type", "application/json")
-            doOutput       = true
-            connectTimeout = 30_000
-            readTimeout    = 120_000
+            doOutput = true; connectTimeout = 30_000; readTimeout = 120_000
         }
-
         val body = JSONObject().apply {
-            put("message",   message)
-            put("site_name", siteName)
-            put("site_id",   siteId)
-            put("history",   historyArray)
+            put("message", message); put("site_name", siteName); put("site_id", siteId); put("history", historyArray)
         }
-
         OutputStreamWriter(conn.outputStream).use { it.write(body.toString()) }
 
-        return@withContext if (conn.responseCode == HttpURLConnection.HTTP_OK) {
-            val raw = conn.inputStream.bufferedReader().readText()
-            JSONObject(raw).getString("reply")
-        } else {
-            val err = conn.errorStream?.bufferedReader()?.readText() ?: "no body"
-            "Server error ${conn.responseCode}: $err"
-        }
-
-    } catch (e: Exception) {
-        "Connection failed: ${e.message}"
-    }
+        if (conn.responseCode == HttpURLConnection.HTTP_OK)
+            JSONObject(conn.inputStream.bufferedReader().readText()).getString("reply")
+        else "Server error ${conn.responseCode}"
+    } catch (e: Exception) { "Connection failed: ${e.message}" }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Quick-reply chip model
+// Quick chip model
 // ─────────────────────────────────────────────────────────────────────────────
 private data class QuickChip(val label: String, val query: String)
 
@@ -142,11 +123,14 @@ private data class QuickChip(val label: String, val query: String)
 fun ChatbotScreen(
     siteName: String,
     siteId: String,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    videoViewModel: VideoViewModel = viewModel()
 ) {
     val scope     = rememberCoroutineScope()
     val listState = rememberLazyListState()
     var inputText by remember { mutableStateOf("") }
+
+    val videoUiState by videoViewModel.uiState.collectAsStateWithLifecycle()
 
     val chips = remember(siteName) {
         listOf(
@@ -162,152 +146,94 @@ fun ChatbotScreen(
         mutableStateListOf(
             ChatMessage(
                 text   = "👋 Welcome to $siteName!\n\nI'm your AI heritage guide. Ask me anything — history, architecture, legends, or visiting tips!",
-                isUser = false
+                isUser = false,
+                videoAvailable = true,
+                videoType = VideoType.OVERVIEW,
+                videoId = siteId
             )
         )
     }
 
-    // ─── Send logic ───────────────────────────────────────────────────────
     fun sendMessage(userText: String) {
         if (userText.isBlank()) return
-
-        // 1. Add user message
         messages.add(ChatMessage(text = userText, isUser = true))
-
-        // 2. Snapshot history BEFORE adding loading bubble
-        //    This is exactly what the backend will use as context
         val historySnapshot = messages.toList()
-
-        // 3. Add loading indicator
         val loadingMsg = ChatMessage(text = "", isUser = false, isLoading = true)
         messages.add(loadingMsg)
 
         scope.launch {
             listState.animateScrollToItem(messages.size - 1)
-
-            val reply = callBackend(
-                message  = userText,
-                siteName = siteName,
-                siteId   = siteId,
-                history  = historySnapshot   // full context including user's message
-            )
-
-            // 4. Swap loading bubble with the real reply
+            val reply = callBackend(message = userText, siteName = siteName, siteId = siteId, history = historySnapshot)
             val idx = messages.indexOf(loadingMsg)
-            if (idx != -1) {
-                messages[idx] = ChatMessage(text = reply, isUser = false)
-            } else {
-                messages.add(ChatMessage(text = reply, isUser = false))
-            }
-
+            val botMsg = ChatMessage(
+                text = reply,
+                isUser = false,
+                videoAvailable = true,
+                videoType = VideoType.PROMPT,
+                videoId = "",
+                userPrompt = userText
+            )
+            if (idx != -1) messages[idx] = botMsg else messages.add(botMsg)
             listState.animateScrollToItem(messages.size - 1)
         }
     }
 
-    // ─── UI ───────────────────────────────────────────────────────────────
     Box(Modifier.fillMaxSize()) {
-
         AnimatedOrbBackground(Modifier.fillMaxSize())
 
         Column(Modifier.fillMaxSize()) {
-
-            // ── Top bar ──────────────────────────────────────────────────
+            // ── Top bar ───────────────────────────────────────────────────
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(Color(0xF0050D1A), Color(0xBB050D1A))
-                        )
-                    )
-                    // ✅ Use drawBehind instead of a custom border() extension
-                    //    — avoids ANY conflict with Compose's own Modifier.border()
+                    .background(Brush.verticalGradient(listOf(Color(0xF0050D1A), Color(0xBB050D1A))))
                     .drawBehind {
-                        drawLine(
-                            color       = GlassBorder,
-                            start       = Offset(0f, size.height),
-                            end         = Offset(size.width, size.height),
-                            strokeWidth = 0.5.dp.toPx()
-                        )
+                        drawLine(GlassBorder, Offset(0f, size.height), Offset(size.width, size.height), 0.5.dp.toPx())
                     }
                     .statusBarsPadding()
                     .padding(horizontal = 20.dp)
                     .padding(top = 12.dp, bottom = 16.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-
                     Box(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(GlassWhite15)
-                            .border(0.5.dp, GlassBorder, CircleShape)
-                            .clickable { onBack() },
+                        modifier = Modifier.size(40.dp).clip(CircleShape).background(GlassWhite15)
+                            .border(0.5.dp, GlassBorder, CircleShape).clickable { onBack() },
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector        = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
-                            tint               = TextPrimary,
-                            modifier           = Modifier.size(18.dp)
-                        )
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = TextPrimary, modifier = Modifier.size(18.dp))
                     }
-
                     Spacer(Modifier.width(14.dp))
-
                     Box(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(
-                                Brush.linearGradient(
-                                    listOf(Color(0xFFFFD54F), Color(0xFFFFC107))
-                                )
-                            ),
+                        modifier = Modifier.size(40.dp).clip(CircleShape)
+                            .background(Brush.linearGradient(listOf(Color(0xFFFFD54F), Color(0xFFFFC107)))),
                         contentAlignment = Alignment.Center
-                    ) {
-                        Text("🏛️", fontSize = 20.sp)
-                    }
-
+                    ) { Text("🏛️", fontSize = 20.sp) }
                     Spacer(Modifier.width(12.dp))
-
                     Column {
-                        Text(
-                            text       = siteName,
-                            color      = TextPrimary,
-                            fontSize   = 16.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Text(siteName, color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                Modifier
-                                    .size(6.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0xFF4ADE80))
-                            )
+                            Box(Modifier.size(6.dp).clip(CircleShape).background(Color(0xFF4ADE80)))
                             Spacer(Modifier.width(5.dp))
-                            Text(
-                                text     = "Heritage Guide · Online",
-                                color    = TextTertiary,
-                                fontSize = 12.sp
-                            )
+                            Text("Heritage Guide · Online", color = TextTertiary, fontSize = 12.sp)
                         }
                     }
                 }
             }
 
-            // ── Messages ─────────────────────────────────────────────────
+            // ── Messages ──────────────────────────────────────────────────
             LazyColumn(
-                state               = listState,
-                modifier            = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
+                state = listState,
+                modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding      = PaddingValues(vertical = 16.dp)
+                contentPadding = PaddingValues(vertical = 16.dp)
             ) {
                 items(messages) { msg ->
-                    GlassChatBubble(message = msg)
+                    GlassChatBubble(
+                        message = msg,
+                        siteName = siteName,
+                        siteId = siteId,
+                        videoViewModel = videoViewModel
+                    )
                 }
             }
 
@@ -315,178 +241,138 @@ fun ChatbotScreen(
             val lastMsg = messages.lastOrNull()
             if (lastMsg != null && !lastMsg.isUser && !lastMsg.isLoading) {
                 LazyRow(
-                    contentPadding        = PaddingValues(horizontal = 16.dp),
+                    contentPadding = PaddingValues(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier              = Modifier.padding(bottom = 8.dp)
+                    modifier = Modifier.padding(bottom = 8.dp)
                 ) {
                     items(chips) { chip ->
                         Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(50))
-                                .background(GlassWhite15)
+                            modifier = Modifier.clip(RoundedCornerShape(50)).background(GlassWhite15)
                                 .border(0.5.dp, GlassBorder, RoundedCornerShape(50))
-                                // ✅ chip.query is a clean, pre-built string — no regex needed
                                 .clickable { sendMessage(chip.query) }
                                 .padding(horizontal = 14.dp, vertical = 8.dp)
                         ) {
-                            Text(
-                                text     = chip.label,
-                                color    = TextSecondary,
-                                fontSize = 13.sp
-                            )
+                            Text(chip.label, color = TextSecondary, fontSize = 13.sp)
                         }
                     }
                 }
             }
 
-            // ── Input bar ────────────────────────────────────────────────
+            // ── Input bar ─────────────────────────────────────────────────
             val canSend = inputText.isNotBlank()
-
             Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(Color(0x99050D1A), Color(0xF0050D1A))
-                        )
-                    )
-                    // ✅ drawBehind for top divider — no extension conflict
-                    .drawBehind {
-                        drawLine(
-                            color       = GlassBorder,
-                            start       = Offset(0f, 0f),
-                            end         = Offset(size.width, 0f),
-                            strokeWidth = 0.5.dp.toPx()
-                        )
-                    }
+                modifier = Modifier.fillMaxWidth()
+                    .background(Brush.verticalGradient(listOf(Color(0x99050D1A), Color(0xF0050D1A))))
+                    .drawBehind { drawLine(GlassBorder, Offset(0f, 0f), Offset(size.width, 0f), 0.5.dp.toPx()) }
                     .padding(horizontal = 16.dp, vertical = 12.dp)
                     .navigationBarsPadding()
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-
                     Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(24.dp))
-                            .background(GlassWhite15)
-                            .border(0.7.dp, GlassBorder, RoundedCornerShape(24.dp))
-                            .padding(horizontal = 18.dp, vertical = 14.dp)
+                        modifier = Modifier.weight(1f).clip(RoundedCornerShape(24.dp)).background(GlassWhite15)
+                            .border(0.7.dp, GlassBorder, RoundedCornerShape(24.dp)).padding(horizontal = 18.dp, vertical = 14.dp)
                     ) {
                         androidx.compose.foundation.text.BasicTextField(
-                            value         = inputText,
-                            onValueChange = { inputText = it },
-                            textStyle     = TextStyle(color = TextPrimary, fontSize = 15.sp),
-                            modifier      = Modifier.fillMaxWidth(),
-                            maxLines      = 4,
-                            decorationBox = { innerTextField ->
-                                if (inputText.isEmpty()) {
-                                    Text(
-                                        text     = "Ask about $siteName…",
-                                        color    = TextTertiary,
-                                        fontSize = 15.sp
-                                    )
-                                }
-                                innerTextField()
+                            value = inputText, onValueChange = { inputText = it },
+                            textStyle = TextStyle(color = TextPrimary, fontSize = 15.sp),
+                            modifier = Modifier.fillMaxWidth(), maxLines = 4,
+                            decorationBox = { inner ->
+                                if (inputText.isEmpty()) Text("Ask about $siteName…", color = TextTertiary, fontSize = 15.sp)
+                                inner()
                             }
                         )
                     }
-
                     Spacer(Modifier.width(10.dp))
-
                     Box(
-                        modifier = Modifier
-                            .size(50.dp)
-                            .clip(CircleShape)
-                            .background(
-                                if (canSend)
-                                    Brush.linearGradient(
-                                        listOf(Color(0xFFFFD54F), Color(0xFFFFC107))
-                                    )
-                                else
-                                    Brush.linearGradient(
-                                        listOf(GlassWhite15, GlassWhite15)
-                                    )
-                            )
-                            .border(
-                                width = 0.5.dp,
-                                color = if (canSend) Color(0x44FFFFFF) else GlassBorder,
-                                shape = CircleShape
-                            )
-                            .clickable(enabled = canSend) {
-                                val text = inputText.trim()
-                                inputText = ""
-                                sendMessage(text)
-                            },
+                        modifier = Modifier.size(50.dp).clip(CircleShape)
+                            .background(if (canSend) Brush.linearGradient(listOf(Color(0xFFFFD54F), Color(0xFFFFC107))) else Brush.linearGradient(listOf(GlassWhite15, GlassWhite15)))
+                            .border(0.5.dp, if (canSend) Color(0x44FFFFFF) else GlassBorder, CircleShape)
+                            .clickable(enabled = canSend) { val t = inputText.trim(); inputText = ""; sendMessage(t) },
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector        = Icons.AutoMirrored.Filled.Send,
-                            contentDescription = "Send",
-                            tint               = if (canSend) DeepNavy else TextTertiary,
-                            modifier           = Modifier.size(20.dp)
-                        )
+                        Icon(Icons.AutoMirrored.Filled.Send, null, tint = if (canSend) DeepNavy else TextTertiary, modifier = Modifier.size(20.dp))
                     }
                 }
             }
+        }
+
+        // ── Cinematic Loader (shown over everything) ──────────────────────
+        CinematicLoaderOverlay(
+            uiState = videoUiState,
+            onCancel = { videoViewModel.dismiss() },
+            modifier = Modifier.fillMaxSize()
+        )
+
+        // ── Video Player (shown when video is ready) ──────────────────────
+        if (videoUiState is VideoUiState.ReadyToPlay) {
+            VideoPlayerOverlay(
+                videoUrl = (videoUiState as VideoUiState.ReadyToPlay).videoUrl,
+                onDismiss = { videoViewModel.dismiss() },
+                modifier = Modifier.fillMaxSize()
+            )
         }
     }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Chat bubble
+// Chat bubble — updated to show WatchVideoButton for bot messages
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
-fun GlassChatBubble(message: ChatMessage) {
+fun GlassChatBubble(
+    message: ChatMessage,
+    siteName: String = "",
+    siteId: String = "",
+    videoViewModel: VideoViewModel? = null
+) {
     val isUser    = message.isUser
     val alignment = if (isUser) Alignment.End else Alignment.Start
 
     val bubbleShape = RoundedCornerShape(
-        topStart    = 20.dp,
-        topEnd      = 20.dp,
+        topStart    = 20.dp, topEnd = 20.dp,
         bottomStart = if (isUser) 20.dp else 5.dp,
         bottomEnd   = if (isUser) 5.dp  else 20.dp
     )
 
-    Column(
-        modifier            = Modifier.fillMaxWidth(),
-        horizontalAlignment = alignment
-    ) {
+    Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = alignment) {
         Box(
             modifier = Modifier
                 .widthIn(max = 280.dp)
                 .clip(bubbleShape)
                 .background(
-                    if (isUser)
-                        Brush.linearGradient(listOf(Color(0xFFFFD54F), Color(0xFFFFC107)))
-                    else
-                        Brush.linearGradient(listOf(GlassWhite20, GlassWhite15))
+                    if (isUser) Brush.linearGradient(listOf(Color(0xFFFFD54F), Color(0xFFFFC107)))
+                    else Brush.linearGradient(listOf(GlassWhite20, GlassWhite15))
                 )
                 .border(
                     width = 0.5.dp,
-                    brush = if (isUser)
-                        Brush.verticalGradient(listOf(Color(0x55FFFFFF), Color(0x11FFFFFF)))
-                    else
-                        Brush.verticalGradient(listOf(GlassBorderBright, GlassBorder)),
+                    brush = if (isUser) Brush.verticalGradient(listOf(Color(0x55FFFFFF), Color(0x11FFFFFF)))
+                    else Brush.verticalGradient(listOf(GlassBorderBright, GlassBorder)),
                     shape = bubbleShape
                 )
                 .padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
-            if (message.isLoading) {
-                TypingIndicator()
-            } else {
-                Text(
-                    text       = message.text,
-                    color      = if (isUser) DeepNavy else TextPrimary,
-                    fontSize   = 15.sp,
-                    lineHeight = 22.sp
-                )
-            }
+            if (message.isLoading) TypingIndicator()
+            else Text(message.text, color = if (isUser) DeepNavy else TextPrimary, fontSize = 15.sp, lineHeight = 22.sp)
+        }
+
+        // Show "Watch Video" button for bot messages that have video available
+        if (!isUser && !message.isLoading && message.videoAvailable && videoViewModel != null) {
+            Spacer(Modifier.height(6.dp))
+            WatchVideoButton(
+                videoType = message.videoType,
+                videoId = message.videoId,
+                prompt = message.userPrompt,
+                botText = message.text,
+                siteName = siteName,
+                siteId = siteId,
+                viewModel = videoViewModel,
+                modifier = Modifier.align(Alignment.Start)
+            )
         }
     }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Typing indicator — proper InfiniteTransition dots, no coroutine loop needed
+// Typing indicator (unchanged)
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
 private fun TypingIndicator() {
@@ -495,31 +381,16 @@ private fun TypingIndicator() {
     @Composable
     fun Dot(offsetMs: Int) {
         val scale by transition.animateFloat(
-            initialValue  = 0.7f,
-            targetValue   = 1.35f,
-            animationSpec = infiniteRepeatable(
-                animation          = tween(450, easing = EaseInOutSine),
-                repeatMode         = RepeatMode.Reverse,
-                initialStartOffset = StartOffset(offsetMs)
-            ),
+            0.7f, 1.35f,
+            infiniteRepeatable(tween(450, easing = EaseInOutSine), RepeatMode.Reverse, StartOffset(offsetMs)),
             label = "dot_$offsetMs"
         )
-        Box(
-            Modifier
-                .size(7.dp)
-                .scale(scale)
-                .clip(CircleShape)
-                .background(TextTertiary)
-        )
+        Box(Modifier.size(7.dp).scale(scale).clip(CircleShape).background(TextTertiary))
     }
 
     Row(
-        verticalAlignment     = Alignment.CenterVertically,
+        verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(5.dp),
-        modifier              = Modifier.padding(vertical = 2.dp)
-    ) {
-        Dot(0)
-        Dot(150)
-        Dot(300)
-    }
+        modifier = Modifier.padding(vertical = 2.dp)
+    ) { Dot(0); Dot(150); Dot(300) }
 }
