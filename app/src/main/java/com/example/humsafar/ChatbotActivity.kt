@@ -1,7 +1,4 @@
 // app/src/main/java/com/example/humsafar/ChatbotActivity.kt
-// UPDATED: Integrated video feature — WatchVideoButton, CinematicLoaderOverlay, VideoPlayerOverlay
-// ChatMessage model updated with video flags.
-// VideoViewModel injected via viewModel().
 
 package com.example.humsafar
 
@@ -34,7 +31,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.humsafar.models.ChatMessage
+import com.example.humsafar.models.ChatMessage   // ← explicit import — no local class
 import com.example.humsafar.models.VideoType
 import com.example.humsafar.models.VideoUiState
 import com.example.humsafar.ui.VideoViewModel
@@ -44,7 +41,6 @@ import com.example.humsafar.ui.components.VideoPlayerOverlay
 import com.example.humsafar.ui.components.WatchVideoButton
 import com.example.humsafar.ui.theme.*
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -71,19 +67,20 @@ class ChatbotActivity : ComponentActivity() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Network helper (unchanged)
+// Network helper
 // ─────────────────────────────────────────────────────────────────────────────
 suspend fun callBackend(
-    message: String,
+    message:  String,
     siteName: String,
-    siteId: String,
-    history: List<ChatMessage>
+    siteId:   String,
+    history:  List<ChatMessage>
 ): String = withContext(Dispatchers.IO) {
     try {
         val baseUrl = "https://humsafar-backend-59ic.onrender.com"
         try {
             (URL("$baseUrl/").openConnection() as HttpURLConnection).apply {
-                connectTimeout = 60_000; readTimeout = 60_000; requestMethod = "GET"; responseCode; disconnect()
+                connectTimeout = 60_000; readTimeout = 60_000
+                requestMethod = "GET"; responseCode; disconnect()
             }
         } catch (_: Exception) {}
 
@@ -101,18 +98,22 @@ suspend fun callBackend(
             doOutput = true; connectTimeout = 30_000; readTimeout = 120_000
         }
         val body = JSONObject().apply {
-            put("message", message); put("site_name", siteName); put("site_id", siteId); put("history", historyArray)
+            put("message", message); put("site_name", siteName)
+            put("site_id", siteId); put("history", historyArray)
         }
         OutputStreamWriter(conn.outputStream).use { it.write(body.toString()) }
 
         if (conn.responseCode == HttpURLConnection.HTTP_OK)
             JSONObject(conn.inputStream.bufferedReader().readText()).getString("reply")
-        else "Server error ${conn.responseCode}"
-    } catch (e: Exception) { "Connection failed: ${e.message}" }
+        else
+            "Server error ${conn.responseCode}"
+    } catch (e: Exception) {
+        "Connection failed: ${e.message}"
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Quick chip model
+// Quick chip
 // ─────────────────────────────────────────────────────────────────────────────
 private data class QuickChip(val label: String, val query: String)
 
@@ -121,9 +122,9 @@ private data class QuickChip(val label: String, val query: String)
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
 fun ChatbotScreen(
-    siteName: String,
-    siteId: String,
-    onBack: () -> Unit,
+    siteName:       String,
+    siteId:         String,
+    onBack:         () -> Unit,
     videoViewModel: VideoViewModel = viewModel()
 ) {
     val scope     = rememberCoroutineScope()
@@ -142,14 +143,15 @@ fun ChatbotScreen(
         )
     }
 
+    // NOTE: No local 'data class ChatMessage' here — we use the one from models package
     val messages = remember {
         mutableStateListOf(
             ChatMessage(
-                text   = "👋 Welcome to $siteName!\n\nI'm your AI heritage guide. Ask me anything — history, architecture, legends, or visiting tips!",
-                isUser = false,
+                text           = "👋 Welcome to $siteName!\n\nI'm your AI heritage guide. Ask me anything — history, architecture, legends, or visiting tips!",
+                isUser         = false,
                 videoAvailable = true,
-                videoType = VideoType.OVERVIEW,
-                videoId = siteId
+                videoType      = VideoType.OVERVIEW,
+                videoId        = siteId
             )
         )
     }
@@ -163,16 +165,21 @@ fun ChatbotScreen(
 
         scope.launch {
             listState.animateScrollToItem(messages.size - 1)
-            val reply = callBackend(message = userText, siteName = siteName, siteId = siteId, history = historySnapshot)
-            val idx = messages.indexOf(loadingMsg)
-            val botMsg = ChatMessage(
-                text = reply,
-                isUser = false,
-                videoAvailable = true,
-                videoType = VideoType.PROMPT,
-                videoId = "",
-                userPrompt = userText
+            val reply = callBackend(
+                message  = userText,
+                siteName = siteName,
+                siteId   = siteId,
+                history  = historySnapshot
             )
+            val botMsg = ChatMessage(
+                text           = reply,
+                isUser         = false,
+                videoAvailable = true,
+                videoType      = VideoType.PROMPT,
+                videoId        = "",
+                userPrompt     = userText
+            )
+            val idx = messages.indexOf(loadingMsg)
             if (idx != -1) messages[idx] = botMsg else messages.add(botMsg)
             listState.animateScrollToItem(messages.size - 1)
         }
@@ -182,6 +189,7 @@ fun ChatbotScreen(
         AnimatedOrbBackground(Modifier.fillMaxSize())
 
         Column(Modifier.fillMaxSize()) {
+
             // ── Top bar ───────────────────────────────────────────────────
             Box(
                 modifier = Modifier
@@ -196,8 +204,9 @@ fun ChatbotScreen(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
-                        modifier = Modifier.size(40.dp).clip(CircleShape).background(GlassWhite15)
-                            .border(0.5.dp, GlassBorder, CircleShape).clickable { onBack() },
+                        modifier = Modifier.size(40.dp).clip(CircleShape)
+                            .background(GlassWhite15).border(0.5.dp, GlassBorder, CircleShape)
+                            .clickable { onBack() },
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = TextPrimary, modifier = Modifier.size(18.dp))
@@ -222,16 +231,17 @@ fun ChatbotScreen(
 
             // ── Messages ──────────────────────────────────────────────────
             LazyColumn(
-                state = listState,
-                modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 16.dp),
+                state               = listState,
+                modifier            = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(vertical = 16.dp)
+                contentPadding      = PaddingValues(vertical = 16.dp)
             ) {
-                items(messages) { msg ->
+                // ↓ Explicit type annotation fixes "Cannot infer type" error
+                items(messages) { msg: ChatMessage ->
                     GlassChatBubble(
-                        message = msg,
-                        siteName = siteName,
-                        siteId = siteId,
+                        message        = msg,
+                        siteName       = siteName,
+                        siteId         = siteId,
                         videoViewModel = videoViewModel
                     )
                 }
@@ -241,11 +251,11 @@ fun ChatbotScreen(
             val lastMsg = messages.lastOrNull()
             if (lastMsg != null && !lastMsg.isUser && !lastMsg.isLoading) {
                 LazyRow(
-                    contentPadding = PaddingValues(horizontal = 16.dp),
+                    contentPadding        = PaddingValues(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.padding(bottom = 8.dp)
+                    modifier              = Modifier.padding(bottom = 8.dp)
                 ) {
-                    items(chips) { chip ->
+                    items(chips) { chip: QuickChip ->
                         Box(
                             modifier = Modifier.clip(RoundedCornerShape(50)).background(GlassWhite15)
                                 .border(0.5.dp, GlassBorder, RoundedCornerShape(50))
@@ -270,14 +280,18 @@ fun ChatbotScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier.weight(1f).clip(RoundedCornerShape(24.dp)).background(GlassWhite15)
-                            .border(0.7.dp, GlassBorder, RoundedCornerShape(24.dp)).padding(horizontal = 18.dp, vertical = 14.dp)
+                            .border(0.7.dp, GlassBorder, RoundedCornerShape(24.dp))
+                            .padding(horizontal = 18.dp, vertical = 14.dp)
                     ) {
                         androidx.compose.foundation.text.BasicTextField(
-                            value = inputText, onValueChange = { inputText = it },
-                            textStyle = TextStyle(color = TextPrimary, fontSize = 15.sp),
-                            modifier = Modifier.fillMaxWidth(), maxLines = 4,
+                            value         = inputText,
+                            onValueChange = { inputText = it },
+                            textStyle     = TextStyle(color = TextPrimary, fontSize = 15.sp),
+                            modifier      = Modifier.fillMaxWidth(),
+                            maxLines      = 4,
                             decorationBox = { inner ->
-                                if (inputText.isEmpty()) Text("Ask about $siteName…", color = TextTertiary, fontSize = 15.sp)
+                                if (inputText.isEmpty())
+                                    Text("Ask about $siteName…", color = TextTertiary, fontSize = 15.sp)
                                 inner()
                             }
                         )
@@ -285,43 +299,50 @@ fun ChatbotScreen(
                     Spacer(Modifier.width(10.dp))
                     Box(
                         modifier = Modifier.size(50.dp).clip(CircleShape)
-                            .background(if (canSend) Brush.linearGradient(listOf(Color(0xFFFFD54F), Color(0xFFFFC107))) else Brush.linearGradient(listOf(GlassWhite15, GlassWhite15)))
+                            .background(
+                                if (canSend) Brush.linearGradient(listOf(Color(0xFFFFD54F), Color(0xFFFFC107)))
+                                else Brush.linearGradient(listOf(GlassWhite15, GlassWhite15))
+                            )
                             .border(0.5.dp, if (canSend) Color(0x44FFFFFF) else GlassBorder, CircleShape)
-                            .clickable(enabled = canSend) { val t = inputText.trim(); inputText = ""; sendMessage(t) },
+                            .clickable(enabled = canSend) {
+                                val t = inputText.trim(); inputText = ""; sendMessage(t)
+                            },
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.AutoMirrored.Filled.Send, null, tint = if (canSend) DeepNavy else TextTertiary, modifier = Modifier.size(20.dp))
+                        Icon(Icons.AutoMirrored.Filled.Send, null,
+                            tint = if (canSend) DeepNavy else TextTertiary,
+                            modifier = Modifier.size(20.dp))
                     }
                 }
             }
         }
 
-        // ── Cinematic Loader (shown over everything) ──────────────────────
+        // ── Cinematic Loader (fullscreen overlay while generating) ────────
         CinematicLoaderOverlay(
-            uiState = videoUiState,
+            uiState  = videoUiState,
             onCancel = { videoViewModel.dismiss() },
             modifier = Modifier.fillMaxSize()
         )
 
-        // ── Video Player (shown when video is ready) ──────────────────────
+        // ── Video Player (fullscreen overlay when ready) ──────────────────
         if (videoUiState is VideoUiState.ReadyToPlay) {
             VideoPlayerOverlay(
-                videoUrl = (videoUiState as VideoUiState.ReadyToPlay).videoUrl,
+                videoUrl  = (videoUiState as VideoUiState.ReadyToPlay).videoUrl,
                 onDismiss = { videoViewModel.dismiss() },
-                modifier = Modifier.fillMaxSize()
+                modifier  = Modifier.fillMaxSize()
             )
         }
     }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Chat bubble — updated to show WatchVideoButton for bot messages
+// Chat bubble
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
 fun GlassChatBubble(
-    message: ChatMessage,
-    siteName: String = "",
-    siteId: String = "",
+    message:        ChatMessage,      // com.example.humsafar.models.ChatMessage
+    siteName:       String        = "",
+    siteId:         String        = "",
     videoViewModel: VideoViewModel? = null
 ) {
     val isUser    = message.isUser
@@ -343,36 +364,40 @@ fun GlassChatBubble(
                     else Brush.linearGradient(listOf(GlassWhite20, GlassWhite15))
                 )
                 .border(
-                    width = 0.5.dp,
-                    brush = if (isUser) Brush.verticalGradient(listOf(Color(0x55FFFFFF), Color(0x11FFFFFF)))
+                    0.5.dp,
+                    if (isUser) Brush.verticalGradient(listOf(Color(0x55FFFFFF), Color(0x11FFFFFF)))
                     else Brush.verticalGradient(listOf(GlassBorderBright, GlassBorder)),
-                    shape = bubbleShape
+                    bubbleShape
                 )
                 .padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
             if (message.isLoading) TypingIndicator()
-            else Text(message.text, color = if (isUser) DeepNavy else TextPrimary, fontSize = 15.sp, lineHeight = 22.sp)
+            else Text(
+                text      = message.text,
+                color     = if (isUser) DeepNavy else TextPrimary,
+                fontSize  = 15.sp,
+                lineHeight = 22.sp
+            )
         }
 
-        // Show "Watch Video" button for bot messages that have video available
         if (!isUser && !message.isLoading && message.videoAvailable && videoViewModel != null) {
             Spacer(Modifier.height(6.dp))
             WatchVideoButton(
-                videoType = message.videoType,
-                videoId = message.videoId,
-                prompt = message.userPrompt,
-                botText = message.text,
-                siteName = siteName,
-                siteId = siteId,
-                viewModel = videoViewModel,
-                modifier = Modifier.align(Alignment.Start)
+                videoType  = message.videoType,
+                videoId    = message.videoId,
+                prompt     = message.userPrompt,
+                botText    = message.text,
+                siteName   = siteName,
+                siteId     = siteId,
+                viewModel  = videoViewModel,
+                modifier   = Modifier.align(Alignment.Start)
             )
         }
     }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Typing indicator (unchanged)
+// Typing indicator
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
 private fun TypingIndicator() {
@@ -389,8 +414,8 @@ private fun TypingIndicator() {
     }
 
     Row(
-        verticalAlignment = Alignment.CenterVertically,
+        verticalAlignment     = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(5.dp),
-        modifier = Modifier.padding(vertical = 2.dp)
+        modifier              = Modifier.padding(vertical = 2.dp)
     ) { Dot(0); Dot(150); Dot(300) }
 }

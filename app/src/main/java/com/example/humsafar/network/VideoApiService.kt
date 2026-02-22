@@ -46,18 +46,17 @@ interface VideoApiService {
     suspend fun getStatus(@Path("jobId") jobId: String): VideoStatusResponse
 }
 
-// ── Client ─────────────────────────────────────────────────────────────────
+// ── Client — named VideoServiceClient to avoid conflict with VoiceRetrofitClient ──
 
-object VideoRetrofitClient {
+object VideoServiceClient {
 
-    // !! REPLACE THIS with your actual Render video service URL !!
-    // e.g. "https://humsafar-video.onrender.com/"
-    private const val BASE_URL = "https://YOUR-VIDEO-SERVICE.onrender.com/"
+    // !! REPLACE with your actual Render video service URL !!
+    private const val BASE_URL = "https://humsafar-video-service.onrender.com/"
 
-    private val client = OkHttpClient.Builder()
+    private val httpClient = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
         .writeTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)   // just for the HTTP call, not video generation
+        .readTimeout(30, TimeUnit.SECONDS)
         .addInterceptor(
             HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BODY }
         )
@@ -66,7 +65,7 @@ object VideoRetrofitClient {
     val api: VideoApiService by lazy {
         Retrofit.Builder()
             .baseUrl(BASE_URL)
-            .client(client)
+            .client(httpClient)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
             .create(VideoApiService::class.java)
