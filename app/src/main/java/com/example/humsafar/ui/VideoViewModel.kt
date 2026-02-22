@@ -21,31 +21,39 @@ private const val MAX_POLLS        = 60
 
 class VideoViewModel : ViewModel() {
 
+    // Start hidden — nothing shown until user taps "Watch as Video"
     private val _uiState = MutableStateFlow<VideoUiState>(VideoUiState.Hidden)
     val uiState: StateFlow<VideoUiState> = _uiState.asStateFlow()
 
     private var pollJob: Job? = null
 
     fun requestVideo(botText: String, siteName: String, siteId: String) {
+        // Don't start a second job if one is already running
         if (_uiState.value is VideoUiState.Generating) return
+
         _uiState.value = VideoUiState.Loading
 
         viewModelScope.launch {
-            delay(800)
-            _uiState.value = VideoUiState.Generating(0, "Starting…")
+            // Brief pause so the Loading animation is visible before the API call
+            delay(400)
             try {
                 val resp = VideoServiceClient.api.generateVideo(
-                    GenerateVideoRequest(botText = botText, siteName = siteName, siteId = siteId)
+                    GenerateVideoRequest(
+                        botText  = botText,
+                        siteName = siteName,
+                        siteId   = siteId
+                    )
                 )
-                Log.i(TAG, "job_id=${resp.jobId}")
+                Log.i(TAG, "Job started: job_id=${resp.jobId}")
                 pollStatus(resp.jobId)
             } catch (e: Exception) {
-                Log.e(TAG, "Start failed", e)
+                Log.e(TAG, "Failed to start generation", e)
                 _uiState.value = VideoUiState.Error("Could not start: ${e.message}")
             }
         }
     }
 
+    /** Called by the close/cancel button in both the loader and player overlays. */
     fun dismiss() {
         pollJob?.cancel()
         _uiState.value = VideoUiState.Hidden
@@ -60,30 +68,42 @@ class VideoViewModel : ViewModel() {
                 polls++
                 try {
                     val s = VideoServiceClient.api.getStatus(jobId)
-                    Log.i(TAG, "Poll $polls: ${s.status} ${s.progress}%")
+                    Log.i(TAG, "Poll $polls/${MAX_POLLS}: status=${s.status} progress=${s.progress}%")
                     when (s.status) {
-                        "ready"  -> {
+                        "ready" -> {
                             _uiState.value = if (!s.videoUrl.isNullOrBlank())
                                 VideoUiState.ReadyToPlay(s.videoUrl)
                             else
-                                VideoUiState.Error("URL missing")
+                                VideoUiState.Error("Video URL missing from response")
                             return@launch
                         }
                         "failed" -> {
-                            _uiState.value = VideoUiState.Error(s.message.ifBlank { "Failed" })
+                            _uiState.value = VideoUiState.Error(
+                                s.message.ifBlank { "Generation failed on server" }
+                            )
                             return@launch
                         }
-                        else -> _uiState.value = VideoUiState.Generating(
-                            s.progress, s.message.ifBlank { "Processing…" }
-                        )
+                        else -> {
+                            // "generating" or any other in-progress status
+                            _uiState.value = VideoUiState.Generating(
+                                progress = s.progress,
+                                message  = s.message.ifBlank { "Processing…" }
+                            )
+                        }
                     }
                 } catch (e: Exception) {
-                    Log.w(TAG, "Poll error: ${e.message}")
+                    // Transient network error — log and keep polling
+                    Log.w(TAG, "Poll error (will retry): ${e.message}")
                 }
             }
-            _uiState.value = VideoUiState.Error("Timed out — please try again")
+            _uiState.value = VideoUiState.Error(
+                "Timed out after ${MAX_POLLS * POLL_INTERVAL_MS / 1000}s — please try again"
+            )
         }
     }
 
-    override fun onCleared() { pollJob?.cancel(); super.onCleared() }
+    override fun onCleared() {
+        pollJob?.cancel()
+        super.onCleared()
+    }
 }
