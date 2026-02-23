@@ -1,11 +1,5 @@
 // app/src/main/java/com/example/humsafar/ui/MapScreen.kt
-// REPLACES EXISTING FILE
-//
-// CHANGES vs original:
-//   1. MapScreen() now accepts onNavigateToVoice: (name, id) → Unit
-//   2. MapContent() threads it down to BottomGlassPanel
-//   3. BottomGlassPanel gets a "Voice Guide" button beside "Explore with AI Guide"
-//   All other logic is IDENTICAL to the original.
+// UPDATED — single "Explore" CTA, profile button in top status pill area
 
 package com.example.humsafar.ui
 
@@ -23,7 +17,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
@@ -39,7 +33,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.example.humsafar.BuildConfig
-import com.example.humsafar.ChatbotActivity
 import com.example.humsafar.data.HeritageRepository
 import com.example.humsafar.geofence.GeofencePermissionHandler
 import com.example.humsafar.geofence.GeofenceTransitionReceiver
@@ -62,14 +55,19 @@ private val MAP_STYLE
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun MapScreen(
-    // NEW: navigation callback injected from AppNavigation
-    onNavigateToVoice: (siteName: String, siteId: String) -> Unit = { _, _ -> }
+    onNavigateToVoice:   (siteName: String, siteId: String) -> Unit = { _, _ -> },
+    onNavigateToDetail:  (siteName: String, siteId: String) -> Unit = { _, _ -> },
+    onNavigateToProfile: () -> Unit = {}
 ) {
     val locationPermission = rememberPermissionState(android.Manifest.permission.ACCESS_FINE_LOCATION)
     LaunchedEffect(Unit) { locationPermission.launchPermissionRequest() }
 
     when {
-        locationPermission.status.isGranted -> MapContent(onNavigateToVoice = onNavigateToVoice)
+        locationPermission.status.isGranted -> MapContent(
+            onNavigateToVoice   = onNavigateToVoice,
+            onNavigateToDetail  = onNavigateToDetail,
+            onNavigateToProfile = onNavigateToProfile
+        )
         else -> PermissionGate(locationPermission)
     }
 }
@@ -100,16 +98,18 @@ private fun PermissionGate(state: PermissionState) {
 
 @Composable
 fun MapContent(
-    onNavigateToVoice: (String, String) -> Unit = { _, _ -> }
+    onNavigateToVoice:   (String, String) -> Unit = { _, _ -> },
+    onNavigateToDetail:  (String, String) -> Unit = { _, _ -> },
+    onNavigateToProfile: () -> Unit = {}
 ) {
-    val context       = LocalContext.current
+    val context        = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
-    var userLat        by remember { mutableStateOf<Double?>(null) }
-    var userLng        by remember { mutableStateOf<Double?>(null) }
-    var insideSite     by remember { mutableStateOf<HeritageSite?>(null) }
-    var sortedSites    by remember { mutableStateOf<List<Pair<HeritageSite, Double>>>(emptyList()) }
-    var mapLibreMap    by remember { mutableStateOf<MapLibreMap?>(null) }
+    var userLat         by remember { mutableStateOf<Double?>(null) }
+    var userLng         by remember { mutableStateOf<Double?>(null) }
+    var insideSite      by remember { mutableStateOf<HeritageSite?>(null) }
+    var sortedSites     by remember { mutableStateOf<List<Pair<HeritageSite, Double>>>(emptyList()) }
+    var mapLibreMap     by remember { mutableStateOf<MapLibreMap?>(null) }
     var userMarkerAdded by remember { mutableStateOf(false) }
 
     val mapView         = remember { MapLibre.getInstance(context); MapView(context) }
@@ -187,37 +187,61 @@ fun MapContent(
             }
         }
 
-        // Top status pill
-        Box(
-            modifier = Modifier
+        // ── Top bar row: status pill + profile button ─────────────────────
+        Row(
+            modifier              = Modifier
                 .align(Alignment.TopCenter)
-                .padding(top = 56.dp)
-                .clip(RoundedCornerShape(50))
-                .background(Brush.linearGradient(listOf(Color(0xCC050D1A), Color(0xBB0A1628))))
-                .border(0.7.dp, GlassBorder, RoundedCornerShape(50))
-                .padding(horizontal = 20.dp, vertical = 10.dp)
+                .padding(top = 56.dp, start = 16.dp, end = 16.dp)
+                .fillMaxWidth(),
+            verticalAlignment     = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                val pulse by rememberInfiniteTransition(label = "pulse").animateFloat(
-                    0.4f, 1f,
-                    infiniteRepeatable(tween(900, easing = EaseInOut), RepeatMode.Reverse), label = "p"
-                )
-                Box(Modifier.size(8.dp).scale(pulse).clip(CircleShape)
-                    .background(if (insideSite != null) Color(0xFF4ADE80) else AccentYellow))
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    if (insideSite != null) "Inside ${insideSite!!.name}" else "Scanning for heritage sites…",
-                    color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium
-                )
+            // Status pill (shrunk weight)
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(50))
+                    .background(Brush.linearGradient(listOf(Color(0xCC050D1A), Color(0xBB0A1628))))
+                    .border(0.7.dp, GlassBorder, RoundedCornerShape(50))
+                    .padding(horizontal = 16.dp, vertical = 10.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    val pulse by rememberInfiniteTransition(label = "pulse").animateFloat(
+                        0.4f, 1f,
+                        infiniteRepeatable(tween(900, easing = EaseInOut), RepeatMode.Reverse), label = "p"
+                    )
+                    Box(Modifier.size(8.dp).scale(pulse).clip(CircleShape)
+                        .background(if (insideSite != null) Color(0xFF4ADE80) else AccentYellow))
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        if (insideSite != null) "Inside ${insideSite!!.name}" else "Scanning for heritage sites…",
+                        color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+
+            Spacer(Modifier.width(10.dp))
+
+            // Profile button
+            Box(
+                modifier = Modifier
+                    .size(46.dp)
+                    .clip(CircleShape)
+                    .background(Brush.linearGradient(listOf(Color(0xCC050D1A), Color(0xBB0A1628))))
+                    .border(0.7.dp, GlassBorderBright, CircleShape)
+                    .clickable { onNavigateToProfile() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.Person, null, tint = AccentYellow, modifier = Modifier.size(22.dp))
             }
         }
 
         BottomGlassPanel(
-            insideSite        = insideSite,
-            sortedSites       = sortedSites,
-            context           = context,
-            onNavigateToVoice = onNavigateToVoice,   // NEW
-            modifier          = Modifier.align(Alignment.BottomCenter)
+            insideSite         = insideSite,
+            sortedSites        = sortedSites,
+            context            = context,
+            onNavigateToDetail = onNavigateToDetail,
+            modifier           = Modifier.align(Alignment.BottomCenter)
         )
     }
 }
@@ -227,7 +251,7 @@ private fun BottomGlassPanel(
     insideSite:        HeritageSite?,
     sortedSites:       List<Pair<HeritageSite, Double>>,
     context:           android.content.Context,
-    onNavigateToVoice: (String, String) -> Unit,          // NEW param
+    onNavigateToDetail: (String, String) -> Unit,
     modifier:          Modifier = Modifier
 ) {
     var showNearby by remember { mutableStateOf(false) }
@@ -293,64 +317,41 @@ private fun BottomGlassPanel(
                     if (!nearby) {
                         Column {
 
-                            // ── "Explore with AI Guide" (text chat) ──────
+                            // ── Single primary CTA: Explore This Site ─────
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(20.dp))
                                     .background(Brush.linearGradient(listOf(Color(0xFFFFD54F), Color(0xFFFFC107))))
                                     .border(0.7.dp, Brush.verticalGradient(listOf(Color(0x66FFFFFF), Color(0x11FFFFFF))), RoundedCornerShape(20.dp))
-                                    .clickable {
-                                        context.startActivity(
-                                            Intent(context, ChatbotActivity::class.java).apply {
-                                                putExtra("SITE_NAME", insideSite.name)
-                                                putExtra("SITE_ID",   insideSite.id)
-                                            }
-                                        )
-                                    }
-                                    .padding(vertical = 20.dp),
+                                    .clickable { onNavigateToDetail(insideSite.name, insideSite.id) }
+                                    .padding(vertical = 22.dp),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Box(Modifier.matchParentSize().clip(RoundedCornerShape(20.dp))
                                     .background(Brush.verticalGradient(listOf(Color(0x44FFFFFF), Color.Transparent))))
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("🏛️", fontSize = 22.sp)
-                                    Spacer(Modifier.width(10.dp))
+                                    Text("🏛️", fontSize = 24.sp)
+                                    Spacer(Modifier.width(12.dp))
                                     Column {
-                                        Text("Explore with AI Guide", color = DeepNavy, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                                        Text("History, architecture & more", color = Color(0x99050D1A), fontSize = 12.sp)
+                                        Text(
+                                            "Explore ${insideSite.name}",
+                                            color      = DeepNavy,
+                                            fontSize   = 17.sp,
+                                            fontWeight = FontWeight.Black
+                                        )
+                                        Text(
+                                            "History • AI Guide • Voice • Video",
+                                            color    = Color(0x99050D1A),
+                                            fontSize = 12.sp
+                                        )
                                     }
                                 }
                             }
 
                             Spacer(Modifier.height(10.dp))
 
-                            // ── "Voice Guide" (NEW — voice pipeline) ─────
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(20.dp))
-                                    .background(Brush.linearGradient(listOf(Color(0xFF1A3A6B), Color(0xFF0D2040))))
-                                    .border(0.7.dp, GlassBorderBright, RoundedCornerShape(20.dp))
-                                    .clickable { onNavigateToVoice(insideSite.name, insideSite.id) }
-                                    .padding(vertical = 20.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Box(Modifier.matchParentSize().clip(RoundedCornerShape(20.dp))
-                                    .background(Brush.verticalGradient(listOf(Color(0x22FFFFFF), Color.Transparent))))
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.Mic, null, tint = AccentYellow, modifier = Modifier.size(22.dp))
-                                    Spacer(Modifier.width(10.dp))
-                                    Column {
-                                        Text("Voice Guide", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                                        Text("Speak your questions aloud", color = TextTertiary, fontSize = 12.sp)
-                                    }
-                                }
-                            }
-
-                            Spacer(Modifier.height(10.dp))
-
-                            // ── Google Maps ───────────────────────────────
+                            // ── Secondary: Open in Maps ───────────────────
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -368,7 +369,7 @@ private fun BottomGlassPanel(
                             }
                         }
                     } else {
-                        // Nearby sites list (unchanged from original)
+                        // Nearby sites list
                         val nearby = sortedSites.filter { (s, _) -> s.id != insideSite.id }
                         LazyColumn(
                             modifier = Modifier.heightIn(max = 220.dp),
@@ -400,7 +401,7 @@ private fun BottomGlassPanel(
                 }
 
             } else {
-                // No site — show sorted list (identical to original)
+                // No site — sorted list
                 Text("Nearby Heritage Sites", color = TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(4.dp))
                 Text(
