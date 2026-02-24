@@ -38,14 +38,13 @@ fun NodeDetailScreen(
     nodeId: Long,
     isKing: Boolean,
     onBack: () -> Unit,
-    onNavigateToQr: (Long) -> Unit,      // monumentId
+    onNavigateToQr: (Long) -> Unit,
     onNavigateToVoice: (String, String) -> Unit,
     viewModel: NodeDetailViewModel = viewModel()
 ) {
-    val context = LocalContext.current
-    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val context  = LocalContext.current
+    val uiState  by viewModel.uiState.collectAsStateWithLifecycle()
     val tripState by TripManager.state.collectAsStateWithLifecycle()
-    val videoUiState by viewModel.videoViewModel.uiState.collectAsStateWithLifecycle()
 
     LaunchedEffect(nodeId) { viewModel.loadNode(nodeId) }
 
@@ -64,18 +63,13 @@ fun NodeDetailScreen(
             }
 
             is NodeDetailUiState.Ready -> {
-                val node    = s.node
-                val nearby  = s.nearbyPlaces
+                val node     = s.node
+                val nearby   = s.nearbyPlaces
                 val allNodes = s.allNodes
 
                 Column(Modifier.fillMaxSize()) {
+                    Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
 
-                    // ── Scrollable body ───────────────────────────────────
-                    Column(
-                        Modifier.weight(1f).verticalScroll(rememberScrollState())
-                    ) {
-
-                        // ── Hero image carousel ───────────────────────────
                         HeroCarousel(
                             images   = node.photoUrls,
                             nodeName = node.name,
@@ -87,31 +81,6 @@ fun NodeDetailScreen(
 
                             Spacer(Modifier.height(16.dp))
 
-                            // ── Watch video button ────────────────────────
-                            if (node.videoUrl.isNotBlank()) {
-                                Box(
-                                    Modifier.fillMaxWidth()
-                                        .clip(RoundedCornerShape(16.dp))
-                                        .background(Brush.linearGradient(listOf(Color(0xFF1A002D), Color(0xFF0E001A))))
-                                        .border(1.dp, Color(0x554A90D9), RoundedCornerShape(16.dp))
-                                        .clickable {
-                                            viewModel.videoViewModel.playDirectUrl(node.videoUrl)
-                                        }
-                                        .padding(16.dp)
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Default.PlayCircle, null, tint = Color(0xFF4A90D9), modifier = Modifier.size(28.dp))
-                                        Spacer(Modifier.width(12.dp))
-                                        Column {
-                                            Text("Watch Video Instead", color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                                            Text("Full cinematic tour", color = TextTertiary, fontSize = 12.sp)
-                                        }
-                                    }
-                                }
-                                Spacer(Modifier.height(12.dp))
-                            }
-
-                            // ── Action row ────────────────────────────────
                             NodeActionRow(
                                 node              = node,
                                 tripState         = tripState,
@@ -123,45 +92,39 @@ fun NodeDetailScreen(
 
                             Spacer(Modifier.height(24.dp))
 
-                            // ── History ───────────────────────────────────
                             if (node.history.isNotBlank()) {
                                 NodeSection("📜 History", node.history)
                                 Spacer(Modifier.height(16.dp))
                             }
 
-                            // ── Navigation info ───────────────────────────
                             if (node.navigationInfo.isNotBlank()) {
                                 NodeSection("🗺️ How to Reach", node.navigationInfo)
                                 Spacer(Modifier.height(16.dp))
                             }
 
-                            // ── Nearby places ─────────────────────────────
                             if (nearby.isNotEmpty()) {
                                 NearbySection(nearby)
                                 Spacer(Modifier.height(16.dp))
                             }
 
-                            // ── All nodes (if trip active) ────────────────
                             if (tripState.isTripActive && allNodes.isNotEmpty()) {
                                 AllNodesSection(
-                                    nodes       = allNodes,
-                                    visitedIds  = tripState.visitedNodeIds,
-                                    currentId   = tripState.currentNodeId
+                                    nodes      = allNodes,
+                                    visitedIds = tripState.visitedNodeIds,
+                                    currentId  = tripState.currentNodeId
                                 )
                                 Spacer(Modifier.height(16.dp))
                             }
 
-                            // ── Non-king: offer to start trip ─────────────
                             if (!isKing && !tripState.isTripActive) {
                                 StartTripFromNormalCard(
-                                    node    = node,
+                                    node     = node,
                                     allNodes = allNodes,
                                     viewModel = viewModel
                                 )
                                 Spacer(Modifier.height(16.dp))
                             }
 
-                            // ── End trip ──────────────────────────────────
                             if (tripState.isTripActive) {
                                 Box(
                                     Modifier.fillMaxWidth()
@@ -180,7 +143,7 @@ fun NodeDetailScreen(
                     }
                 }
 
-                // ── Direction sheet overlay ───────────────────────────────
+                // Direction sheet overlay
                 val dirState = viewModel.directionState.collectAsStateWithLifecycle().value
                 AnimatedVisibility(
                     visible  = dirState != null,
@@ -190,10 +153,10 @@ fun NodeDetailScreen(
                 ) {
                     dirState?.let {
                         DirectionSheet(
-                            direction  = it,
-                            allNodes   = allNodes,
+                            direction    = it,
+                            allNodes     = allNodes,
                             nearbyPlaces = nearby,
-                            onDismiss  = { viewModel.dismissDirection() }
+                            onDismiss    = { viewModel.dismissDirection() }
                         )
                     }
                 }
@@ -210,7 +173,7 @@ fun NodeDetailScreen(
             }
         }
 
-        // ── Sticky chatbot + voice bubbles ────────────────────────────────
+        // Sticky chatbot + voice bubbles
         val tripSnap = TripManager.current()
         Row(
             Modifier.align(Alignment.BottomEnd)
@@ -218,19 +181,15 @@ fun NodeDetailScreen(
                 .padding(16.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Voice
             Box(
                 Modifier.size(52.dp).clip(CircleShape)
                     .background(Brush.linearGradient(listOf(Color(0xFF2D1A00), Color(0xFF1A0E00))))
                     .border(1.dp, Color(0x55FFD54F), CircleShape)
-                    .clickable {
-                        onNavigateToVoice(tripSnap.currentNodeName, tripSnap.currentNodeId.toString())
-                    },
+                    .clickable { onNavigateToVoice(tripSnap.currentNodeName, tripSnap.currentNodeId.toString()) },
                 contentAlignment = Alignment.Center
             ) {
                 Icon(Icons.Default.Mic, null, tint = AccentYellow, modifier = Modifier.size(24.dp))
             }
-            // Chat
             Box(
                 Modifier.size(52.dp).clip(CircleShape)
                     .background(Brush.linearGradient(listOf(Color(0xFF1A3A6B), Color(0xFF0D2040))))
@@ -248,32 +207,13 @@ fun NodeDetailScreen(
                 Icon(Icons.Default.Chat, null, tint = TextPrimary, modifier = Modifier.size(22.dp))
             }
         }
-
-        // Video overlays
-        CinematicLoaderOverlay(
-            uiState  = videoUiState,
-            onCancel = { viewModel.videoViewModel.dismiss() },
-            modifier = Modifier.fillMaxSize()
-        )
-        if (videoUiState is com.example.humsafar.models.VideoUiState.ReadyToPlay) {
-            VideoPlayerOverlay(
-                videoUrl  = (videoUiState as com.example.humsafar.models.VideoUiState.ReadyToPlay).videoUrl,
-                onDismiss = { viewModel.videoViewModel.dismiss() },
-                modifier  = Modifier.fillMaxSize()
-            )
-        }
     }
 }
 
 // ── Hero image carousel ────────────────────────────────────────────────────────
 
 @Composable
-private fun HeroCarousel(
-    images: List<String>,
-    nodeName: String,
-    nodeType: String,
-    onBack: () -> Unit
-) {
+private fun HeroCarousel(images: List<String>, nodeName: String, nodeType: String, onBack: () -> Unit) {
     Box(Modifier.fillMaxWidth().height(280.dp)) {
         if (images.isNotEmpty()) {
             var current by remember { mutableStateOf(0) }
@@ -284,20 +224,18 @@ private fun HeroCarousel(
                 }
             }
             AsyncImage(
-                model            = images[current],
+                model              = images[current],
                 contentDescription = nodeName,
-                contentScale     = ContentScale.Crop,
-                modifier         = Modifier.fillMaxSize()
+                contentScale       = ContentScale.Crop,
+                modifier           = Modifier.fillMaxSize()
             )
         } else {
             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF1A0A00), Color(0xFF0A1628)))))
             Text("🏛️", fontSize = 80.sp, modifier = Modifier.align(Alignment.Center))
         }
-        // Scrim
         Box(Modifier.fillMaxSize().background(
             Brush.verticalGradient(listOf(Color(0xBB050D1A), Color.Transparent, Color(0xFF050D1A)))
         ))
-        // Back
         Box(
             Modifier.align(Alignment.TopStart).statusBarsPadding().padding(16.dp)
                 .size(44.dp).clip(CircleShape)
@@ -307,7 +245,6 @@ private fun HeroCarousel(
         ) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = Color.White, modifier = Modifier.size(20.dp))
         }
-        // Title
         Column(Modifier.align(Alignment.BottomStart).padding(20.dp)) {
             if (nodeType == "KING") {
                 Box(
@@ -335,17 +272,9 @@ private fun NodeActionRow(
     onDirection: () -> Unit
 ) {
     LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        item {
-            NodeActionChip("🎙️", "Hear It") {
-                onNavigateToVoice(node.name, node.id.toString())
-            }
-        }
-        item {
-            NodeActionChip("🗺️", "Direction") { onDirection() }
-        }
-        item {
-            NodeActionChip("📷", "Scan Next") { onScanNext() }
-        }
+        item { NodeActionChip("🎙️", "Hear It") { onNavigateToVoice(node.name, node.id.toString()) } }
+        item { NodeActionChip("🗺️", "Direction") { onDirection() } }
+        item { NodeActionChip("📷", "Scan Next") { onScanNext() } }
         item {
             NodeActionChip("💬", "Ask AI") {
                 context.startActivity(
@@ -402,10 +331,7 @@ private fun NearbySection(places: List<NearbyPlace>) {
             val emoji = when (place.type) {
                 "WASHROOM" -> "🚻"; "CANTEEN" -> "🍽️"; "SNACKS" -> "🥤"; "EXIT" -> "🚪"; else -> "📍"
             }
-            Row(
-                Modifier.fillMaxWidth().padding(vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(emoji, fontSize = 18.sp)
                 Spacer(Modifier.width(10.dp))
                 Column {
@@ -419,30 +345,17 @@ private fun NearbySection(places: List<NearbyPlace>) {
 }
 
 @Composable
-private fun AllNodesSection(
-    nodes: List<MonumentNode>,
-    visitedIds: List<Long>,
-    currentId: Long
-) {
+private fun AllNodesSection(nodes: List<MonumentNode>, visitedIds: List<Long>, currentId: Long) {
     Column {
         Text("🗺️ Trip Progress", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
         nodes.sortedBy { it.visitOrder }.forEach { node ->
-            val visited = node.id in visitedIds
+            val visited   = node.id in visitedIds
             val isCurrent = node.id == currentId
-            Row(
-                Modifier.fillMaxWidth().padding(vertical = 5.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     Modifier.size(28.dp).clip(CircleShape)
-                        .background(
-                            when {
-                                isCurrent -> AccentYellow
-                                visited   -> Color(0xFF4ADE80)
-                                else      -> GlassWhite15
-                            }
-                        ),
+                        .background(when { isCurrent -> AccentYellow; visited -> Color(0xFF4ADE80); else -> GlassWhite15 }),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
@@ -454,11 +367,7 @@ private fun AllNodesSection(
                 Spacer(Modifier.width(10.dp))
                 Text(
                     node.name,
-                    color = when {
-                        isCurrent -> AccentYellow
-                        visited   -> TextTertiary
-                        else      -> TextPrimary
-                    },
+                    color = when { isCurrent -> AccentYellow; visited -> TextTertiary; else -> TextPrimary },
                     fontSize = 14.sp,
                     fontWeight = if (node.nodeType == "KING") FontWeight.Bold else FontWeight.Normal
                 )
@@ -472,11 +381,7 @@ private fun AllNodesSection(
 }
 
 @Composable
-private fun StartTripFromNormalCard(
-    node: MonumentNode,
-    allNodes: List<MonumentNode>,
-    viewModel: NodeDetailViewModel
-) {
+private fun StartTripFromNormalCard(node: MonumentNode, allNodes: List<MonumentNode>, viewModel: NodeDetailViewModel) {
     var showVisitedPicker by remember { mutableStateOf(false) }
     val selectedVisited = remember { mutableStateListOf<Long>() }
 
@@ -489,33 +394,23 @@ private fun StartTripFromNormalCard(
         Column {
             Text("🗺️ Want a guided tour?", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(6.dp))
-            Text(
-                "Start a trip from here to get proper directions and next node suggestions.",
-                color = TextSecondary, fontSize = 13.sp, lineHeight = 19.sp
-            )
+            Text("Start a trip from here to get proper directions and next node suggestions.",
+                color = TextSecondary, fontSize = 13.sp, lineHeight = 19.sp)
             Spacer(Modifier.height(16.dp))
 
             if (!showVisitedPicker) {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Box(
-                        Modifier.weight(1f).clip(RoundedCornerShape(12.dp))
-                            .background(AccentYellow)
-                            .clickable { viewModel.startTripFromNormal(node, emptyList()) }
-                            .padding(12.dp),
+                        Modifier.weight(1f).clip(RoundedCornerShape(12.dp)).background(AccentYellow)
+                            .clickable { viewModel.startTripFromNormal(node, emptyList()) }.padding(12.dp),
                         contentAlignment = Alignment.Center
-                    ) {
-                        Text("Start Fresh", color = Color.Black, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                    }
+                    ) { Text("Start Fresh", color = Color.Black, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
                     Box(
-                        Modifier.weight(1f).clip(RoundedCornerShape(12.dp))
-                            .background(GlassWhite15)
+                        Modifier.weight(1f).clip(RoundedCornerShape(12.dp)).background(GlassWhite15)
                             .border(0.7.dp, GlassBorder, RoundedCornerShape(12.dp))
-                            .clickable { showVisitedPicker = true }
-                            .padding(12.dp),
+                            .clickable { showVisitedPicker = true }.padding(12.dp),
                         contentAlignment = Alignment.Center
-                    ) {
-                        Text("I visited some", color = TextPrimary, fontSize = 13.sp)
-                    }
+                    ) { Text("I visited some", color = TextPrimary, fontSize = 13.sp) }
                 }
             } else {
                 Text("Which nodes have you visited?", color = TextTertiary, fontSize = 12.sp)
@@ -523,8 +418,7 @@ private fun StartTripFromNormalCard(
                 allNodes.filter { it.nodeType != "KING" }.forEach { n ->
                     Row(
                         Modifier.fillMaxWidth().clickable {
-                            if (n.id in selectedVisited) selectedVisited.remove(n.id)
-                            else selectedVisited.add(n.id)
+                            if (n.id in selectedVisited) selectedVisited.remove(n.id) else selectedVisited.add(n.id)
                         }.padding(vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -543,14 +437,10 @@ private fun StartTripFromNormalCard(
                 }
                 Spacer(Modifier.height(12.dp))
                 Box(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-                        .background(AccentYellow)
-                        .clickable { viewModel.startTripFromNormal(node, selectedVisited.toList()) }
-                        .padding(12.dp),
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(AccentYellow)
+                        .clickable { viewModel.startTripFromNormal(node, selectedVisited.toList()) }.padding(12.dp),
                     contentAlignment = Alignment.Center
-                ) {
-                    Text("Start Trip", color = Color.Black, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                }
+                ) { Text("Start Trip", color = Color.Black, fontSize = 14.sp, fontWeight = FontWeight.Bold) }
             }
         }
     }
@@ -584,40 +474,22 @@ private fun DirectionSheet(
             }
             Spacer(Modifier.height(16.dp))
 
-            // You are here
-            if (direction.nearestNodeName.isNotBlank()) {
-                DirectionRow("📍", "You are near", direction.nearestNodeName, TextTertiary)
-                Spacer(Modifier.height(10.dp))
-            }
-            // Go here next
-            if (direction.recommendedNodeName.isNotBlank()) {
-                DirectionRow("➡️", "Visit next", direction.recommendedNodeName, AccentYellow)
-                Spacer(Modifier.height(10.dp))
-            }
-            // Distance
-            if (direction.distanceMeters > 0) {
-                DirectionRow("📏", "Distance", "${direction.distanceMeters.toInt()} m away", TextSecondary)
-            }
+            if (direction.nearestNodeName.isNotBlank())     { DirectionRow("📍", "You are near", direction.nearestNodeName, TextTertiary); Spacer(Modifier.height(10.dp)) }
+            if (direction.recommendedNodeName.isNotBlank()) { DirectionRow("➡️", "Visit next", direction.recommendedNodeName, AccentYellow); Spacer(Modifier.height(10.dp)) }
+            if (direction.distanceMeters > 0)               { DirectionRow("📏", "Distance", "${direction.distanceMeters.toInt()} m away", TextSecondary) }
 
             Spacer(Modifier.height(16.dp))
 
-            // Nearby facilities quick list
             if (nearbyPlaces.isNotEmpty()) {
                 Text("Nearby Facilities", color = TextTertiary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(8.dp))
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(nearbyPlaces) { place ->
-                        val emoji = when (place.type) {
-                            "WASHROOM" -> "🚻"; "CANTEEN" -> "🍽️"; "SNACKS" -> "🥤"; else -> "📍"
-                        }
+                        val emoji = when (place.type) { "WASHROOM" -> "🚻"; "CANTEEN" -> "🍽️"; "SNACKS" -> "🥤"; else -> "📍" }
                         Box(
-                            Modifier.clip(RoundedCornerShape(50))
-                                .background(GlassWhite15)
-                                .border(0.5.dp, GlassBorder, RoundedCornerShape(50))
-                                .padding(horizontal = 14.dp, vertical = 8.dp)
-                        ) {
-                            Text("$emoji ${place.name}", color = TextSecondary, fontSize = 12.sp)
-                        }
+                            Modifier.clip(RoundedCornerShape(50)).background(GlassWhite15)
+                                .border(0.5.dp, GlassBorder, RoundedCornerShape(50)).padding(horizontal = 14.dp, vertical = 8.dp)
+                        ) { Text("$emoji ${place.name}", color = TextSecondary, fontSize = 12.sp) }
                     }
                 }
             }

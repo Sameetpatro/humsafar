@@ -19,8 +19,6 @@ class NodeDetailViewModel : ViewModel() {
     private val _directionState = MutableStateFlow<DirectionInfo?>(null)
     val directionState: StateFlow<DirectionInfo?> = _directionState.asStateFlow()
 
-    val videoViewModel = VideoViewModel()
-
     fun loadNode(nodeId: Long) = viewModelScope.launch {
         _uiState.value = NodeDetailUiState.Loading
         try {
@@ -32,7 +30,6 @@ class NodeDetailViewModel : ViewModel() {
             val data = scanResp.body()!!
             val monumentId = data.node.monumentId
 
-            // Load all nodes + nearby in parallel
             val nodesResp  = SiteClient.api.getNodesForMonument(monumentId)
             val nearbyResp = SiteClient.api.getNearbyPlaces(monumentId)
 
@@ -42,9 +39,9 @@ class NodeDetailViewModel : ViewModel() {
             TripManager.cachedNodes = allNodes
 
             _uiState.value = NodeDetailUiState.Ready(
-                node        = data.node,
-                allNodes    = allNodes,
-                nearbyPlaces = nearby,
+                node            = data.node,
+                allNodes        = allNodes,
+                nearbyPlaces    = nearby,
                 recommendedNext = data.recommendedNext
             )
         } catch (e: Exception) {
@@ -53,19 +50,14 @@ class NodeDetailViewModel : ViewModel() {
     }
 
     fun requestDirection() {
-        val trip = TripManager.current()
+        val trip  = TripManager.current()
         val state = _uiState.value as? NodeDetailUiState.Ready ?: return
-        val lat  = trip.lastLat
-        val lng  = trip.lastLng
+        val lat   = trip.lastLat
+        val lng   = trip.lastLng
 
-        // Use Haversine to find nearest + recommend next unvisited
         val nearest = TripManager.nearestNode(lat, lng)
-        val next    = TripManager.nextRecommendedNode()
-            ?: state.recommendedNext
-
-        val dist = nearest?.let {
-            haversineDistance(lat, lng, it.latitude, it.longitude)
-        } ?: 0.0
+        val next    = TripManager.nextRecommendedNode() ?: state.recommendedNext
+        val dist    = nearest?.let { haversineDistance(lat, lng, it.latitude, it.longitude) } ?: 0.0
 
         _directionState.value = DirectionInfo(
             nearestNodeName     = nearest?.name ?: "Unknown",
@@ -77,9 +69,7 @@ class NodeDetailViewModel : ViewModel() {
     fun dismissDirection() { _directionState.value = null }
 
     fun endTrip() = viewModelScope.launch {
-        try {
-            SiteClient.api.endSession(TripManager.USER_ID)
-        } catch (_: Exception) { }
+        try { SiteClient.api.endSession(TripManager.USER_ID) } catch (_: Exception) { }
         TripManager.clear()
     }
 
@@ -88,11 +78,8 @@ class NodeDetailViewModel : ViewModel() {
             val resp = SiteClient.api.startSession(TripManager.USER_ID, node.monumentId)
             if (resp.isSuccessful) {
                 TripManager.activateTrip(node.monumentId, node.name, node.id, node.name)
-                // Mark already-visited nodes
                 alreadyVisited.forEach { id ->
-                    TripManager.cachedNodes.find { it.id == id }?.let {
-                        TripManager.updateCurrentNode(it)
-                    }
+                    TripManager.cachedNodes.find { it.id == id }?.let { TripManager.updateCurrentNode(it) }
                 }
                 TripManager.updateCurrentNode(node)
             }

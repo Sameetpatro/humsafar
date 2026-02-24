@@ -29,16 +29,8 @@ import androidx.compose.ui.graphics.*
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.*
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.humsafar.models.ChatMessage   // ← explicit import — no local class
-import com.example.humsafar.models.VideoType
-import com.example.humsafar.models.VideoUiState
-import com.example.humsafar.ui.VideoViewModel
+import com.example.humsafar.models.ChatMessage
 import com.example.humsafar.ui.components.AnimatedOrbBackground
-import com.example.humsafar.ui.components.CinematicLoaderOverlay
-import com.example.humsafar.ui.components.VideoPlayerOverlay
-import com.example.humsafar.ui.components.WatchVideoButton
 import com.example.humsafar.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -122,16 +114,13 @@ private data class QuickChip(val label: String, val query: String)
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
 fun ChatbotScreen(
-    siteName:       String,
-    siteId:         String,
-    onBack:         () -> Unit,
-    videoViewModel: VideoViewModel = viewModel()
+    siteName: String,
+    siteId:   String,
+    onBack:   () -> Unit
 ) {
     val scope     = rememberCoroutineScope()
     val listState = rememberLazyListState()
     var inputText by remember { mutableStateOf("") }
-
-    val videoUiState by videoViewModel.uiState.collectAsStateWithLifecycle()
 
     val chips = remember(siteName) {
         listOf(
@@ -143,15 +132,11 @@ fun ChatbotScreen(
         )
     }
 
-    // NOTE: No local 'data class ChatMessage' here — we use the one from models package
     val messages = remember {
         mutableStateListOf(
             ChatMessage(
-                text           = "👋 Welcome to $siteName!\n\nI'm your AI heritage guide. Ask me anything — history, architecture, legends, or visiting tips!",
-                isUser         = false,
-                videoAvailable = true,
-                videoType      = VideoType.OVERVIEW,
-                videoId        = siteId
+                text    = "👋 Welcome to $siteName!\n\nI'm your AI heritage guide. Ask me anything — history, architecture, legends, or visiting tips!",
+                isUser  = false
             )
         )
     }
@@ -171,14 +156,7 @@ fun ChatbotScreen(
                 siteId   = siteId,
                 history  = historySnapshot
             )
-            val botMsg = ChatMessage(
-                text           = reply,
-                isUser         = false,
-                videoAvailable = true,
-                videoType      = VideoType.PROMPT,
-                videoId        = "",
-                userPrompt     = userText
-            )
+            val botMsg = ChatMessage(text = reply, isUser = false)
             val idx = messages.indexOf(loadingMsg)
             if (idx != -1) messages[idx] = botMsg else messages.add(botMsg)
             listState.animateScrollToItem(messages.size - 1)
@@ -236,14 +214,8 @@ fun ChatbotScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 contentPadding      = PaddingValues(vertical = 16.dp)
             ) {
-                // ↓ Explicit type annotation fixes "Cannot infer type" error
                 items(messages) { msg: ChatMessage ->
-                    GlassChatBubble(
-                        message        = msg,
-                        siteName       = siteName,
-                        siteId         = siteId,
-                        videoViewModel = videoViewModel
-                    )
+                    GlassChatBubble(message = msg)
                 }
             }
 
@@ -316,22 +288,6 @@ fun ChatbotScreen(
                 }
             }
         }
-
-        // ── Cinematic Loader (fullscreen overlay while generating) ────────
-        CinematicLoaderOverlay(
-            uiState  = videoUiState,
-            onCancel = { videoViewModel.dismiss() },
-            modifier = Modifier.fillMaxSize()
-        )
-
-        // ── Video Player (fullscreen overlay when ready) ──────────────────
-        if (videoUiState is VideoUiState.ReadyToPlay) {
-            VideoPlayerOverlay(
-                videoUrl  = (videoUiState as VideoUiState.ReadyToPlay).videoUrl,
-                onDismiss = { videoViewModel.dismiss() },
-                modifier  = Modifier.fillMaxSize()
-            )
-        }
     }
 }
 
@@ -339,12 +295,7 @@ fun ChatbotScreen(
 // Chat bubble
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
-fun GlassChatBubble(
-    message:        ChatMessage,      // com.example.humsafar.models.ChatMessage
-    siteName:       String        = "",
-    siteId:         String        = "",
-    videoViewModel: VideoViewModel? = null
-) {
+fun GlassChatBubble(message: ChatMessage) {
     val isUser    = message.isUser
     val alignment = if (isUser) Alignment.End else Alignment.Start
 
@@ -377,20 +328,6 @@ fun GlassChatBubble(
                 color     = if (isUser) DeepNavy else TextPrimary,
                 fontSize  = 15.sp,
                 lineHeight = 22.sp
-            )
-        }
-
-        if (!isUser && !message.isLoading && message.videoAvailable && videoViewModel != null) {
-            Spacer(Modifier.height(6.dp))
-            WatchVideoButton(
-                videoType  = message.videoType,
-                videoId    = message.videoId,
-                prompt     = message.userPrompt,
-                botText    = message.text,
-                siteName   = siteName,
-                siteId     = siteId,
-                viewModel  = videoViewModel,
-                modifier   = Modifier.align(Alignment.Start)
             )
         }
     }
