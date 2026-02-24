@@ -23,6 +23,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
+import androidx.annotation.RequiresPermission
 import androidx.core.content.ContextCompat
 import com.google.android.gms.location.ActivityRecognition
 import com.google.android.gms.location.ActivityRecognitionResult
@@ -83,6 +84,7 @@ class ActivityRecognitionManager(private val context: Context) {
      * DETECTION_INTERVAL_MS controls how often GPS/accelerometer is polled.
      * Results are delivered to ActivityTransitionReceiver via PendingIntent.
      */
+    @RequiresPermission(Manifest.permission.ACTIVITY_RECOGNITION)
     fun startTracking() {
         if (!hasPermission()) {
             Log.w(TAG, "ACTIVITY_RECOGNITION permission not granted — skipping")
@@ -101,6 +103,7 @@ class ActivityRecognitionManager(private val context: Context) {
      * Stop activity updates. Call this on logout or when the user disables
      * background tracking in your settings screen.
      */
+    @RequiresPermission(Manifest.permission.ACTIVITY_RECOGNITION)
     fun stopTracking() {
         client.removeActivityUpdates(pendingIntent)
             .addOnCompleteListener {

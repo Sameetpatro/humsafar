@@ -1,10 +1,14 @@
+// app/src/main/java/com/example/humsafar/ui/QrScanViewModel.kt
+// REWRITTEN — wired to FastAPI /sites/scan/{qr_value} and /trips/start
+
 package com.example.humsafar.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.humsafar.data.TripManager
-import com.example.humsafar.models.NodeScanResponse
-import com.example.humsafar.network.SiteClient
+import com.example.humsafar.models.QrScanResult
+import com.example.humsafar.models.SiteDetail
+import com.example.humsafar.network.HumsafarClient
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -18,42 +22,77 @@ class QrScanViewModel : ViewModel() {
 
     private val isProcessing = AtomicBoolean(false)
 
-    // Called when ML Kit detects a QR — nodeId is encoded in QR as just the number
+    // ── QR detected by camera ─────────────────────────────────────────────
     fun onQrDetected(rawQr: String) {
         if (!isProcessing.compareAndSet(false, true)) return
-        val nodeId = rawQr.trim().toLongOrNull() ?: run {
-            _uiState.value = QrUiState.Error("Invalid QR code format")
-            isProcessing.set(false)
-            return
-        }
+        val qrValue = rawQr.trim()
+
         viewModelScope.launch {
             _uiState.value = QrUiState.Validating
+
             try {
-                val resp = SiteClient.api.scanNode(nodeId)
-                if (resp.isSuccessful) {
-                    val data = resp.body()!!
-                    // If KING node → start session
-                    if (data.node.nodeType == "KING" && !TripManager.isActive()) {
-                        val sessionResp = SiteClient.api.startSession(
-                            firebaseUid = TripManager.USER_ID,
-                            monumentId  = data.node.monumentId
-                        )
-                        if (sessionResp.isSuccessful) {
-                            TripManager.activateTrip(
-                                monumentId   = data.node.monumentId,
-                                monumentName = data.node.name,
-                                nodeId       = data.node.id,
-                                nodeName     = data.node.name
+                val resp = HumsafarClient.api.scanQr(qrValue)
+                if (!resp.isSuccessful || resp.body() == null) {
+                    _uiState.value = QrUiState.Error("QR not recognised (${resp.code()})")
+                    isProcessing.set(false)
+                    return@launch
+                }
+
+                val result = resp.body()!!
+
+                if (!result.isValid) {
+                    _uiState.value = QrUiState.Error("Invalid QR code — not a Humsafar node")
+                    isProcessing.set(false)
+                    return@launch
+                }
+
+                // Fetch the full site so we have name + node list
+                val siteResp = HumsafarClient.api.getSiteDetail(result.siteId!!)
+                val site = if (siteResp.isSuccessful) siteResp.body() else null
+
+                when {
+                    // ── KING NODE ──────────────────────────────────────────
+                    result.isKingNode -> {
+                        if (TripManager.isActive()) {
+                            // Already on a trip — just update current node and proceed
+                            TripManager.updateCurrentNode(result.nodeId!!, result.nodeName ?: "Entry")
+                            _uiState.value = QrUiState.Success(result, site)
+                        } else {
+                            // Start a new trip
+                            val tripResp = HumsafarClient.api.startTrip(
+                                userId   = TripManager.USER_ID,
+                                qrValue  = qrValue
                             )
+                            if (tripResp.isSuccessful && tripResp.body() != null) {
+                                val trip = tripResp.body()!!
+                                TripManager.activateTrip(
+                                    tripId   = trip.tripId,
+                                    siteId   = result.siteId,
+                                    siteName = site?.name ?: "",
+                                    nodeId   = result.nodeId!!,
+                                    nodeName = result.nodeName ?: "Entry"
+                                )
+                                _uiState.value = QrUiState.Success(result, site)
+                            } else {
+                                _uiState.value = QrUiState.Error("Failed to start trip (${tripResp.code()})")
+                                isProcessing.set(false)
+                            }
                         }
-                    } else if (TripManager.isActive()) {
-                        TripManager.updateCurrentNode(data.node)
                     }
-                    _uiState.value = QrUiState.Success(data)
-                } else {
-                    _uiState.value = QrUiState.Error("Node not found: ${resp.code()}")
-                    isProcessing.set(false)
+
+                    // ── NORMAL NODE — trip active ──────────────────────────
+                    TripManager.isActive() -> {
+                        TripManager.updateCurrentNode(result.nodeId!!, result.nodeName ?: "")
+                        _uiState.value = QrUiState.Success(result, site)
+                    }
+
+                    // ── NORMAL NODE — no trip yet → show popup ────────────
+                    else -> {
+                        _uiState.value = QrUiState.AskStartTrip(result, site)
+                        isProcessing.set(false)
+                    }
                 }
+
             } catch (e: Exception) {
                 _uiState.value = QrUiState.Error("Network error: ${e.message}")
                 isProcessing.set(false)
@@ -61,49 +100,33 @@ class QrScanViewModel : ViewModel() {
         }
     }
 
-    // Trouble scanning — fetch nodes by location
-    fun fetchNearbyNodes(lat: Double, lng: Double, monumentId: Long) {
+    // ── User tapped "Start Trip" in the popup ─────────────────────────────
+    // We need to find the King node QR for this site, then call /trips/start.
+    // Since we don't store King node QR locally, we ask the user to scan
+    // the King node — OR we start a "pseudo trip" noting where they are.
+    // For UX simplicity: start trip with current node as entry point by
+    // directly activating TripManager (no server trip_id).
+    fun confirmStartTripFromNormalNode(result: QrScanResult, site: SiteDetail?) {
         viewModelScope.launch {
-            _uiState.value = QrUiState.FetchingLocation
-            try {
-                val resp = SiteClient.api.getNodesForMonument(monumentId)
-                if (resp.isSuccessful) {
-                    val nodes = resp.body()!!
-                    TripManager.cachedNodes = nodes
-                    _uiState.value = QrUiState.ShowingNodes(nodes)
-                } else {
-                    _uiState.value = QrUiState.Error("Could not fetch nodes")
-                }
-            } catch (e: Exception) {
-                _uiState.value = QrUiState.Error("Network error: ${e.message}")
-            }
+            // We don't have the King node QR to call /trips/start properly,
+            // so we activate a local trip state without a server trip_id (0).
+            // The trip will still track visited nodes and enable node navigation.
+            TripManager.activateTrip(
+                tripId   = 0,   // no server trip — guest shortcut
+                siteId   = result.siteId ?: 0,
+                siteName = site?.name ?: "",
+                nodeId   = result.nodeId ?: 0,
+                nodeName = result.nodeName ?: ""
+            )
+            isProcessing.set(false)
+            _uiState.value = QrUiState.Success(result, site)
         }
     }
 
-    fun selectNodeManually(nodeId: Long) {
-        if (!isProcessing.compareAndSet(false, true)) return
-        viewModelScope.launch {
-            _uiState.value = QrUiState.Validating
-            try {
-                val resp = SiteClient.api.scanNode(nodeId)
-                if (resp.isSuccessful) {
-                    val data = resp.body()!!
-                    if (data.node.nodeType == "KING" && !TripManager.isActive()) {
-                        SiteClient.api.startSession(TripManager.USER_ID, data.node.monumentId)
-                        TripManager.activateTrip(data.node.monumentId, data.node.name, data.node.id, data.node.name)
-                    } else if (TripManager.isActive()) {
-                        TripManager.updateCurrentNode(data.node)
-                    }
-                    _uiState.value = QrUiState.Success(data)
-                } else {
-                    _uiState.value = QrUiState.Error("Failed: ${resp.code()}")
-                    isProcessing.set(false)
-                }
-            } catch (e: Exception) {
-                _uiState.value = QrUiState.Error(e.message ?: "Error")
-                isProcessing.set(false)
-            }
-        }
+    // ── User dismissed the popup — don't start trip, still show node ──────
+    fun dismissStartTrip(result: QrScanResult, site: SiteDetail?) {
+        isProcessing.set(false)
+        _uiState.value = QrUiState.Success(result, site)
     }
 
     fun resetScanner() {
@@ -112,11 +135,27 @@ class QrScanViewModel : ViewModel() {
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// UI State
+// ─────────────────────────────────────────────────────────────────────────────
+
 sealed class QrUiState {
-    data object Scanning        : QrUiState()
-    data object Validating      : QrUiState()
-    data object FetchingLocation : QrUiState()
-    data class  ShowingNodes(val nodes: List<com.example.humsafar.models.MonumentNode>) : QrUiState()
-    data class  Success(val data: NodeScanResponse) : QrUiState()
-    data class  Error(val message: String) : QrUiState()
+    data object Scanning         : QrUiState()
+    data object Validating       : QrUiState()
+    data object FetchingLocation : QrUiState()  // kept for compat, not used now
+
+    /** Normal node scanned but no active trip — ask user */
+    data class AskStartTrip(
+        val scanResult: QrScanResult,
+        val site:       SiteDetail?
+    ) : QrUiState()
+
+    data class ShowingNodes(val nodes: List<com.example.humsafar.models.SiteNode>) : QrUiState()
+
+    data class Success(
+        val scanResult: QrScanResult,
+        val site:       SiteDetail?
+    ) : QrUiState()
+
+    data class Error(val message: String) : QrUiState()
 }

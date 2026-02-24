@@ -1,4 +1,5 @@
 // app/src/main/java/com/example/humsafar/ChatbotActivity.kt
+// UPDATED — uses FastAPI /chat/ request body: site_id (Int), node_id (Int?), message, history.
 
 package com.example.humsafar
 
@@ -29,93 +30,92 @@ import androidx.compose.ui.graphics.*
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.*
+import com.example.humsafar.models.ChatHistoryItem
 import com.example.humsafar.models.ChatMessage
+import com.example.humsafar.network.HumsafarClient
+import com.example.humsafar.models.ChatRequest
 import com.example.humsafar.ui.components.AnimatedOrbBackground
 import com.example.humsafar.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.json.JSONArray
-import org.json.JSONObject
-import java.io.OutputStreamWriter
-import java.net.HttpURLConnection
-import java.net.URL
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Activity
 // ─────────────────────────────────────────────────────────────────────────────
+
 class ChatbotActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val siteName = intent.getStringExtra("SITE_NAME") ?: "Heritage Site"
-        val siteId   = intent.getStringExtra("SITE_ID")   ?: ""
+        val siteId   = intent.getStringExtra("SITE_ID")   ?: "1"
+        val nodeId   = intent.getStringExtra("NODE_ID")   // nullable — site-level chat if null
         setContent {
-            com.example.humsafar.ui.theme.HumsafarTheme {
-                ChatbotScreen(siteName = siteName, siteId = siteId, onBack = { finish() })
+            HumsafarTheme {
+                ChatbotScreen(
+                    siteName = siteName,
+                    siteId   = siteId,
+                    nodeId   = nodeId,
+                    onBack   = { finish() }
+                )
             }
         }
     }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Network helper
+// Network helper — calls FastAPI /chat/ with correct body
 // ─────────────────────────────────────────────────────────────────────────────
-suspend fun callBackend(
+
+suspend fun callChatApi(
     message:  String,
-    siteName: String,
     siteId:   String,
+    nodeId:   String?,
     history:  List<ChatMessage>
 ): String = withContext(Dispatchers.IO) {
     try {
-        val baseUrl = "https://humsafar-backend-59ic.onrender.com"
-        try {
-            (URL("$baseUrl/").openConnection() as HttpURLConnection).apply {
-                connectTimeout = 60_000; readTimeout = 60_000
-                requestMethod = "GET"; responseCode; disconnect()
+        val siteIdInt = siteId.toIntOrNull() ?: 1
+        val nodeIdInt = nodeId?.toIntOrNull()
+
+        val historyItems = history
+            .filter { !it.isLoading }
+            .map { msg ->
+                ChatHistoryItem(
+                    role    = if (msg.isUser) "user" else "assistant",
+                    content = msg.text
+                )
             }
-        } catch (_: Exception) {}
 
-        val historyArray = JSONArray()
-        history.filter { !it.isLoading }.forEach { msg ->
-            historyArray.put(JSONObject().apply {
-                put("role",    if (msg.isUser) "user" else "assistant")
-                put("content", msg.text)
-            })
-        }
+        val request = ChatRequest(
+            siteId  = siteIdInt,
+            nodeId  = nodeIdInt,
+            message = message,
+            history = historyItems
+        )
 
-        val conn = (URL("$baseUrl/chat").openConnection() as HttpURLConnection).apply {
-            requestMethod = "POST"
-            setRequestProperty("Content-Type", "application/json")
-            doOutput = true; connectTimeout = 30_000; readTimeout = 120_000
+        val resp = HumsafarClient.api.sendChat(request)
+        if (resp.isSuccessful && resp.body() != null) {
+            resp.body()!!.reply
+        } else {
+            "Server error ${resp.code()} — please try again"
         }
-        val body = JSONObject().apply {
-            put("message", message); put("site_name", siteName)
-            put("site_id", siteId); put("history", historyArray)
-        }
-        OutputStreamWriter(conn.outputStream).use { it.write(body.toString()) }
-
-        if (conn.responseCode == HttpURLConnection.HTTP_OK)
-            JSONObject(conn.inputStream.bufferedReader().readText()).getString("reply")
-        else
-            "Server error ${conn.responseCode}"
     } catch (e: Exception) {
         "Connection failed: ${e.message}"
     }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Quick chip
-// ─────────────────────────────────────────────────────────────────────────────
-private data class QuickChip(val label: String, val query: String)
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Screen
 // ─────────────────────────────────────────────────────────────────────────────
+
+private data class QuickChip(val label: String, val query: String)
+
 @Composable
 fun ChatbotScreen(
     siteName: String,
     siteId:   String,
+    nodeId:   String?,
     onBack:   () -> Unit
 ) {
     val scope     = rememberCoroutineScope()
@@ -135,8 +135,8 @@ fun ChatbotScreen(
     val messages = remember {
         mutableStateListOf(
             ChatMessage(
-                text    = "👋 Welcome to $siteName!\n\nI'm your AI heritage guide. Ask me anything — history, architecture, legends, or visiting tips!",
-                isUser  = false
+                text   = "👋 Welcome to $siteName!\n\nI'm your AI heritage guide. Ask me anything — history, architecture, legends, or visiting tips!",
+                isUser = false
             )
         )
     }
@@ -150,11 +150,11 @@ fun ChatbotScreen(
 
         scope.launch {
             listState.animateScrollToItem(messages.size - 1)
-            val reply = callBackend(
-                message  = userText,
-                siteName = siteName,
-                siteId   = siteId,
-                history  = historySnapshot
+            val reply = callChatApi(
+                message = userText,
+                siteId  = siteId,
+                nodeId  = nodeId,
+                history = historySnapshot
             )
             val botMsg = ChatMessage(text = reply, isUser = false)
             val idx = messages.indexOf(loadingMsg)
@@ -282,7 +282,7 @@ fun ChatbotScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(Icons.AutoMirrored.Filled.Send, null,
-                            tint = if (canSend) DeepNavy else TextTertiary,
+                            tint     = if (canSend) DeepNavy else TextTertiary,
                             modifier = Modifier.size(20.dp))
                     }
                 }
@@ -291,14 +291,12 @@ fun ChatbotScreen(
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Chat bubble
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Chat bubble ───────────────────────────────────────────────────────────────
+
 @Composable
 fun GlassChatBubble(message: ChatMessage) {
     val isUser    = message.isUser
     val alignment = if (isUser) Alignment.End else Alignment.Start
-
     val bubbleShape = RoundedCornerShape(
         topStart    = 20.dp, topEnd = 20.dp,
         bottomStart = if (isUser) 20.dp else 5.dp,
@@ -307,8 +305,7 @@ fun GlassChatBubble(message: ChatMessage) {
 
     Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = alignment) {
         Box(
-            modifier = Modifier
-                .widthIn(max = 280.dp)
+            modifier = Modifier.widthIn(max = 280.dp)
                 .clip(bubbleShape)
                 .background(
                     if (isUser) Brush.linearGradient(listOf(Color(0xFFFFD54F), Color(0xFFFFC107)))
@@ -324,18 +321,15 @@ fun GlassChatBubble(message: ChatMessage) {
         ) {
             if (message.isLoading) TypingIndicator()
             else Text(
-                text      = message.text,
-                color     = if (isUser) DeepNavy else TextPrimary,
-                fontSize  = 15.sp,
+                text       = message.text,
+                color      = if (isUser) DeepNavy else TextPrimary,
+                fontSize   = 15.sp,
                 lineHeight = 22.sp
             )
         }
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Typing indicator
-// ─────────────────────────────────────────────────────────────────────────────
 @Composable
 private fun TypingIndicator() {
     val transition = rememberInfiniteTransition(label = "typing")

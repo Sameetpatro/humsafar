@@ -1,10 +1,11 @@
+// app/src/main/java/com/example/humsafar/data/TripManager.kt
+// REWRITTEN — uses FastAPI trip_id (Int) instead of Spring Boot sessionId (String).
+
 package com.example.humsafar.data
 
 import android.content.Context
 import android.content.SharedPreferences
-import com.example.humsafar.models.MonumentNode
 import com.example.humsafar.models.TripSnapshot
-import com.example.humsafar.utils.haversineDistance
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -16,31 +17,38 @@ object TripManager {
     private val _state = MutableStateFlow(TripSnapshot())
     val state: StateFlow<TripSnapshot> = _state.asStateFlow()
 
-    var cachedNodes: List<MonumentNode> = emptyList()
-
+    // Hardcoded guest user — replace with auth UID when you add login
     const val USER_ID = "guest_user_001"
 
     fun init(context: Context) {
-        prefs = context.getSharedPreferences("trip_prefs", Context.MODE_PRIVATE)
+        prefs = context.getSharedPreferences("trip_prefs_v2", Context.MODE_PRIVATE)
         _state.value = TripSnapshot(
-            sessionId       = prefs.getString("sessionId", "") ?: "",
-            monumentId      = prefs.getLong("monumentId", 0L),
-            monumentName    = prefs.getString("monumentName", "") ?: "",
-            currentNodeId   = prefs.getLong("currentNodeId", 0L),
+            tripId          = prefs.getInt("tripId", 0),
+            siteId          = prefs.getInt("siteId", 0),
+            siteName        = prefs.getString("siteName", "") ?: "",
+            currentNodeId   = prefs.getInt("currentNodeId", 0),
             currentNodeName = prefs.getString("currentNodeName", "") ?: "",
             isTripActive    = prefs.getBoolean("isTripActive", false),
             lastLat         = prefs.getFloat("lastLat", 0f).toDouble(),
             lastLng         = prefs.getFloat("lastLng", 0f).toDouble(),
             visitedNodeIds  = prefs.getString("visitedNodes", "")
-                ?.split(",")?.mapNotNull { it.toLongOrNull() } ?: emptyList()
+                ?.split(",")?.mapNotNull { it.toIntOrNull() } ?: emptyList()
         )
     }
 
-    fun activateTrip(monumentId: Long, monumentName: String, nodeId: Long, nodeName: String) {
+    /** Called after /trips/start succeeds (King node scan). */
+    fun activateTrip(
+        tripId:   Int,
+        siteId:   Int,
+        siteName: String,
+        nodeId:   Int,
+        nodeName: String
+    ) {
         write(
             _state.value.copy(
-                monumentId      = monumentId,
-                monumentName    = monumentName,
+                tripId          = tripId,
+                siteId          = siteId,
+                siteName        = siteName,
                 currentNodeId   = nodeId,
                 currentNodeName = nodeName,
                 isTripActive    = true,
@@ -49,12 +57,13 @@ object TripManager {
         )
     }
 
-    fun updateCurrentNode(node: MonumentNode) {
-        val visited = (_state.value.visitedNodeIds + node.id).distinct()
+    /** Called after scanning a normal node. */
+    fun updateCurrentNode(nodeId: Int, nodeName: String) {
+        val visited = (_state.value.visitedNodeIds + nodeId).distinct()
         write(
             _state.value.copy(
-                currentNodeId   = node.id,
-                currentNodeName = node.name,
+                currentNodeId   = nodeId,
+                currentNodeName = nodeName,
                 visitedNodeIds  = visited
             )
         )
@@ -70,31 +79,20 @@ object TripManager {
 
     fun clear() {
         write(TripSnapshot())
-        cachedNodes = emptyList()
-    }
-
-    fun nearestNode(lat: Double, lng: Double): MonumentNode? =
-        cachedNodes.minByOrNull { haversineDistance(lat, lng, it.latitude, it.longitude) }
-
-    fun nextRecommendedNode(): MonumentNode? {
-        val visited = _state.value.visitedNodeIds
-        return cachedNodes
-            .filter { it.nodeType != "KING" && it.id !in visited }
-            .minByOrNull { it.visitOrder }
     }
 
     private fun write(snapshot: TripSnapshot) {
         _state.value = snapshot
         prefs.edit()
-            .putString("sessionId",       snapshot.sessionId)
-            .putLong("monumentId",        snapshot.monumentId)
-            .putString("monumentName",    snapshot.monumentName)
-            .putLong("currentNodeId",     snapshot.currentNodeId)
+            .putInt("tripId",            snapshot.tripId)
+            .putInt("siteId",            snapshot.siteId)
+            .putString("siteName",       snapshot.siteName)
+            .putInt("currentNodeId",     snapshot.currentNodeId)
             .putString("currentNodeName", snapshot.currentNodeName)
-            .putBoolean("isTripActive",   snapshot.isTripActive)
-            .putFloat("lastLat",          snapshot.lastLat.toFloat())
-            .putFloat("lastLng",          snapshot.lastLng.toFloat())
-            .putString("visitedNodes",    snapshot.visitedNodeIds.joinToString(","))
+            .putBoolean("isTripActive",  snapshot.isTripActive)
+            .putFloat("lastLat",         snapshot.lastLat.toFloat())
+            .putFloat("lastLng",         snapshot.lastLng.toFloat())
+            .putString("visitedNodes",   snapshot.visitedNodeIds.joinToString(","))
             .apply()
     }
 }
