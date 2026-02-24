@@ -116,6 +116,11 @@ fun MapContent(
     val mapView         = remember { MapLibre.getInstance(context); MapView(context) }
     val locationManager = remember { HumsafarLocationManager(context) }
 
+    // ── Load monuments from Spring Boot on first launch ───────────────────
+    LaunchedEffect(Unit) {
+        HeritageRepository.loadMonuments()
+    }
+
     GeofencePermissionHandler()
 
     DisposableEffect(context) {

@@ -1,4 +1,3 @@
-// app/src/main/java/com/example/humsafar/navigation/AppNavigation.kt
 package com.example.humsafar.navigation
 
 import androidx.compose.runtime.Composable
@@ -11,6 +10,7 @@ import com.example.humsafar.ui.LoginScreen
 import com.example.humsafar.ui.SignUpScreen
 import com.example.humsafar.ui.MapScreen
 import com.example.humsafar.ui.HeritageDetailScreen
+import com.example.humsafar.ui.NodeDetailScreen
 import com.example.humsafar.ui.ProfileScreen
 import com.example.humsafar.ui.VoiceChatScreen
 import com.example.humsafar.ui.QrScanScreen
@@ -41,12 +41,12 @@ fun AppNavigation() {
                 onNavigateToDetail  = { name, id -> navController.navigate(heritageDetailRoute(name, id)) },
                 onNavigateToProfile = { navController.navigate("profile") },
                 onNavigateToQrScan  = { monumentId ->
-                    // We pass monumentId as siteId in the route
-                    navController.navigate("qr/${java.net.URLEncoder.encode("Site", "UTF-8")}/$monumentId")
+                    navController.navigate(qrScanRoute("Site", monumentId.toString()))
                 }
             )
         }
 
+        // ── Heritage site overview (static content + video) ───────────────
         composable(
             route     = "detail/{siteName}/{siteId}",
             arguments = listOf(
@@ -62,6 +62,30 @@ fun AppNavigation() {
                 siteName          = siteName,
                 siteId            = siteId,
                 onBack            = { navController.popBackStack() },
+                onNavigateToVoice = { name, id ->
+                    navController.navigate(voiceChatRoute(name, id))
+                }
+            )
+        }
+
+        // ── Node detail (Spring Boot data — loaded by nodeId Long) ────────
+        composable(
+            route     = "node/{nodeId}/{isKing}",
+            arguments = listOf(
+                navArgument("nodeId") { type = NavType.LongType },
+                navArgument("isKing") { type = NavType.BoolType }
+            )
+        ) { backStack ->
+            val nodeId = backStack.arguments?.getLong("nodeId") ?: 0L
+            val isKing = backStack.arguments?.getBoolean("isKing") ?: false
+
+            NodeDetailScreen(
+                nodeId  = nodeId,
+                isKing  = isKing,
+                onBack  = { navController.popBackStack() },
+                onNavigateToQr = { monumentId ->
+                    navController.navigate(qrScanRoute("Site", monumentId.toString()))
+                },
                 onNavigateToVoice = { name, id ->
                     navController.navigate(voiceChatRoute(name, id))
                 }
@@ -91,7 +115,7 @@ fun AppNavigation() {
             )
         }
 
-        // ── QR Scanner route ──────────────────────────────────────────────
+        // ── QR Scanner ────────────────────────────────────────────────────
         composable(
             route     = "qr/{siteName}/{siteId}",
             arguments = listOf(
@@ -109,8 +133,9 @@ fun AppNavigation() {
                 monumentId  = monumentId,
                 currentLat  = trip.value.lastLat,
                 currentLng  = trip.value.lastLng,
-                onNodeReady = { nodeId, nodeName, isKing ->
-                    navController.navigate(heritageDetailRoute(nodeName, nodeId.toString())) {
+                onNodeReady = { nodeId, _, isKing ->
+                    // Navigate to NodeDetailScreen (Spring Boot data), not HeritageDetailScreen
+                    navController.navigate("node/$nodeId/$isKing") {
                         popUpTo("qr/$siteName/$siteId") { inclusive = true }
                     }
                 },
@@ -136,3 +161,5 @@ fun qrScanRoute(siteName: String, siteId: String): String {
     val encoded = java.net.URLEncoder.encode(siteName, "UTF-8")
     return "qr/$encoded/$siteId"
 }
+
+fun nodeDetailRoute(nodeId: Long, isKing: Boolean): String = "node/$nodeId/$isKing"
