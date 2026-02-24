@@ -64,6 +64,9 @@ fun AppNavigation() {
                 onBack            = { navController.popBackStack() },
                 onNavigateToVoice = { name, id ->
                     navController.navigate(voiceChatRoute(name, id))
+                },
+                onNavigateToQrScan = { monumentId ->
+                    navController.navigate(qrScanRoute("Site", monumentId.toString()))
                 }
             )
         }

@@ -227,6 +227,7 @@ fun HeritageDetailScreen(
     siteId:            String,
     onBack:            () -> Unit,
     onNavigateToVoice: (String, String) -> Unit,
+    onNavigateToQrScan: (Long) -> Unit,
 ) {
     val context      = LocalContext.current
     val content      = remember(siteName) { getHeritageContent(siteName) }
@@ -265,7 +266,8 @@ fun HeritageDetailScreen(
                         siteName          = siteName,
                         siteId            = siteId,
                         context           = context,
-                        onNavigateToVoice = onNavigateToVoice
+                        onNavigateToVoice = onNavigateToVoice,
+                        onNavigateToQrScan = onNavigateToQrScan
                     )
 
                     Spacer(Modifier.height(28.dp))
@@ -642,7 +644,8 @@ private fun ActionBubbles(
     siteName:          String,
     siteId:            String,
     context:           android.content.Context,
-    onNavigateToVoice: (String, String) -> Unit
+    onNavigateToVoice: (String, String) -> Unit,
+    onNavigateToQrScan: (Long) -> Unit
 ) {
     val buttons = listOf(
         ActionBubbleData(
@@ -668,7 +671,9 @@ private fun ActionBubbles(
             gradient = listOf(Color(0xFF002D1A), Color(0xFF001A0E)),
             border   = Color(0x5550C878),
             onClick  = {
-                context.startActivity(Intent(context, QrScanViewModel::class.java))
+                siteId.toLongOrNull()?.let { id ->
+                    onNavigateToQrScan(id)
+                }
             }
         )
     )
@@ -726,136 +731,3 @@ private fun AnimatedActionBubble(data: ActionBubbleData, modifier: Modifier = Mo
         if (pressed) { kotlinx.coroutines.delay(150); pressed = false }
     }
 }
-
-
-
-
-//package com.example.humsafar.ui
-//
-//import android.content.Intent
-//import androidx.compose.foundation.background
-//import androidx.compose.foundation.clickable
-//import androidx.compose.foundation.layout.*
-//import androidx.compose.foundation.shape.RoundedCornerShape
-//import androidx.compose.material3.Text
-//import androidx.compose.runtime.Composable
-//import androidx.compose.ui.Alignment
-//import androidx.compose.ui.Modifier
-//import androidx.compose.ui.graphics.Brush
-//import androidx.compose.ui.graphics.Color
-//import androidx.compose.ui.platform.LocalContext
-//import androidx.compose.ui.text.font.FontWeight
-//import androidx.compose.ui.unit.dp
-//import androidx.compose.ui.unit.sp
-//import com.example.humsafar.ChatbotActivity
-//
-//@Composable
-//fun HeritageDetailScreen(
-//    siteName: String,
-//    siteId: String,
-//    onBack: () -> Unit,
-//    onNavigateToVoice: (String, String) -> Unit,
-//    onNavigateToQrScan: (Long) -> Unit
-//) {
-//    Column(
-//        modifier = Modifier
-//            .fillMaxSize()
-//            .padding(20.dp)
-//    ) {
-//
-//        Text(
-//            text = siteName,
-//            fontSize = 26.sp,
-//            fontWeight = FontWeight.Bold
-//        )
-//
-//        Spacer(modifier = Modifier.height(32.dp))
-//
-//        ActionBubbles(
-//            siteName = siteName,
-//            siteId = siteId,
-//            onNavigateToVoice = onNavigateToVoice,
-//            onNavigateToQrScan = onNavigateToQrScan
-//        )
-//    }
-//}
-//
-//@Composable
-//private fun ActionBubbles(
-//    siteName: String,
-//    siteId: String,
-//    onNavigateToVoice: (String, String) -> Unit,
-//    onNavigateToQrScan: (Long) -> Unit
-//) {
-//
-//    val context = LocalContext.current
-//
-//    Row(
-//        modifier = Modifier.fillMaxWidth(),
-//        horizontalArrangement = Arrangement.spacedBy(12.dp),
-//        verticalAlignment = Alignment.CenterVertically
-//    ) {
-//
-//        ActionBubble(
-//            modifier = Modifier.weight(1f),
-//            label = "Ask",
-//            color1 = Color(0xFF1A3A6B),
-//            color2 = Color(0xFF0D2040)
-//        ) {
-//            context.startActivity(
-//                Intent(context, ChatbotActivity::class.java).apply {
-//                    putExtra("SITE_NAME", siteName)
-//                    putExtra("SITE_ID", siteId)
-//                }
-//            )
-//        }
-//
-//        ActionBubble(
-//            modifier = Modifier.weight(1f),
-//            label = "Talk",
-//            color1 = Color(0xFF2D1A00),
-//            color2 = Color(0xFF1A0E00)
-//        ) {
-//            onNavigateToVoice(siteName, siteId)
-//        }
-//
-//        ActionBubble(
-//            modifier = Modifier.weight(1f),
-//            label = "Scan & Ask",
-//            color1 = Color(0xFF002D1A),
-//            color2 = Color(0xFF001A0E)
-//        ) {
-//            siteId.toLongOrNull()?.let {
-//                onNavigateToQrScan(it)
-//            }
-//        }
-//    }
-//}
-//
-//@Composable
-//private fun ActionBubble(
-//    modifier: Modifier = Modifier,
-//    label: String,
-//    color1: Color,
-//    color2: Color,
-//    onClick: () -> Unit
-//) {
-//    Box(
-//        modifier = modifier
-//            .fillMaxWidth()
-//            .height(100.dp)
-//            .background(
-//                brush = Brush.linearGradient(listOf(color1, color2)),
-//                shape = RoundedCornerShape(16.dp)
-//            )
-//            .clickable { onClick() },
-//        contentAlignment = Alignment.Center
-//    ) {
-//        Text(
-//            text = label,
-//            color = Color.White,
-//            fontSize = 14.sp,
-//            fontWeight = FontWeight.Bold
-//        )
-//    }
-//}
