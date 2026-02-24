@@ -1,5 +1,4 @@
 // app/src/main/java/com/example/humsafar/ui/NodeDetailViewModel.kt
-// REWRITTEN — loads node data from FastAPI /sites/{site_id} + TripManager state.
 
 package com.example.humsafar.ui
 
@@ -19,10 +18,6 @@ class NodeDetailViewModel : ViewModel() {
     private val _uiState = MutableStateFlow<NodeDetailUiState>(NodeDetailUiState.Loading)
     val uiState: StateFlow<NodeDetailUiState> = _uiState.asStateFlow()
 
-    /**
-     * Load the node by fetching the full site, then picking the node by ID.
-     * [nodeId] and [siteId] come from QrScanResult after a successful scan.
-     */
     fun loadNode(nodeId: Int, siteId: Int) = viewModelScope.launch {
         _uiState.value = NodeDetailUiState.Loading
         try {
@@ -52,15 +47,13 @@ class NodeDetailViewModel : ViewModel() {
     fun endTrip() = viewModelScope.launch {
         val tripId = TripManager.current().tripId
         if (tripId != 0) {
-            try { HumsafarClient.api.endTrip(tripId) } catch (_: Exception) { }
+            try {
+                HumsafarClient.api.endTrip(tripId)
+            } catch (_: Exception) { }
         }
         TripManager.clear()
     }
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// UI State
-// ─────────────────────────────────────────────────────────────────────────────
 
 sealed class NodeDetailUiState {
     data object Loading : NodeDetailUiState()

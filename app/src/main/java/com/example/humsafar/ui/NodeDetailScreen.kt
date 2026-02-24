@@ -1,3 +1,6 @@
+// app/src/main/java/com/example/humsafar/ui/NodeDetailScreen.kt
+// REWRITTEN — Fixed to work with FastAPI backend models (Int IDs, SiteNode)
+
 package com.example.humsafar.ui
 
 import android.content.Intent
@@ -28,25 +31,27 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.example.humsafar.ChatbotActivity
 import com.example.humsafar.data.TripManager
-import com.example.humsafar.models.*
-import com.example.humsafar.navigation.qrScanRoute
+import com.example.humsafar.models.SiteNode
 import com.example.humsafar.ui.components.*
 import com.example.humsafar.ui.theme.*
 
 @Composable
 fun NodeDetailScreen(
-    nodeId: Long,
-    isKing: Boolean,
-    onBack: () -> Unit,
-    onNavigateToQr: (Long) -> Unit,
+    nodeId:            Int,
+    siteId:            Int,
+    isKing:            Boolean,
+    onBack:            () -> Unit,
+    onNavigateToQr:    (Long) -> Unit,
     onNavigateToVoice: (String, String) -> Unit,
-    viewModel: NodeDetailViewModel = viewModel()
+    viewModel:         NodeDetailViewModel = viewModel()
 ) {
-    val context  = LocalContext.current
-    val uiState  by viewModel.uiState.collectAsStateWithLifecycle()
+    val context   = LocalContext.current
+    val uiState   by viewModel.uiState.collectAsStateWithLifecycle()
     val tripState by TripManager.state.collectAsStateWithLifecycle()
 
-    LaunchedEffect(nodeId) { viewModel.loadNode(nodeId) }
+    LaunchedEffect(nodeId, siteId) {
+        viewModel.loadNode(nodeId, siteId)
+    }
 
     Box(Modifier.fillMaxSize()) {
         AnimatedOrbBackground(Modifier.fillMaxSize())
@@ -64,16 +69,15 @@ fun NodeDetailScreen(
 
             is NodeDetailUiState.Ready -> {
                 val node     = s.node
-                val nearby   = s.nearbyPlaces
+                val site     = s.site
                 val allNodes = s.allNodes
 
                 Column(Modifier.fillMaxSize()) {
                     Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
 
-                        HeroCarousel(
-                            images   = node.photoUrls,
+                        HeroSection(
                             nodeName = node.name,
-                            nodeType = node.nodeType,
+                            siteId   = siteId,
                             onBack   = onBack
                         )
 
@@ -83,27 +87,27 @@ fun NodeDetailScreen(
 
                             NodeActionRow(
                                 node              = node,
-                                tripState         = tripState,
+                                siteId            = siteId,
                                 context           = context,
                                 onNavigateToVoice = onNavigateToVoice,
-                                onScanNext        = { onNavigateToQr(node.monumentId) },
-                                onDirection       = { viewModel.requestDirection() }
+                                onNavigateToQr    = onNavigateToQr
                             )
 
                             Spacer(Modifier.height(24.dp))
 
-                            if (node.history.isNotBlank()) {
-                                NodeSection("📜 History", node.history)
+                            // Site info
+                            if (site.summary?.isNotBlank() == true) {
+                                NodeSection("📖 About ${site.name}", site.summary!!)
                                 Spacer(Modifier.height(16.dp))
                             }
 
-                            if (node.navigationInfo.isNotBlank()) {
-                                NodeSection("🗺️ How to Reach", node.navigationInfo)
+                            if (site.history?.isNotBlank() == true) {
+                                NodeSection("📜 History", site.history!!)
                                 Spacer(Modifier.height(16.dp))
                             }
 
-                            if (nearby.isNotEmpty()) {
-                                NearbySection(nearby)
+                            if (node.description?.isNotBlank() == true) {
+                                NodeSection("🗺️ About This Spot", node.description!!)
                                 Spacer(Modifier.height(16.dp))
                             }
 
@@ -112,15 +116,6 @@ fun NodeDetailScreen(
                                     nodes      = allNodes,
                                     visitedIds = tripState.visitedNodeIds,
                                     currentId  = tripState.currentNodeId
-                                )
-                                Spacer(Modifier.height(16.dp))
-                            }
-
-                            if (!isKing && !tripState.isTripActive) {
-                                StartTripFromNormalCard(
-                                    node     = node,
-                                    allNodes = allNodes,
-                                    viewModel = viewModel
                                 )
                                 Spacer(Modifier.height(16.dp))
                             }
@@ -143,21 +138,37 @@ fun NodeDetailScreen(
                     }
                 }
 
-                // Direction sheet overlay
-                val dirState = viewModel.directionState.collectAsStateWithLifecycle().value
-                AnimatedVisibility(
-                    visible  = dirState != null,
-                    enter    = slideInVertically { it },
-                    exit     = slideOutVertically { it },
-                    modifier = Modifier.align(Alignment.BottomCenter)
+                // Sticky chatbot + voice bubbles
+                Row(
+                    Modifier.align(Alignment.BottomEnd)
+                        .navigationBarsPadding()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    dirState?.let {
-                        DirectionSheet(
-                            direction    = it,
-                            allNodes     = allNodes,
-                            nearbyPlaces = nearby,
-                            onDismiss    = { viewModel.dismissDirection() }
-                        )
+                    Box(
+                        Modifier.size(52.dp).clip(CircleShape)
+                            .background(Brush.linearGradient(listOf(Color(0xFF2D1A00), Color(0xFF1A0E00))))
+                            .border(1.dp, Color(0x55FFD54F), CircleShape)
+                            .clickable { onNavigateToVoice(node.name, node.id.toString()) },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.Mic, null, tint = AccentYellow, modifier = Modifier.size(24.dp))
+                    }
+                    Box(
+                        Modifier.size(52.dp).clip(CircleShape)
+                            .background(Brush.linearGradient(listOf(Color(0xFF1A3A6B), Color(0xFF0D2040))))
+                            .border(1.dp, GlassBorderBright, CircleShape)
+                            .clickable {
+                                context.startActivity(
+                                    Intent(context, ChatbotActivity::class.java).apply {
+                                        putExtra("SITE_NAME", node.name)
+                                        putExtra("SITE_ID", node.id.toString())
+                                    }
+                                )
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.Chat, null, tint = TextPrimary, modifier = Modifier.size(22.dp))
                     }
                 }
             }
@@ -172,70 +183,27 @@ fun NodeDetailScreen(
                 }
             }
         }
-
-        // Sticky chatbot + voice bubbles
-        val tripSnap = TripManager.current()
-        Row(
-            Modifier.align(Alignment.BottomEnd)
-                .navigationBarsPadding()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Box(
-                Modifier.size(52.dp).clip(CircleShape)
-                    .background(Brush.linearGradient(listOf(Color(0xFF2D1A00), Color(0xFF1A0E00))))
-                    .border(1.dp, Color(0x55FFD54F), CircleShape)
-                    .clickable { onNavigateToVoice(tripSnap.currentNodeName, tripSnap.currentNodeId.toString()) },
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Default.Mic, null, tint = AccentYellow, modifier = Modifier.size(24.dp))
-            }
-            Box(
-                Modifier.size(52.dp).clip(CircleShape)
-                    .background(Brush.linearGradient(listOf(Color(0xFF1A3A6B), Color(0xFF0D2040))))
-                    .border(1.dp, GlassBorderBright, CircleShape)
-                    .clickable {
-                        context.startActivity(
-                            Intent(context, ChatbotActivity::class.java).apply {
-                                putExtra("SITE_NAME", tripSnap.currentNodeName)
-                                putExtra("SITE_ID", tripSnap.currentNodeId.toString())
-                            }
-                        )
-                    },
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Default.Chat, null, tint = TextPrimary, modifier = Modifier.size(22.dp))
-            }
-        }
     }
 }
 
-// ── Hero image carousel ────────────────────────────────────────────────────────
+// ── Hero section ──────────────────────────────────────────────────────────────
 
 @Composable
-private fun HeroCarousel(images: List<String>, nodeName: String, nodeType: String, onBack: () -> Unit) {
-    Box(Modifier.fillMaxWidth().height(280.dp)) {
-        if (images.isNotEmpty()) {
-            var current by remember { mutableStateOf(0) }
-            LaunchedEffect(Unit) {
-                while (true) {
-                    kotlinx.coroutines.delay(3500)
-                    current = (current + 1) % images.size
-                }
-            }
-            AsyncImage(
-                model              = images[current],
-                contentDescription = nodeName,
-                contentScale       = ContentScale.Crop,
-                modifier           = Modifier.fillMaxSize()
-            )
-        } else {
-            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF1A0A00), Color(0xFF0A1628)))))
-            Text("🏛️", fontSize = 80.sp, modifier = Modifier.align(Alignment.Center))
-        }
+private fun HeroSection(
+    nodeName: String,
+    siteId:   Int,
+    onBack:   () -> Unit
+) {
+    Box(Modifier.fillMaxWidth().height(240.dp)) {
+        Box(Modifier.fillMaxSize().background(
+            Brush.verticalGradient(listOf(Color(0xFF1A0A00), Color(0xFF0A1628)))
+        ))
+        Text("🏛️", fontSize = 80.sp, modifier = Modifier.align(Alignment.Center))
+
         Box(Modifier.fillMaxSize().background(
             Brush.verticalGradient(listOf(Color(0xBB050D1A), Color.Transparent, Color(0xFF050D1A)))
         ))
+
         Box(
             Modifier.align(Alignment.TopStart).statusBarsPadding().padding(16.dp)
                 .size(44.dp).clip(CircleShape)
@@ -245,16 +213,8 @@ private fun HeroCarousel(images: List<String>, nodeName: String, nodeType: Strin
         ) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = Color.White, modifier = Modifier.size(20.dp))
         }
+
         Column(Modifier.align(Alignment.BottomStart).padding(20.dp)) {
-            if (nodeType == "KING") {
-                Box(
-                    Modifier.clip(RoundedCornerShape(50)).background(Color(0x44FFD54F))
-                        .padding(horizontal = 12.dp, vertical = 4.dp)
-                ) {
-                    Text("👑 ENTRY NODE", color = AccentYellow, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                }
-                Spacer(Modifier.height(4.dp))
-            }
             Text(nodeName, color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Black)
         }
     }
@@ -264,17 +224,23 @@ private fun HeroCarousel(images: List<String>, nodeName: String, nodeType: Strin
 
 @Composable
 private fun NodeActionRow(
-    node: MonumentNode,
-    tripState: com.example.humsafar.models.TripSnapshot,
-    context: android.content.Context,
+    node:              SiteNode,
+    siteId:            Int,
+    context:           android.content.Context,
     onNavigateToVoice: (String, String) -> Unit,
-    onScanNext: () -> Unit,
-    onDirection: () -> Unit
+    onNavigateToQr:    (Long) -> Unit
 ) {
     LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        item { NodeActionChip("🎙️", "Hear It") { onNavigateToVoice(node.name, node.id.toString()) } }
-        item { NodeActionChip("🗺️", "Direction") { onDirection() } }
-        item { NodeActionChip("📷", "Scan Next") { onScanNext() } }
+        item {
+            NodeActionChip("🎙️", "Hear It") {
+                onNavigateToVoice(node.name, node.id.toString())
+            }
+        }
+        item {
+            NodeActionChip("📷", "Scan Next") {
+                onNavigateToQr(siteId.toLong())
+            }
+        }
         item {
             NodeActionChip("💬", "Ask AI") {
                 context.startActivity(
@@ -323,193 +289,46 @@ private fun NodeSection(title: String, body: String) {
 }
 
 @Composable
-private fun NearbySection(places: List<NearbyPlace>) {
-    Column {
-        Text("📌 Nearby Facilities", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(8.dp))
-        places.forEach { place ->
-            val emoji = when (place.type) {
-                "WASHROOM" -> "🚻"; "CANTEEN" -> "🍽️"; "SNACKS" -> "🥤"; "EXIT" -> "🚪"; else -> "📍"
-            }
-            Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(emoji, fontSize = 18.sp)
-                Spacer(Modifier.width(10.dp))
-                Column {
-                    Text(place.name, color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                    if (place.description.isNotBlank())
-                        Text(place.description, color = TextTertiary, fontSize = 12.sp)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun AllNodesSection(nodes: List<MonumentNode>, visitedIds: List<Long>, currentId: Long) {
+private fun AllNodesSection(
+    nodes:      List<SiteNode>,
+    visitedIds: List<Int>,
+    currentId:  Int
+) {
     Column {
         Text("🗺️ Trip Progress", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
-        nodes.sortedBy { it.visitOrder }.forEach { node ->
+        nodes.sortedBy { it.sequenceOrder }.forEach { node ->
             val visited   = node.id in visitedIds
             val isCurrent = node.id == currentId
             Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     Modifier.size(28.dp).clip(CircleShape)
-                        .background(when { isCurrent -> AccentYellow; visited -> Color(0xFF4ADE80); else -> GlassWhite15 }),
+                        .background(when {
+                            isCurrent -> AccentYellow
+                            visited -> Color(0xFF4ADE80)
+                            else -> GlassWhite15
+                        }),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        if (visited || isCurrent) "✓" else "${node.visitOrder}",
+                        if (visited || isCurrent) "✓" else "${node.sequenceOrder}",
                         color = if (visited || isCurrent) Color.Black else TextTertiary,
-                        fontSize = 11.sp, fontWeight = FontWeight.Bold
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
                     )
                 }
                 Spacer(Modifier.width(10.dp))
                 Text(
                     node.name,
-                    color = when { isCurrent -> AccentYellow; visited -> TextTertiary; else -> TextPrimary },
+                    color = when {
+                        isCurrent -> AccentYellow
+                        visited -> TextTertiary
+                        else -> TextPrimary
+                    },
                     fontSize = 14.sp,
-                    fontWeight = if (node.nodeType == "KING") FontWeight.Bold else FontWeight.Normal
+                    fontWeight = if (node.sequenceOrder == 0) FontWeight.Bold else FontWeight.Normal
                 )
-                if (node.recommended && !visited) {
-                    Spacer(Modifier.width(8.dp))
-                    Text("→ Next", color = Color(0xFF00FF88), fontSize = 11.sp)
-                }
             }
         }
     }
 }
-
-@Composable
-private fun StartTripFromNormalCard(node: MonumentNode, allNodes: List<MonumentNode>, viewModel: NodeDetailViewModel) {
-    var showVisitedPicker by remember { mutableStateOf(false) }
-    val selectedVisited = remember { mutableStateListOf<Long>() }
-
-    Box(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp))
-            .background(Color(0x22FFD54F))
-            .border(1.dp, Color(0x55FFD54F), RoundedCornerShape(20.dp))
-            .padding(20.dp)
-    ) {
-        Column {
-            Text("🗺️ Want a guided tour?", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(6.dp))
-            Text("Start a trip from here to get proper directions and next node suggestions.",
-                color = TextSecondary, fontSize = 13.sp, lineHeight = 19.sp)
-            Spacer(Modifier.height(16.dp))
-
-            if (!showVisitedPicker) {
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Box(
-                        Modifier.weight(1f).clip(RoundedCornerShape(12.dp)).background(AccentYellow)
-                            .clickable { viewModel.startTripFromNormal(node, emptyList()) }.padding(12.dp),
-                        contentAlignment = Alignment.Center
-                    ) { Text("Start Fresh", color = Color.Black, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
-                    Box(
-                        Modifier.weight(1f).clip(RoundedCornerShape(12.dp)).background(GlassWhite15)
-                            .border(0.7.dp, GlassBorder, RoundedCornerShape(12.dp))
-                            .clickable { showVisitedPicker = true }.padding(12.dp),
-                        contentAlignment = Alignment.Center
-                    ) { Text("I visited some", color = TextPrimary, fontSize = 13.sp) }
-                }
-            } else {
-                Text("Which nodes have you visited?", color = TextTertiary, fontSize = 12.sp)
-                Spacer(Modifier.height(8.dp))
-                allNodes.filter { it.nodeType != "KING" }.forEach { n ->
-                    Row(
-                        Modifier.fillMaxWidth().clickable {
-                            if (n.id in selectedVisited) selectedVisited.remove(n.id) else selectedVisited.add(n.id)
-                        }.padding(vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            Modifier.size(20.dp).clip(RoundedCornerShape(4.dp))
-                                .background(if (n.id in selectedVisited) AccentYellow else GlassWhite15)
-                                .border(0.7.dp, GlassBorder, RoundedCornerShape(4.dp)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            if (n.id in selectedVisited)
-                                Text("✓", color = Color.Black, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
-                        Spacer(Modifier.width(10.dp))
-                        Text(n.name, color = TextPrimary, fontSize = 13.sp)
-                    }
-                }
-                Spacer(Modifier.height(12.dp))
-                Box(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(AccentYellow)
-                        .clickable { viewModel.startTripFromNormal(node, selectedVisited.toList()) }.padding(12.dp),
-                    contentAlignment = Alignment.Center
-                ) { Text("Start Trip", color = Color.Black, fontSize = 14.sp, fontWeight = FontWeight.Bold) }
-            }
-        }
-    }
-}
-
-// ── Direction sheet ───────────────────────────────────────────────────────────
-
-@Composable
-private fun DirectionSheet(
-    direction: DirectionInfo,
-    allNodes: List<MonumentNode>,
-    nearbyPlaces: List<NearbyPlace>,
-    onDismiss: () -> Unit
-) {
-    Box(
-        Modifier.fillMaxWidth()
-            .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-            .background(Color(0xF2050D1A))
-            .border(0.7.dp, GlassBorderBright, RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-            .padding(24.dp)
-    ) {
-        Column {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text("🗺️ Where to Go Next", color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                Box(
-                    Modifier.size(32.dp).clip(CircleShape).background(GlassWhite15).clickable { onDismiss() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Default.Close, null, tint = TextPrimary, modifier = Modifier.size(16.dp))
-                }
-            }
-            Spacer(Modifier.height(16.dp))
-
-            if (direction.nearestNodeName.isNotBlank())     { DirectionRow("📍", "You are near", direction.nearestNodeName, TextTertiary); Spacer(Modifier.height(10.dp)) }
-            if (direction.recommendedNodeName.isNotBlank()) { DirectionRow("➡️", "Visit next", direction.recommendedNodeName, AccentYellow); Spacer(Modifier.height(10.dp)) }
-            if (direction.distanceMeters > 0)               { DirectionRow("📏", "Distance", "${direction.distanceMeters.toInt()} m away", TextSecondary) }
-
-            Spacer(Modifier.height(16.dp))
-
-            if (nearbyPlaces.isNotEmpty()) {
-                Text("Nearby Facilities", color = TextTertiary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(8.dp))
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(nearbyPlaces) { place ->
-                        val emoji = when (place.type) { "WASHROOM" -> "🚻"; "CANTEEN" -> "🍽️"; "SNACKS" -> "🥤"; else -> "📍" }
-                        Box(
-                            Modifier.clip(RoundedCornerShape(50)).background(GlassWhite15)
-                                .border(0.5.dp, GlassBorder, RoundedCornerShape(50)).padding(horizontal = 14.dp, vertical = 8.dp)
-                        ) { Text("$emoji ${place.name}", color = TextSecondary, fontSize = 12.sp) }
-                    }
-                }
-            }
-            Spacer(Modifier.height(8.dp))
-        }
-    }
-}
-
-@Composable
-private fun DirectionRow(emoji: String, label: String, value: String, valueColor: Color) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(emoji, fontSize = 16.sp)
-        Spacer(Modifier.width(10.dp))
-        Text("$label: ", color = TextTertiary, fontSize = 13.sp)
-        Text(value, color = valueColor, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-    }
-}
-
-data class DirectionInfo(
-    val nearestNodeName: String     = "",
-    val recommendedNodeName: String = "",
-    val distanceMeters: Double      = 0.0
-)

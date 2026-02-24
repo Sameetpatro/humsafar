@@ -101,11 +101,6 @@ class QrScanViewModel : ViewModel() {
     }
 
     // ── User tapped "Start Trip" in the popup ─────────────────────────────
-    // We need to find the King node QR for this site, then call /trips/start.
-    // Since we don't store King node QR locally, we ask the user to scan
-    // the King node — OR we start a "pseudo trip" noting where they are.
-    // For UX simplicity: start trip with current node as entry point by
-    // directly activating TripManager (no server trip_id).
     fun confirmStartTripFromNormalNode(result: QrScanResult, site: SiteDetail?) {
         viewModelScope.launch {
             // We don't have the King node QR to call /trips/start properly,
@@ -142,7 +137,7 @@ class QrScanViewModel : ViewModel() {
 sealed class QrUiState {
     data object Scanning         : QrUiState()
     data object Validating       : QrUiState()
-    data object FetchingLocation : QrUiState()  // kept for compat, not used now
+    data object FetchingLocation : QrUiState()
 
     /** Normal node scanned but no active trip — ask user */
     data class AskStartTrip(

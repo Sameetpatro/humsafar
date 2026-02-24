@@ -1,6 +1,5 @@
 // app/src/main/java/com/example/humsafar/models/ApiModels.kt
-// REPLACES: SiteModel.kt + TripModels.kt
-// All models match your FastAPI (humsafar-backend-5u74.onrender.com) exactly.
+// COMPLETE FILE - All models for FastAPI backend
 
 package com.example.humsafar.models
 
@@ -55,7 +54,7 @@ data class SiteNode(
 // /sites/scan/{qr_value}  →  GET /sites/scan/{qr_value}
 // ─────────────────────────────────────────────────────────────────────────────
 data class QrScanResult(
-    @SerializedName("status")         val status: String = "",   // "valid" | "invalid"
+    @SerializedName("status")         val status: String = "",
     @SerializedName("site_id")        val siteId: Int? = null,
     @SerializedName("node_id")        val nodeId: Int? = null,
     @SerializedName("sequence_order") val sequenceOrder: Int? = null,
@@ -91,7 +90,7 @@ data class ChatRequest(
 )
 
 data class ChatHistoryItem(
-    @SerializedName("role")    val role: String,   // "user" | "assistant"
+    @SerializedName("role")    val role: String,
     @SerializedName("content") val content: String
 )
 
@@ -103,7 +102,7 @@ data class ChatResponse(
 // Local trip state (never serialized, lives in TripManager only)
 // ─────────────────────────────────────────────────────────────────────────────
 data class TripSnapshot(
-    val tripId:          Int     = 0,       // from /trips/start response
+    val tripId:          Int     = 0,
     val siteId:          Int     = 0,
     val siteName:        String  = "",
     val currentNodeId:   Int     = 0,
@@ -125,6 +124,6 @@ data class NodeDetail(
     val sequenceOrder: Int,
     val description:   String?,
     val videoUrl:      String?,
-    val images:        List<String>,   // NodeImage urls
+    val images:        List<String>,
     val isKing:        Boolean
 )

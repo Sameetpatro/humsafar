@@ -1,5 +1,5 @@
 // app/src/main/java/com/example/humsafar/ChatbotActivity.kt
-// UPDATED — uses FastAPI /chat/ request body: site_id (Int), node_id (Int?), message, history.
+// FIXED — uses correct ChatRequest from models package
 
 package com.example.humsafar
 
@@ -32,8 +32,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.*
 import com.example.humsafar.models.ChatHistoryItem
 import com.example.humsafar.models.ChatMessage
-import com.example.humsafar.network.HumsafarClient
 import com.example.humsafar.models.ChatRequest
+import com.example.humsafar.network.HumsafarClient
 import com.example.humsafar.ui.components.AnimatedOrbBackground
 import com.example.humsafar.ui.theme.*
 import kotlinx.coroutines.Dispatchers
