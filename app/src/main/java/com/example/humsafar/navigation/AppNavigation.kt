@@ -39,7 +39,11 @@ fun AppNavigation() {
             MapScreen(
                 onNavigateToVoice   = { name, id -> navController.navigate(voiceChatRoute(name, id)) },
                 onNavigateToDetail  = { name, id -> navController.navigate(heritageDetailRoute(name, id)) },
-                onNavigateToProfile = { navController.navigate("profile") }
+                onNavigateToProfile = { navController.navigate("profile") },
+                onNavigateToQrScan  = { monumentId ->
+                    // We pass monumentId as siteId in the route
+                    navController.navigate("qr/${java.net.URLEncoder.encode("Site", "UTF-8")}/$monumentId")
+                }
             )
         }
 
@@ -87,7 +91,7 @@ fun AppNavigation() {
             )
         }
 
-        // ── NEW: QR Scanner route ─────────────────────────────────────────
+        // ── QR Scanner route ──────────────────────────────────────────────
         composable(
             route     = "qr/{siteName}/{siteId}",
             arguments = listOf(
@@ -95,19 +99,22 @@ fun AppNavigation() {
                 navArgument("siteId")   { type = NavType.StringType }
             )
         ) { backStack ->
-            val siteName = backStack.arguments?.getString("siteName")
+            val siteName   = backStack.arguments?.getString("siteName")
                 ?.let { java.net.URLDecoder.decode(it, "UTF-8") } ?: ""
-            val siteId   = backStack.arguments?.getString("siteId") ?: ""
-            val trip     = TripManager.state.collectAsState()
+            val siteId     = backStack.arguments?.getString("siteId") ?: ""
+            val monumentId = siteId.toLongOrNull() ?: 0L
+            val trip       = TripManager.state.collectAsState()
 
             QrScanScreen(
+                monumentId  = monumentId,
                 currentLat  = trip.value.lastLat,
                 currentLng  = trip.value.lastLng,
-                onNodeReady = { nodeId, nodeName ->
-                    navController.navigate(heritageDetailRoute(nodeName, nodeId)) {
+                onNodeReady = { nodeId, nodeName, isKing ->
+                    navController.navigate(heritageDetailRoute(nodeName, nodeId.toString())) {
                         popUpTo("qr/$siteName/$siteId") { inclusive = true }
                     }
-                }
+                },
+                onBack = { navController.popBackStack() }
             )
         }
     }
@@ -125,7 +132,6 @@ fun voiceChatRoute(siteName: String, siteId: String): String {
     return "voice/$encoded/$siteId"
 }
 
-// ── NEW ───────────────────────────────────────────────────────────────────────
 fun qrScanRoute(siteName: String, siteId: String): String {
     val encoded = java.net.URLEncoder.encode(siteName, "UTF-8")
     return "qr/$encoded/$siteId"

@@ -16,16 +16,6 @@ data class QrValidationResponse(
 data class TripStartResponse(
     @SerializedName("tripId") val tripId: String
 )
-
-data class TripSnapshot(
-    val tripId: String       = "",
-    val currentNodeId: String = "",
-    val isTripActive: Boolean = false,
-    val lastLat: Double      = 0.0,
-    val lastLng: Double      = 0.0,
-    val pendingEnd: Boolean  = false
-)
-
 // ── Node ──────────────────────────────────────────────────────────────────────
 data class NodeMetadataResponse(
     @SerializedName("nodeId")      val nodeId: String,
