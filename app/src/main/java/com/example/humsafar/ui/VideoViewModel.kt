@@ -53,6 +53,15 @@ class VideoViewModel : ViewModel() {
         }
     }
 
+    /**
+     * Skip generation entirely — jump straight to playback for a pre-existing URL
+     * (e.g. when a node already has a videoUrl stored in the database).
+     */
+    fun playDirectUrl(url: String) {
+        pollJob?.cancel()
+        _uiState.value = VideoUiState.ReadyToPlay(url)
+    }
+
     /** Called by the close/cancel button in both the loader and player overlays. */
     fun dismiss() {
         pollJob?.cancel()

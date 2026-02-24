@@ -11,6 +11,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
+import com.example.humsafar.data.TripManager
 import com.example.humsafar.ui.theme.HumsafarTheme
 import com.example.humsafar.ui.LoginScreen
 import com.example.humsafar.navigation.AppNavigation
@@ -20,6 +21,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        TripManager.init(applicationContext)
         setContent {
             HumsafarTheme {
                 AppNavigation()

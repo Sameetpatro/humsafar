@@ -57,7 +57,8 @@ private val MAP_STYLE
 fun MapScreen(
     onNavigateToVoice:   (siteName: String, siteId: String) -> Unit = { _, _ -> },
     onNavigateToDetail:  (siteName: String, siteId: String) -> Unit = { _, _ -> },
-    onNavigateToProfile: () -> Unit = {}
+    onNavigateToProfile: () -> Unit = {},
+    onNavigateToQrScan:  (Long) -> Unit = {}
 ) {
     val locationPermission = rememberPermissionState(android.Manifest.permission.ACCESS_FINE_LOCATION)
     LaunchedEffect(Unit) { locationPermission.launchPermissionRequest() }
@@ -66,7 +67,8 @@ fun MapScreen(
         locationPermission.status.isGranted -> MapContent(
             onNavigateToVoice   = onNavigateToVoice,
             onNavigateToDetail  = onNavigateToDetail,
-            onNavigateToProfile = onNavigateToProfile
+            onNavigateToProfile = onNavigateToProfile,
+            onNavigateToQrScan  = onNavigateToQrScan
         )
         else -> PermissionGate(locationPermission)
     }
@@ -100,7 +102,8 @@ private fun PermissionGate(state: PermissionState) {
 fun MapContent(
     onNavigateToVoice:   (String, String) -> Unit = { _, _ -> },
     onNavigateToDetail:  (String, String) -> Unit = { _, _ -> },
-    onNavigateToProfile: () -> Unit = {}
+    onNavigateToProfile: () -> Unit = {},
+    onNavigateToQrScan:  (Long) -> Unit = {}
 ) {
     val context        = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -212,6 +215,27 @@ fun MapContent(
                     )
                     Box(Modifier.size(8.dp).scale(pulse).clip(CircleShape)
                         .background(if (insideSite != null) Color(0xFF4ADE80) else AccentYellow))
+                    Spacer(Modifier.height(10.dp))
+
+// Scan QR bubble
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Color(0x22FFD54F))
+                            .border(1.dp, Color(0x55FFD54F), RoundedCornerShape(16.dp))
+                            .clickable {
+                                insideSite?.id?.toLong()?.let { onNavigateToQrScan(it) }
+                            }
+                            .padding(vertical = 16.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("📷", fontSize = 18.sp)
+                            Spacer(Modifier.width(10.dp))
+                            Text("Scan Node QR", color = AccentYellow, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
                     Spacer(Modifier.width(8.dp))
                     Text(
                         if (insideSite != null) "Inside ${insideSite!!.name}" else "Scanning for heritage sites…",
