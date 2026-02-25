@@ -1,8 +1,17 @@
 // app/src/main/java/com/example/humsafar/ChatbotActivity.kt
-// FIXED:
-//   1. Added Log.e to expose the actual site_id received — makes debugging trivial
-//   2. Default fallback changed from "1" to "-1" so silent mis-launches are obvious
-//   3. siteId/nodeId passed explicitly through the call chain so nothing is lost
+//
+// CHANGE FROM PREVIOUS VERSION:
+//   site_id and node_id no longer come from Intent extras alone.
+//   ActiveSiteManager is the primary source — Intent extras are the fallback
+//   (for cases where chatbot is launched manually without being inside a geofence).
+//
+//   Priority order:
+//     1. ActiveSiteManager.activeSiteId   ← set by GPS → /sites/nearby → DB
+//     2. Intent extra SITE_ID             ← fallback if launched manually
+//
+//   node_id priority:
+//     1. ActiveSiteManager.activeNodeId   ← set after QR scan
+//     2. Intent extra NODE_ID             ← fallback
 
 package com.example.humsafar
 
@@ -34,6 +43,7 @@ import androidx.compose.ui.graphics.*
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.*
+import com.example.humsafar.data.ActiveSiteManager
 import com.example.humsafar.models.ChatHistoryItem
 import com.example.humsafar.models.ChatMessage
 import com.example.humsafar.models.ChatRequest
@@ -45,7 +55,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Constants — use these same keys when calling startActivity() elsewhere
+// Intent extra keys — keep these for manual launches (e.g. from HeritageDetail)
 // ─────────────────────────────────────────────────────────────────────────────
 
 object ChatbotExtras {
@@ -63,25 +73,44 @@ class ChatbotActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        val siteName = intent.getStringExtra(ChatbotExtras.SITE_NAME) ?: "Heritage Site"
-        // FIXED: default is "-1" not "1" — so a missing extra is immediately obvious in logs
-        val siteId   = intent.getStringExtra(ChatbotExtras.SITE_ID)   ?: "-1"
-        val nodeId   = intent.getStringExtra(ChatbotExtras.NODE_ID)
+        // ── Resolve site_id ───────────────────────────────────────────────
+        // Primary: ActiveSiteManager — always has the real DB primary key
+        //          because it was set by GPS → /sites/nearby → backend haversine
+        // Fallback: Intent extra — for manual launches from other screens
+        val activeSiteId   = ActiveSiteManager.activeSiteId
+        val intentSiteId   = intent.getStringExtra(ChatbotExtras.SITE_ID)?.toIntOrNull()
+        val resolvedSiteId = activeSiteId ?: intentSiteId ?: -1
 
-        // ✅ This log will tell you exactly what ID arrived — check Logcat for "ChatbotActivity"
-        Log.e("ChatbotActivity", "▶ LAUNCHED — siteName='$siteName'  siteId='$siteId'  nodeId='$nodeId'")
+        // ── Resolve node_id ───────────────────────────────────────────────
+        // Primary: ActiveSiteManager — set after QR scan via onNodeScanned()
+        // Fallback: Intent extra
+        val activeNodeId   = ActiveSiteManager.activeNodeId.value
+        val intentNodeId   = intent.getStringExtra(ChatbotExtras.NODE_ID)?.toIntOrNull()
+        val resolvedNodeId = activeNodeId ?: intentNodeId
 
-        if (siteId == "-1") {
-            Log.e("ChatbotActivity", "⚠️ SITE_ID was not passed in the Intent! " +
-                    "Use intent.putExtra(ChatbotExtras.SITE_ID, site.id.toString()) when launching.")
+        // ── Site name ─────────────────────────────────────────────────────
+        val resolvedSiteName = ActiveSiteManager.activeSiteName
+            .ifBlank { intent.getStringExtra(ChatbotExtras.SITE_NAME) ?: "Heritage Site" }
+
+        Log.d("ChatbotActivity", """
+            ▶ LAUNCHED
+              activeSiteId=$activeSiteId  intentSiteId=$intentSiteId  → resolved=$resolvedSiteId
+              activeNodeId=$activeNodeId  intentNodeId=$intentNodeId  → resolved=$resolvedNodeId
+              siteName='$resolvedSiteName'
+        """.trimIndent())
+
+        if (resolvedSiteId == -1) {
+            Log.e("ChatbotActivity",
+                "⚠️ Could not resolve site_id. " +
+                        "User may not be inside a geofence and no SITE_ID was passed in the Intent.")
         }
 
         setContent {
             HumsafarTheme {
                 ChatbotScreen(
-                    siteName = siteName,
-                    siteId   = siteId,
-                    nodeId   = nodeId,
+                    siteName = resolvedSiteName,
+                    siteId   = resolvedSiteId.toString(),
+                    nodeId   = resolvedNodeId?.toString(),
                     onBack   = { finish() }
                 )
             }
@@ -102,13 +131,14 @@ suspend fun callChatApi(
     try {
         val siteIdInt = siteId.toIntOrNull()
         if (siteIdInt == null || siteIdInt == -1) {
-            Log.e("ChatbotActivity", "⚠️ callChatApi: invalid siteId='$siteId' — request will fail or use wrong site")
+            Log.e("ChatbotActivity", "⚠️ callChatApi: invalid siteId='$siteId'")
+            return@withContext "Error: not inside a heritage site. Please move closer to the entrance."
         }
 
         val nodeIdInt = nodeId?.toIntOrNull()
 
-        // ✅ Log the actual values going to the server — check these in Logcat
-        Log.d("ChatbotActivity", "→ POST /chat/  site_id=$siteIdInt  node_id=$nodeIdInt  msg='${message.take(60)}'")
+        Log.d("ChatbotActivity",
+            "→ POST /chat/  site_id=$siteIdInt  node_id=$nodeIdInt  msg='${message.take(60)}'")
 
         val historyItems = history
             .filter { !it.isLoading }
@@ -120,8 +150,8 @@ suspend fun callChatApi(
             }
 
         val request = ChatRequest(
-            siteId  = siteIdInt ?: -1,
-            nodeId  = nodeIdInt,
+            siteId  = siteIdInt,        // heritage_sites.id PK — from DB via GPS
+            nodeId  = nodeIdInt,        // nodes.id PK — set after QR scan, null otherwise
             message = message,
             history = historyItems
         )
@@ -141,7 +171,7 @@ suspend fun callChatApi(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Screen
+// Screen — unchanged from your original
 // ─────────────────────────────────────────────────────────────────────────────
 
 private data class QuickChip(val label: String, val query: String)
@@ -260,7 +290,11 @@ fun ChatbotScreen(
                             )
                             Spacer(Modifier.width(5.dp))
                             Text(
-                                text     = "Heritage Guide · Online",
+                                // Show if in node context vs site context
+                                text     = if (nodeId != null)
+                                    "Node Guide · Online"
+                                else
+                                    "Heritage Guide · Online",
                                 color    = TextTertiary,
                                 fontSize = 12.sp
                             )
@@ -385,7 +419,7 @@ fun ChatbotScreen(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Chat bubble
+// Chat bubble — unchanged
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
@@ -438,7 +472,7 @@ fun GlassChatBubble(message: ChatMessage) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Typing indicator
+// Typing indicator — unchanged
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable

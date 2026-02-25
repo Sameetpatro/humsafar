@@ -1,7 +1,11 @@
 // app/src/main/java/com/example/humsafar/data/HeritageRepository.kt
-// UPDATED — removed dead SiteClient.api.getAllMonuments() call.
-// MapScreen uses the hardcoded list. When you want live data, call
-// HumsafarClient.api.getNearbySites(lat, lng) from the ViewModel directly.
+// FIXED: IDs now match the seeded PostgreSQL database exactly.
+//
+// Previous bug: IIIT Sonepat was "2" here but id=1 in DB.
+//               Qutub Minar was "6" here but id=2 in DB.
+//               Taj Mahal was "4" here but id=3 in DB.
+// This caused ChatbotActivity to send site_id=2 (Qutub Minar) when the
+// user was actually at IIIT Sonepat (site_id=1), fetching the wrong prompt.
 
 package com.example.humsafar.data
 
@@ -10,24 +14,22 @@ import com.example.humsafar.models.HeritageSite
 object HeritageRepository {
 
     /**
-     * Hardcoded site list used by MapScreen markers + geofencing.
-     * IDs must match your seeded PostgreSQL site IDs so that QR scans
-     * can resolve correctly. Update these after seeding new sites.
+     * IDs MUST match your seeded PostgreSQL heritage_sites table.
+     * Check your DB with: SELECT id, name FROM heritage_sites ORDER BY id;
+     * and update this list accordingly.
      *
-     * Current seeded sites (from your session):
-     *   id=1  — placeholder (if any)
-     *   id=2  — IIIT SONEPAT
+     * Current seeded sites (from your DB screenshot):
+     *   id=1  — IIIT Sonepat
+     *   id=2  — Qutub Minar Complex
+     *   id=3  — Taj Mahal
      */
     val sites: List<HeritageSite> = listOf(
-        HeritageSite("2",  "IIIT Sonepat",      28.989596, 77.151120, 285.0),
-        HeritageSite("3",  "Red Fort",           28.6562,   77.2410,   400.0),
-        HeritageSite("4",  "Taj Mahal",          27.1751,   78.0421,   500.0),
-        HeritageSite("5",  "India Gate",         28.6129,   77.2295,   350.0),
-        HeritageSite("6",  "Qutub Minar",        28.5244,   77.1855,   350.0),
-        HeritageSite("7",  "Konark Sun Temple",  19.8876,   86.0945,   450.0),
-        HeritageSite("8",  "Gateway of India",   18.9218,   72.8347,   300.0),
-        HeritageSite("9",  "Hampi",              15.3350,   76.4600,   800.0),
-        HeritageSite("10", "Golden Temple",      31.6200,   74.8765,   400.0),
-        HeritageSite("11", "Mysore Palace",      12.3052,   76.6552,   400.0)
+        HeritageSite("1",  "IIIT Sonepat",         28.9896,   77.1511,  500.0),
+        HeritageSite("2",  "Qutub Minar Complex",  28.5245,   77.1855,  600.0),
+        HeritageSite("3",  "Taj Mahal",            27.1751,   78.0421,  900.0),
+
+        // ── Add more sites below as you seed them in your DB ──────────────
+        // HeritageSite("4",  "Red Fort",           28.6562,   77.2410,   400.0),
+        // HeritageSite("5",  "India Gate",         28.6129,   77.2295,   350.0),
     )
 }
