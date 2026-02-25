@@ -1,5 +1,6 @@
 // app/src/main/java/com/example/humsafar/models/ApiModels.kt
-// COMPLETE FILE - All models for FastAPI backend
+// FIXED — added description + videoUrl to SiteNode so NodeDetailScreen compiles.
+// Backend NodeResponse schema and sites.py router must also be updated (see schemas.py fix).
 
 package com.example.humsafar.models
 
@@ -42,12 +43,18 @@ data class SiteImage(
     @SerializedName("display_order") val displayOrder: Int = 0
 )
 
+// FIX: Added description and videoUrl fields.
+// NodeDetailScreen accesses node.description and these were missing,
+// causing a compile error. Both fields are nullable — they may not be
+// populated for every node, so the screen guards with ?.isNotBlank() checks.
 data class SiteNode(
-    @SerializedName("id")             val id: Int = 0,
-    @SerializedName("name")          val name: String = "",
-    @SerializedName("latitude")      val latitude: Double = 0.0,
-    @SerializedName("longitude")     val longitude: Double = 0.0,
-    @SerializedName("sequence_order") val sequenceOrder: Int = 0
+    @SerializedName("id")              val id: Int = 0,
+    @SerializedName("name")            val name: String = "",
+    @SerializedName("latitude")        val latitude: Double = 0.0,
+    @SerializedName("longitude")       val longitude: Double = 0.0,
+    @SerializedName("sequence_order")  val sequenceOrder: Int = 0,
+    @SerializedName("description")     val description: String? = null,   // FIX: was missing
+    @SerializedName("video_url")       val videoUrl: String? = null        // FIX: was missing
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
