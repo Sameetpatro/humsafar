@@ -58,13 +58,16 @@ data class SiteDetail(
 // ── /sites/scan/{qr_value} ───────────────────────────────────────────────────
 
 data class QrScanResult(
-    @SerializedName("status")         val status: String        = "",  // "valid" or "invalid"
-    @SerializedName("site_id")        val siteId: Int           = 0,   // heritage_sites.id PK
-    @SerializedName("node_id")        val nodeId: Int           = 0,   // nodes.id PK
-    @SerializedName("sequence_order") val sequenceOrder: Int    = 0,
-    @SerializedName("node_name")      val nodeName: String      = ""
-)
-
+    @SerializedName("status")         val status: String = "",
+    @SerializedName("site_id")        val siteId: Int? = null,
+    @SerializedName("node_id")        val nodeId: Int? = null,
+    @SerializedName("sequence_order") val sequenceOrder: Int? = null,
+    @SerializedName("node_name")      val nodeName: String? = null,
+    val qrValue: String? = null  // ← ADD THIS LINE (not serialized from backend, set locally)
+) {
+    val isValid: Boolean get() = status == "valid"
+    val isKingNode: Boolean get() = sequenceOrder == 0
+}
 // ── /chat ─────────────────────────────────────────────────────────────────────
 
 data class ChatMessage(

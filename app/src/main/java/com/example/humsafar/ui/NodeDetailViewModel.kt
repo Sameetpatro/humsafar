@@ -5,8 +5,8 @@ package com.example.humsafar.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.humsafar.data.TripManager
-import com.example.humsafar.models.SiteDetail
-import com.example.humsafar.models.SiteNode
+import com.example.humsafar.network.SiteDetail  // ← CHANGED: use network models
+import com.example.humsafar.network.Node        // ← CHANGED: use network models
 import com.example.humsafar.network.HumsafarClient
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -59,9 +59,9 @@ sealed class NodeDetailUiState {
     data object Loading : NodeDetailUiState()
 
     data class Ready(
-        val node:     SiteNode,
-        val site:     SiteDetail,
-        val allNodes: List<SiteNode>
+        val node:     Node,        // ← CHANGED: use network.Node
+        val site:     SiteDetail,  // ← CHANGED: use network.SiteDetail
+        val allNodes: List<Node>   // ← CHANGED: use network.Node
     ) : NodeDetailUiState()
 
     data class Error(val message: String) : NodeDetailUiState()

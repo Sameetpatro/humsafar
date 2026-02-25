@@ -21,17 +21,15 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.*
 import androidx.compose.ui.graphics.*
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import coil.compose.AsyncImage
 import com.example.humsafar.ChatbotActivity
 import com.example.humsafar.data.TripManager
-import com.example.humsafar.models.SiteNode
+import com.example.humsafar.network.Node
 import com.example.humsafar.ui.components.*
 import com.example.humsafar.ui.theme.*
 
@@ -224,7 +222,7 @@ private fun HeroSection(
 
 @Composable
 private fun NodeActionRow(
-    node:              SiteNode,
+    node:              Node,
     siteId:            Int,
     context:           android.content.Context,
     onNavigateToVoice: (String, String) -> Unit,
@@ -290,7 +288,7 @@ private fun NodeSection(title: String, body: String) {
 
 @Composable
 private fun AllNodesSection(
-    nodes:      List<SiteNode>,
+    nodes:      List<Node>,
     visitedIds: List<Int>,
     currentId:  Int
 ) {

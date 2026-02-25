@@ -1,17 +1,4 @@
 // app/src/main/java/com/example/humsafar/ChatbotActivity.kt
-//
-// CHANGE FROM PREVIOUS VERSION:
-//   site_id and node_id no longer come from Intent extras alone.
-//   ActiveSiteManager is the primary source — Intent extras are the fallback
-//   (for cases where chatbot is launched manually without being inside a geofence).
-//
-//   Priority order:
-//     1. ActiveSiteManager.activeSiteId   ← set by GPS → /sites/nearby → DB
-//     2. Intent extra SITE_ID             ← fallback if launched manually
-//
-//   node_id priority:
-//     1. ActiveSiteManager.activeNodeId   ← set after QR scan
-//     2. Intent extra NODE_ID             ← fallback
 
 package com.example.humsafar
 
@@ -44,15 +31,16 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.*
 import com.example.humsafar.data.ActiveSiteManager
-import com.example.humsafar.models.ChatHistoryItem
-import com.example.humsafar.models.ChatMessage
-import com.example.humsafar.models.ChatRequest
+import com.example.humsafar.models.ChatMessage as UiChatMessage  // ← RENAMED for UI
+import com.example.humsafar.network.ChatMessage as ApiChatMessage  // ← RENAMED for API
+import com.example.humsafar.network.ChatRequest
 import com.example.humsafar.network.HumsafarClient
 import com.example.humsafar.ui.components.AnimatedOrbBackground
 import com.example.humsafar.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import retrofit2.Response
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Intent extra keys — keep these for manual launches (e.g. from HeritageDetail)
@@ -126,7 +114,7 @@ suspend fun callChatApi(
     message : String,
     siteId  : String,
     nodeId  : String?,
-    history : List<ChatMessage>
+    history : List<UiChatMessage>  // ← CHANGED: use UiChatMessage type alias
 ): String = withContext(Dispatchers.IO) {
     try {
         val siteIdInt = siteId.toIntOrNull()
@@ -140,10 +128,11 @@ suspend fun callChatApi(
         Log.d("ChatbotActivity",
             "→ POST /chat/  site_id=$siteIdInt  node_id=$nodeIdInt  msg='${message.take(60)}'")
 
+        // ← FIXED: Convert UI messages to API messages
         val historyItems = history
             .filter { !it.isLoading }
             .map { msg ->
-                ChatHistoryItem(
+                ApiChatMessage(  // ← Use ApiChatMessage
                     role    = if (msg.isUser) "user" else "assistant",
                     content = msg.text
                 )
@@ -153,7 +142,7 @@ suspend fun callChatApi(
             siteId  = siteIdInt,        // heritage_sites.id PK — from DB via GPS
             nodeId  = nodeIdInt,        // nodes.id PK — set after QR scan, null otherwise
             message = message,
-            history = historyItems
+            history = historyItems      // ← Now correctly typed as List<ApiChatMessage>
         )
 
         val resp = HumsafarClient.api.sendChat(request)
@@ -199,7 +188,7 @@ fun ChatbotScreen(
 
     val messages = remember {
         mutableStateListOf(
-            ChatMessage(
+            UiChatMessage(  // ← Use UiChatMessage
                 text   = "👋 Welcome to $siteName!\n\nI'm your AI heritage guide. Ask me anything — history, architecture, legends, or visiting tips!",
                 isUser = false
             )
@@ -208,9 +197,9 @@ fun ChatbotScreen(
 
     fun sendMessage(userText: String) {
         if (userText.isBlank()) return
-        messages.add(ChatMessage(text = userText, isUser = true))
+        messages.add(UiChatMessage(text = userText, isUser = true))  // ← Use UiChatMessage
         val historySnapshot = messages.toList()
-        val loadingMsg      = ChatMessage(text = "", isUser = false, isLoading = true)
+        val loadingMsg      = UiChatMessage(text = "", isUser = false, isLoading = true)  // ← Use UiChatMessage
         messages.add(loadingMsg)
 
         scope.launch {
@@ -221,7 +210,7 @@ fun ChatbotScreen(
                 nodeId  = nodeId,
                 history = historySnapshot
             )
-            val botMsg = ChatMessage(text = reply, isUser = false)
+            val botMsg = UiChatMessage(text = reply, isUser = false)  // ← Use UiChatMessage
             val idx = messages.indexOf(loadingMsg)
             if (idx != -1) messages[idx] = botMsg else messages.add(botMsg)
             listState.animateScrollToItem(messages.size - 1)
@@ -313,7 +302,7 @@ fun ChatbotScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 contentPadding      = PaddingValues(vertical = 16.dp)
             ) {
-                items(messages) { msg: ChatMessage ->
+                items(messages) { msg: UiChatMessage ->  // ← Use UiChatMessage
                     GlassChatBubble(message = msg)
                 }
             }
@@ -423,7 +412,7 @@ fun ChatbotScreen(
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-fun GlassChatBubble(message: ChatMessage) {
+fun GlassChatBubble(message: UiChatMessage) {  // ← Use UiChatMessage
     val isUser      = message.isUser
     val alignment   = if (isUser) Alignment.End else Alignment.Start
     val bubbleShape = RoundedCornerShape(

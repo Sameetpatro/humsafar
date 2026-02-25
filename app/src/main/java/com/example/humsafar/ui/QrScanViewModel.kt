@@ -6,8 +6,8 @@ package com.example.humsafar.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.humsafar.data.TripManager
-import com.example.humsafar.models.QrScanResult
-import com.example.humsafar.models.SiteDetail
+import com.example.humsafar.network.QrScanResult    // ← CHANGED: use network models
+import com.example.humsafar.network.SiteDetail      // ← CHANGED: use network models
 import com.example.humsafar.network.HumsafarClient
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -21,11 +21,13 @@ class QrScanViewModel : ViewModel() {
     val uiState: StateFlow<QrUiState> = _uiState.asStateFlow()
 
     private val isProcessing = AtomicBoolean(false)
+    private var lastScannedQr: String = ""
 
     // ── QR detected by camera ─────────────────────────────────────────────
     fun onQrDetected(rawQr: String) {
         if (!isProcessing.compareAndSet(false, true)) return
         val qrValue = rawQr.trim()
+        lastScannedQr = qrValue
 
         viewModelScope.launch {
             _uiState.value = QrUiState.Validating
@@ -59,24 +61,7 @@ class QrScanViewModel : ViewModel() {
                             _uiState.value = QrUiState.Success(result, site)
                         } else {
                             // Start a new trip
-                            val tripResp = HumsafarClient.api.startTrip(
-                                userId   = TripManager.USER_ID,
-                                qrValue  = qrValue
-                            )
-                            if (tripResp.isSuccessful && tripResp.body() != null) {
-                                val trip = tripResp.body()!!
-                                TripManager.activateTrip(
-                                    tripId   = trip.tripId,
-                                    siteId   = result.siteId,
-                                    siteName = site?.name ?: "",
-                                    nodeId   = result.nodeId!!,
-                                    nodeName = result.nodeName ?: "Entry"
-                                )
-                                _uiState.value = QrUiState.Success(result, site)
-                            } else {
-                                _uiState.value = QrUiState.Error("Failed to start trip (${tripResp.code()})")
-                                isProcessing.set(false)
-                            }
+                            startTrip(result, site)
                         }
                     }
 
@@ -127,6 +112,34 @@ class QrScanViewModel : ViewModel() {
     fun resetScanner() {
         _uiState.value = QrUiState.Scanning
         isProcessing.set(false)
+        lastScannedQr = ""
+    }
+
+    // ── Private helper: start trip via backend ────────────────────────────
+    private suspend fun startTrip(result: QrScanResult, site: SiteDetail?) {
+        try {
+            val tripResp = HumsafarClient.api.startTrip(
+                userId   = TripManager.USER_ID,
+                qrValue  = lastScannedQr
+            )
+            if (tripResp.isSuccessful && tripResp.body() != null) {
+                val trip = tripResp.body()!!
+                TripManager.activateTrip(
+                    tripId   = trip.tripId,
+                    siteId   = result.siteId ?: 0,
+                    siteName = site?.name ?: "",
+                    nodeId   = result.nodeId ?: 0,
+                    nodeName = result.nodeName ?: "Entry"
+                )
+                _uiState.value = QrUiState.Success(result, site)
+            } else {
+                _uiState.value = QrUiState.Error("Failed to start trip (${tripResp.code()})")
+                isProcessing.set(false)
+            }
+        } catch (e: Exception) {
+            _uiState.value = QrUiState.Error("Network error: ${e.message}")
+            isProcessing.set(false)
+        }
     }
 }
 
@@ -141,15 +154,15 @@ sealed class QrUiState {
 
     /** Normal node scanned but no active trip — ask user */
     data class AskStartTrip(
-        val scanResult: QrScanResult,
-        val site:       SiteDetail?
+        val scanResult: QrScanResult,    // ← CHANGED: use network.QrScanResult
+        val site:       SiteDetail?      // ← CHANGED: use network.SiteDetail
     ) : QrUiState()
 
-    data class ShowingNodes(val nodes: List<com.example.humsafar.models.SiteNode>) : QrUiState()
+    data class ShowingNodes(val nodes: List<com.example.humsafar.network.Node>) : QrUiState()
 
     data class Success(
-        val scanResult: QrScanResult,
-        val site:       SiteDetail?
+        val scanResult: QrScanResult,    // ← CHANGED: use network.QrScanResult
+        val site:       SiteDetail?      // ← CHANGED: use network.SiteDetail
     ) : QrUiState()
 
     data class Error(val message: String) : QrUiState()

@@ -41,13 +41,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.*
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.humsafar.data.ActiveSiteManager
 import com.example.humsafar.models.QrScanResult
 import com.example.humsafar.models.SiteDetail
-import com.example.humsafar.network.HumsafarClient
 import com.example.humsafar.ui.components.AnimatedOrbBackground
 import com.example.humsafar.ui.theme.*
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
@@ -56,144 +52,8 @@ import com.google.accompanist.permissions.rememberPermissionState
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
 
 private const val TAG = "QrScanScreen"
-
-// ─────────────────────────────────────────────────────────────────────────────
-// UI States
-// ─────────────────────────────────────────────────────────────────────────────
-
-sealed class QrUiState {
-    object Scanning                                               : QrUiState()
-    object Validating                                             : QrUiState()
-    data class AskStartTrip(val scanResult: QrScanResult,
-                            val site: SiteDetail?)               : QrUiState()
-    data class Success(val scanResult: QrScanResult)             : QrUiState()
-    data class Error(val message: String)                        : QrUiState()
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// ViewModel
-// ─────────────────────────────────────────────────────────────────────────────
-
-class QrScanViewModel : ViewModel() {
-
-    private val _uiState = MutableStateFlow<QrUiState>(QrUiState.Scanning)
-    val uiState: StateFlow<QrUiState> = _uiState.asStateFlow()
-
-    fun onQrDetected(qrValue: String) {
-        if (_uiState.value !is QrUiState.Scanning) return   // debounce
-
-        viewModelScope.launch {
-            _uiState.value = QrUiState.Validating
-            Log.d(TAG, "QR detected: '$qrValue' → GET /sites/scan/$qrValue")
-
-            try {
-                val resp = HumsafarClient.api.scanQr(qrValue)
-
-                if (!resp.isSuccessful || resp.body() == null) {
-                    Log.w(TAG, "scanQr failed: ${resp.code()}")
-                    _uiState.value = QrUiState.Error("QR scan failed (${resp.code()}). Please try again.")
-                    return@launch
-                }
-
-                val result = resp.body()!!
-
-                if (!result.isValid || result.siteId == null || result.nodeId == null) {
-                    _uiState.value = QrUiState.Error("Invalid QR code — not part of this heritage trail.")
-                    return@launch
-                }
-
-                // ── Verify QR belongs to the site we're inside ────────────
-                val currentSiteId = ActiveSiteManager.activeSiteId
-                if (currentSiteId != null && result.siteId != currentSiteId) {
-                    Log.w(TAG, "QR site_id=${result.siteId} ≠ active site_id=$currentSiteId")
-                    _uiState.value = QrUiState.Error(
-                        "This QR belongs to a different site.\n" +
-                                "Please scan a QR from ${ActiveSiteManager.activeSiteName}."
-                    )
-                    return@launch
-                }
-
-                Log.i(TAG, "✅ QR valid — site_id=${result.siteId} node_id=${result.nodeId} '${result.nodeName}'")
-
-                // ── KEY LINE: store node_id in ActiveSiteManager ──────────
-                // After this, ChatbotActivity and VoiceChat automatically
-                // use node-level context (Level 2 prompts) from the DB.
-                ActiveSiteManager.onNodeScanned(result.nodeId)
-
-                // ── King node → auto start trip, no popup ─────────────────
-                if (result.isKingNode) {
-                    Log.i(TAG, "King node scanned — auto-starting trip")
-                    startTrip(result)
-                    return@launch
-                }
-
-                // ── Non-king node → ask if they want to start a trip ──────
-                val site = fetchSiteDetail(result.siteId)
-                _uiState.value = QrUiState.AskStartTrip(result, site)
-
-            } catch (e: Exception) {
-                Log.e(TAG, "onQrDetected error: ${e.message}", e)
-                _uiState.value = QrUiState.Error("Network error: ${e.message}")
-            }
-        }
-    }
-
-    // Called when user taps "Yes, Start Tour" on a non-king node
-    fun confirmStartTripFromNormalNode(result: QrScanResult, site: SiteDetail?) {
-        viewModelScope.launch {
-            startTrip(result)
-        }
-    }
-
-    // Called when user taps "Just Show Node Info"
-    fun dismissStartTrip(result: QrScanResult, site: SiteDetail?) {
-        _uiState.value = QrUiState.Success(result)
-    }
-
-    fun resetScanner() {
-        // Clear node from manager when user resets — they're scanning fresh
-        ActiveSiteManager.clearNode()
-        _uiState.value = QrUiState.Scanning
-    }
-
-    // ── Private helpers ───────────────────────────────────────────────────────
-
-    private suspend fun startTrip(result: QrScanResult) {
-        try {
-            // user_id: use ActiveSiteManager or a stored user preference
-            // For now using "guest" — replace with your actual user ID source
-            val userId = "guest_user"
-            val resp   = HumsafarClient.api.startTrip(
-                userId   = userId,
-                qrValue  = result.qrValue ?: ""
-            )
-            if (resp.isSuccessful) {
-                Log.i(TAG, "Trip started: trip_id=${resp.body()?.tripId}")
-            } else {
-                Log.w(TAG, "startTrip failed: ${resp.code()} — continuing anyway")
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "startTrip error: ${e.message} — continuing anyway")
-        }
-        _uiState.value = QrUiState.Success(result)
-    }
-
-    private suspend fun fetchSiteDetail(siteId: Int): SiteDetail? {
-        return try {
-            val resp = HumsafarClient.api.getSiteDetail(siteId)
-            if (resp.isSuccessful) resp.body() else null
-        } catch (e: Exception) {
-            Log.w(TAG, "fetchSiteDetail failed: ${e.message}")
-            null
-        }
-    }
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Screen — UI completely unchanged from your original
