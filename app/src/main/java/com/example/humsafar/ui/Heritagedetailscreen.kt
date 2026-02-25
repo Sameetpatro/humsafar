@@ -385,10 +385,8 @@ private fun SiteChipsRow(
     onQr:     () -> Unit
 ) {
     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        item { SiteChip("🎙️ Voice Guide") { onVoice(siteName, siteId) } }
-        item { SiteChip("📷 Scan QR") { onQr() } }
         item {
-            SiteChip("💬 Ask AI") {
+            SiteChip("💬 Ask Shree") {
                 context.startActivity(
                     Intent(context, ChatbotActivity::class.java).apply {
                         putExtra("SITE_NAME", siteName)
@@ -397,6 +395,9 @@ private fun SiteChipsRow(
                 )
             }
         }
+        item { SiteChip("🎙️ Voice Guide") { onVoice(siteName, siteId) } }
+        item { SiteChip("📷 Scan Next QR") { onQr() } }
+
     }
 }
 

@@ -108,6 +108,7 @@ fun NodeDetailScreen(
                                 Spacer(Modifier.height(16.dp))
 
                                 // Action chips row
+                                // FIXED: pass siteId (not node.id) to both voice and chatbot
                                 NodeChipsRow(
                                     node    = node,
                                     siteId  = siteId,
@@ -458,21 +459,29 @@ private fun NodeChipsRow(
 ) {
     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
-            Chip("🎙️ Hear It") { onVoice(node.name, node.id.toString()) }
-        }
-        item {
-            Chip("📷 Scan QR") { onQr(siteId.toLong()) }
-        }
-        item {
-            Chip("💬 Ask AI") {
+            Chip("💬 Ask Shree") {
                 context.startActivity(
                     Intent(context, ChatbotActivity::class.java).apply {
                         putExtra("SITE_NAME", node.name)
-                        putExtra("SITE_ID", node.id.toString())
+                        // FIX 2: was node.id.toString() — wrong, that is the NODE primary key
+                        // FIXED:  siteId.toString() — correct heritage_sites.id
+                        putExtra("SITE_ID",  siteId.toString())
+                        // FIX 3: NODE_ID was missing entirely — chatbot had no node context
+                        // FIXED:  now passes node.id so chatbot loads node-level prompt
+                        putExtra("NODE_ID",  node.id.toString())
                     }
                 )
             }
         }
+        item {
+            // FIX 1: was onVoice(node.name, node.id.toString()) — wrong, node.id is NOT the site id
+            // FIXED:  onVoice(node.name, siteId.toString()) — siteId is the heritage_sites.id PK
+            Chip("🎙️ Hear It") { onVoice(node.name, siteId.toString()) }
+        }
+        item {
+            Chip("📷 Scan Next QR") { onQr(siteId.toLong()) }
+        }
+
     }
 }
 
