@@ -1,12 +1,4 @@
 // app/src/main/java/com/example/humsafar/ui/QrScanScreen.kt
-//
-// CHANGE FROM PREVIOUS VERSION:
-//   One line added in QrScanViewModel.onQrDetected() — after a valid scan:
-//     ActiveSiteManager.onNodeScanned(result.nodeId)
-//   This stores the node_id so ChatbotActivity and VoiceChat
-//   automatically pick up node-level context without any extra Intent passing.
-//
-//   The entire UI (camera, frame, animations, popups) is unchanged.
 
 package com.example.humsafar.ui
 
@@ -42,8 +34,8 @@ import androidx.compose.ui.unit.*
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.humsafar.models.QrScanResult
-import com.example.humsafar.models.SiteDetail
+import com.example.humsafar.network.QrScanResult   // ← network package
+import com.example.humsafar.network.SiteDetail     // ← network package
 import com.example.humsafar.ui.components.AnimatedOrbBackground
 import com.example.humsafar.ui.theme.*
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
@@ -55,14 +47,10 @@ import com.google.mlkit.vision.common.InputImage
 
 private const val TAG = "QrScanScreen"
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Screen — UI completely unchanged from your original
-// ─────────────────────────────────────────────────────────────────────────────
-
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun QrScanScreen(
-    monumentId:  Long,        // kept in signature for nav compat — unused
+    monumentId:  Long,
     currentLat:  Double,
     currentLng:  Double,
     onNodeReady: (nodeId: Int, nodeName: String, isKing: Boolean, siteId: Int) -> Unit,
@@ -77,7 +65,6 @@ fun QrScanScreen(
 
     LaunchedEffect(Unit) { camPerm.launchPermissionRequest() }
 
-    // Navigate on success
     LaunchedEffect(uiState) {
         if (uiState is QrUiState.Success) {
             val s = uiState as QrUiState.Success
@@ -90,7 +77,6 @@ fun QrScanScreen(
 
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
 
-        // ── Camera layer ──────────────────────────────────────────────────
         val showCamera = camPerm.status.isGranted &&
                 (uiState is QrUiState.Scanning || uiState is QrUiState.Validating)
 
@@ -139,12 +125,10 @@ fun QrScanScreen(
             AnimatedOrbBackground(Modifier.fillMaxSize())
         }
 
-        // ── UI layers ─────────────────────────────────────────────────────
         Column(
             modifier            = Modifier.fillMaxSize(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Top bar
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -171,7 +155,6 @@ fun QrScanScreen(
                 }
             }
 
-            // State content
             when (val s = uiState) {
                 is QrUiState.Scanning, is QrUiState.Validating ->
                     ScanningViewContent(
@@ -193,7 +176,7 @@ fun QrScanScreen(
             }
         }
 
-        // ── AskStartTrip popup overlay ────────────────────────────────────
+        // AskStartTrip popup
         if (uiState is QrUiState.AskStartTrip) {
             val askState = uiState as QrUiState.AskStartTrip
             StartTripPopup(
@@ -206,14 +189,12 @@ fun QrScanScreen(
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Start Trip Popup — unchanged from your original
-// ─────────────────────────────────────────────────────────────────────────────
+// ── StartTripPopup — now uses network.QrScanResult + network.SiteDetail ──────
 
 @Composable
 private fun StartTripPopup(
-    scanResult:  QrScanResult,
-    site:        SiteDetail?,
+    scanResult:  QrScanResult,   // com.example.humsafar.network.QrScanResult
+    site:        SiteDetail?,    // com.example.humsafar.network.SiteDetail?
     onStartTrip: () -> Unit,
     onDismiss:   () -> Unit
 ) {
@@ -286,9 +267,7 @@ private fun StartTripPopup(
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Scanning frame — unchanged from your original
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Scanning frame ────────────────────────────────────────────────────────────
 
 @Composable
 private fun ColumnScope.ScanningViewContent(
@@ -423,9 +402,7 @@ private fun ColumnScope.ScanningViewContent(
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Error & Success — unchanged from your original
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Error & Success ───────────────────────────────────────────────────────────
 
 @Composable
 private fun ColumnScope.ErrorContent(message: String, onRetry: () -> Unit) {
