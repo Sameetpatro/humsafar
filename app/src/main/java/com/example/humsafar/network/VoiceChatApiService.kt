@@ -1,5 +1,4 @@
 // app/src/main/java/com/example/humsafar/network/VoiceChatApiService.kt
-// NEW FILE
 
 package com.example.humsafar.network
 
@@ -10,14 +9,6 @@ import retrofit2.http.Multipart
 import retrofit2.http.POST
 import retrofit2.http.Part
 
-/**
- * Retrofit interface for POST /voice-chat.
- *
- * Why multipart/form-data (not JSON):
- *   Binary audio + metadata in one request.
- *   FastAPI's File + Form params map directly to this.
- *   No base64 encoding of audio on the Android side → ~33% smaller payload.
- */
 interface VoiceChatApiService {
 
     @Multipart
@@ -26,7 +17,8 @@ interface VoiceChatApiService {
         @Part                  audio:    MultipartBody.Part,
         @Part("site_name")     siteName: RequestBody,
         @Part("site_id")       siteId:   RequestBody,
-        @Part("language")      language: RequestBody,   // BCP-47, e.g. "en-IN"
-        @Part("lang_name")     langName: RequestBody    // "ENGLISH" | "HINDI" | "HINGLISH"
+        @Part("language")      language: RequestBody,
+        @Part("lang_name")     langName: RequestBody,
+        @Part("node_id")       nodeId:   RequestBody    // ← ADDED: empty string if no node
     ): VoiceChatResponse
 }

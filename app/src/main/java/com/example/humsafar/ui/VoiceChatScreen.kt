@@ -1,5 +1,5 @@
 // app/src/main/java/com/example/humsafar/ui/VoiceChatScreen.kt
-// NEW FILE
+// FIXED: now receives and passes both siteId AND nodeId to ViewModel
 
 package com.example.humsafar.ui
 
@@ -44,15 +44,18 @@ import com.google.accompanist.permissions.rememberPermissionState
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun VoiceChatScreen(
-    siteName:            String,
-    siteId:              String,
-    onBack:              () -> Unit,
+    siteName:             String,
+    siteId:               String,           // heritage_sites.id — ALWAYS the site PK
+    nodeId:               String = "",      // nodes.id — set when launched from a node
+    onBack:               () -> Unit,
     onNavigateToSettings: () -> Unit,
-    viewModel:           VoiceChatViewModel = viewModel()
+    viewModel:            VoiceChatViewModel = viewModel()
 ) {
-    LaunchedEffect(siteName, siteId) {
+    // Pass all three values to ViewModel
+    LaunchedEffect(siteName, siteId, nodeId) {
         viewModel.currentSiteName = siteName
         viewModel.currentSiteId   = siteId
+        viewModel.currentNodeId   = nodeId
     }
 
     val uiState  by viewModel.uiState.collectAsStateWithLifecycle()
@@ -69,19 +72,16 @@ fun VoiceChatScreen(
 
         Column(Modifier.fillMaxSize()) {
 
-            // ── Top bar ───────────────────────────────────────────────────
             VoiceTopBar(
-                siteName             = siteName,
-                onBack               = onBack,
-                onSettings           = onNavigateToSettings
+                siteName   = siteName,
+                nodeId     = nodeId,
+                onBack     = onBack,
+                onSettings = onNavigateToSettings
             )
 
-            // ── Message list ──────────────────────────────────────────────
             LazyColumn(
                 state               = listState,
-                modifier            = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 16.dp),
+                modifier            = Modifier.weight(1f).padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 contentPadding      = PaddingValues(vertical = 16.dp)
             ) {
@@ -93,29 +93,24 @@ fun VoiceChatScreen(
                 }
             }
 
-            // ── Status banner ─────────────────────────────────────────────
             StatusBanner(uiState = uiState, modifier = Modifier.padding(horizontal = 24.dp))
 
-            // ── Mic button ────────────────────────────────────────────────
             MicSection(
                 uiState           = uiState,
                 hasPermission     = micPerm.status.isGranted,
                 onRequestPerm     = { micPerm.launchPermissionRequest() },
                 onStartRecording  = { viewModel.startRecording() },
                 onStopRecording   = { viewModel.stopAndSend() },
-                modifier          = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 52.dp, top = 12.dp)
+                modifier          = Modifier.fillMaxWidth().padding(bottom = 52.dp, top = 12.dp)
             )
         }
     }
 }
 
-// ── Top bar ───────────────────────────────────────────────────────────────────
-
 @Composable
 private fun VoiceTopBar(
     siteName:  String,
+    nodeId:    String,
     onBack:    () -> Unit,
     onSettings: () -> Unit
 ) {
@@ -131,33 +126,26 @@ private fun VoiceTopBar(
             .padding(top = 12.dp, bottom = 16.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-
-            // Back
             IconCircle(onClick = onBack) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = TextPrimary, modifier = Modifier.size(18.dp))
             }
-
             Spacer(Modifier.width(14.dp))
-
-            // Mic badge
             Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
+                modifier = Modifier.size(40.dp).clip(CircleShape)
                     .background(Brush.linearGradient(listOf(Color(0xFFFFD54F), Color(0xFFFFC107)))),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(Icons.Default.Mic, null, tint = DeepNavy, modifier = Modifier.size(20.dp))
             }
-
             Spacer(Modifier.width(12.dp))
-
             Column(Modifier.weight(1f)) {
                 Text(siteName, color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                Text("Voice Heritage Guide", color = TextTertiary, fontSize = 12.sp)
+                Text(
+                    // Show node context vs site context in subtitle
+                    if (nodeId.isNotBlank()) "Node Guide · Online" else "Heritage Guide · Online",
+                    color = TextTertiary, fontSize = 12.sp
+                )
             }
-
-            // Settings
             IconCircle(onClick = onSettings) {
                 Icon(Icons.Default.Settings, null, tint = TextSecondary, modifier = Modifier.size(18.dp))
             }
@@ -168,26 +156,19 @@ private fun VoiceTopBar(
 @Composable
 private fun IconCircle(onClick: () -> Unit, content: @Composable BoxScope.() -> Unit) {
     Box(
-        modifier = Modifier
-            .size(40.dp)
-            .clip(CircleShape)
-            .background(GlassWhite15)
-            .border(0.5.dp, GlassBorder, CircleShape)
+        modifier = Modifier.size(40.dp).clip(CircleShape)
+            .background(GlassWhite15).border(0.5.dp, GlassBorder, CircleShape)
             .clickable { onClick() },
         contentAlignment = Alignment.Center,
         content = content
     )
 }
 
-// ── Empty state ───────────────────────────────────────────────────────────────
-
 @Composable
 private fun EmptyHint(siteName: String) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 56.dp)
+        modifier = Modifier.fillMaxWidth().padding(top = 56.dp)
     ) {
         Text("🎙️", fontSize = 52.sp)
         Spacer(Modifier.height(20.dp))
@@ -199,19 +180,11 @@ private fun EmptyHint(siteName: String) {
     }
 }
 
-// ── Message card ──────────────────────────────────────────────────────────────
-
 @Composable
 private fun VoiceMessageCard(response: VoiceChatResponse) {
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-
-        // User utterance (right-aligned, gold tint)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            GlassCard(
-                modifier     = Modifier.widthIn(max = 280.dp),
-                cornerRadius = 20.dp,
-                tint         = Color(0x2DFFD54F)
-            ) {
+            GlassCard(modifier = Modifier.widthIn(max = 280.dp), cornerRadius = 20.dp, tint = Color(0x2DFFD54F)) {
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
                     SectionLabel("You said")
                     Spacer(Modifier.height(4.dp))
@@ -219,8 +192,6 @@ private fun VoiceMessageCard(response: VoiceChatResponse) {
                 }
             }
         }
-
-        // Bot response (left-aligned, default glass)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
             GlassCard(modifier = Modifier.widthIn(max = 280.dp), cornerRadius = 20.dp) {
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
@@ -237,8 +208,6 @@ private fun VoiceMessageCard(response: VoiceChatResponse) {
     }
 }
 
-// ── Status banner ─────────────────────────────────────────────────────────────
-
 @Composable
 private fun StatusBanner(uiState: VoiceUiState, modifier: Modifier = Modifier) {
     val text = when (uiState) {
@@ -247,17 +216,15 @@ private fun StatusBanner(uiState: VoiceUiState, modifier: Modifier = Modifier) {
         is VoiceUiState.Error      -> "⚠️  ${uiState.message}"
         else -> ""
     }
-    val color = if (uiState is VoiceUiState.Error) Color(0xFFFF6B6B)
-    else if (uiState is VoiceUiState.Recording) Color(0xFFFF6B6B)
-    else TextTertiary
-
+    val color = when (uiState) {
+        is VoiceUiState.Error, is VoiceUiState.Recording -> Color(0xFFFF6B6B)
+        else -> TextTertiary
+    }
     AnimatedVisibility(text.isNotEmpty(), enter = fadeIn(), exit = fadeOut()) {
         Text(text, color = color, fontSize = 13.sp, textAlign = TextAlign.Center,
             modifier = modifier.fillMaxWidth().padding(vertical = 4.dp))
     }
 }
-
-// ── Mic button ────────────────────────────────────────────────────────────────
 
 @Composable
 private fun MicSection(
@@ -273,18 +240,14 @@ private fun MicSection(
 
     val glowAlpha by rememberInfiniteTransition(label = "glow").animateFloat(
         0.25f, 0.85f,
-        infiniteRepeatable(tween(700, easing = EaseInOutSine), RepeatMode.Reverse),
-        label = "ga"
+        infiniteRepeatable(tween(700, easing = EaseInOutSine), RepeatMode.Reverse), label = "ga"
     )
     val pulse by rememberInfiniteTransition(label = "pulse").animateFloat(
         1f, 1.14f,
-        infiniteRepeatable(tween(700, easing = EaseInOutSine), RepeatMode.Reverse),
-        label = "ps"
+        infiniteRepeatable(tween(700, easing = EaseInOutSine), RepeatMode.Reverse), label = "ps"
     )
 
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-
-        // Hint text
         Text(
             text = when {
                 !hasPermission -> "Tap to grant microphone access"
@@ -295,40 +258,20 @@ private fun MicSection(
             color = TextTertiary, fontSize = 13.sp
         )
         Spacer(Modifier.height(16.dp))
-
         Box(contentAlignment = Alignment.Center) {
-
-            // Animated glow ring — only while recording
             if (isRecording) {
                 Box(
-                    modifier = Modifier
-                        .size(104.dp)
-                        .scale(pulse)
-                        .clip(CircleShape)
-                        .background(
-                            Brush.radialGradient(
-                                listOf(
-                                    Color(0xFFFF4444).copy(alpha = glowAlpha * 0.5f),
-                                    Color.Transparent
-                                )
-                            )
-                        )
+                    modifier = Modifier.size(104.dp).scale(pulse).clip(CircleShape)
+                        .background(Brush.radialGradient(listOf(Color(0xFFFF4444).copy(alpha = glowAlpha * 0.5f), Color.Transparent)))
                 )
             }
-
-            // Core button
             Box(
-                modifier = Modifier
-                    .size(80.dp)
-                    .scale(if (isRecording) pulse * 0.93f else 1f)
-                    .clip(CircleShape)
-                    .background(
-                        when {
-                            isRecording  -> Brush.linearGradient(listOf(Color(0xFFFF4444), Color(0xFFCC0000)))
-                            isProcessing -> Brush.linearGradient(listOf(GlassWhite20, GlassWhite15))
-                            else         -> Brush.linearGradient(listOf(Color(0xFFFFD54F), Color(0xFFFFC107)))
-                        }
-                    )
+                modifier = Modifier.size(80.dp).scale(if (isRecording) pulse * 0.93f else 1f).clip(CircleShape)
+                    .background(when {
+                        isRecording  -> Brush.linearGradient(listOf(Color(0xFFFF4444), Color(0xFFCC0000)))
+                        isProcessing -> Brush.linearGradient(listOf(GlassWhite20, GlassWhite15))
+                        else         -> Brush.linearGradient(listOf(Color(0xFFFFD54F), Color(0xFFFFC107)))
+                    })
                     .border(1.dp, if (isRecording) Color(0x55FFFFFF) else GlassBorder, CircleShape)
                     .clickable(enabled = !isProcessing) {
                         when {
@@ -339,11 +282,8 @@ private fun MicSection(
                     },
                 contentAlignment = Alignment.Center
             ) {
-                // Specular highlight
-                Box(
-                    Modifier.matchParentSize().clip(CircleShape)
-                        .background(Brush.verticalGradient(listOf(Color(0x33FFFFFF), Color.Transparent)))
-                )
+                Box(Modifier.matchParentSize().clip(CircleShape)
+                    .background(Brush.verticalGradient(listOf(Color(0x33FFFFFF), Color.Transparent))))
                 Icon(
                     imageVector        = if (isRecording) Icons.Default.Stop else Icons.Default.Mic,
                     contentDescription = if (isRecording) "Stop" else "Record",

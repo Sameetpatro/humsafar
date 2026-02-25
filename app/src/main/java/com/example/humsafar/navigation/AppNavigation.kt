@@ -1,6 +1,5 @@
 // app/src/main/java/com/example/humsafar/navigation/AppNavigation.kt
-// UPDATED — passes nodeId (Int) + siteId (Int) to NodeDetailScreen.
-// QrScanScreen.onNodeReady now carries siteId too.
+// FIXED: voice route now carries nodeId so VoiceChatScreen knows node context
 
 package com.example.humsafar.navigation
 
@@ -10,14 +9,7 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.*
 import androidx.navigation.navArgument
 import com.example.humsafar.data.TripManager
-import com.example.humsafar.ui.LoginScreen
-import com.example.humsafar.ui.SignUpScreen
-import com.example.humsafar.ui.MapScreen
-import com.example.humsafar.ui.HeritageDetailScreen
-import com.example.humsafar.ui.NodeDetailScreen
-import com.example.humsafar.ui.ProfileScreen
-import com.example.humsafar.ui.VoiceChatScreen
-import com.example.humsafar.ui.QrScanScreen
+import com.example.humsafar.ui.*
 
 @Composable
 fun AppNavigation() {
@@ -41,7 +33,7 @@ fun AppNavigation() {
 
         composable("home") {
             MapScreen(
-                onNavigateToVoice   = { name, id -> navController.navigate(voiceChatRoute(name, id)) },
+                onNavigateToVoice   = { name, id -> navController.navigate(voiceChatRoute(name, id, "")) },
                 onNavigateToDetail  = { name, id -> navController.navigate(heritageDetailRoute(name, id)) },
                 onNavigateToProfile = { navController.navigate("profile") },
                 onNavigateToQrScan  = { siteId ->
@@ -50,7 +42,6 @@ fun AppNavigation() {
             )
         }
 
-        // ── Heritage site overview ────────────────────────────────────────
         composable(
             route     = "detail/{siteName}/{siteId}",
             arguments = listOf(
@@ -61,17 +52,16 @@ fun AppNavigation() {
             val siteName = backStack.arguments?.getString("siteName")
                 ?.let { java.net.URLDecoder.decode(it, "UTF-8") } ?: "Heritage Site"
             val siteId   = backStack.arguments?.getString("siteId") ?: ""
-
             HeritageDetailScreen(
-                siteName           = siteName,
-                siteId             = siteId,
-                onBack             = { navController.popBackStack() },
-                onNavigateToVoice  = { name, id -> navController.navigate(voiceChatRoute(name, id)) },
-                onNavigateToQrScan = { id -> navController.navigate(qrScanRoute("Site", id.toString())) }
+                siteName            = siteName,
+                siteId              = siteId,
+                onBack              = { navController.popBackStack() },
+                onNavigateToVoice   = { name, id -> navController.navigate(voiceChatRoute(name, id, "")) },
+                onNavigateToQrScan  = { id -> navController.navigate(qrScanRoute("Site", id.toString())) }
             )
         }
 
-        // ── Node detail — nodeId + siteId are both Ints ───────────────────
+        // ── Node detail ───────────────────────────────────────────────────
         composable(
             route     = "node/{nodeId}/{siteId}/{isKing}",
             arguments = listOf(
@@ -83,14 +73,16 @@ fun AppNavigation() {
             val nodeId = backStack.arguments?.getInt("nodeId") ?: 0
             val siteId = backStack.arguments?.getInt("siteId") ?: 0
             val isKing = backStack.arguments?.getBoolean("isKing") ?: false
-
             NodeDetailScreen(
                 nodeId            = nodeId,
                 siteId            = siteId,
                 isKing            = isKing,
                 onBack            = { navController.popBackStack() },
                 onNavigateToQr    = { id -> navController.navigate(qrScanRoute("Site", id.toString())) },
-                onNavigateToVoice = { name, id -> navController.navigate(voiceChatRoute(name, id)) }
+                // FIXED: pass siteId as siteId, nodeId as nodeId — not node.id as siteId
+                onNavigateToVoice = { name, _ ->
+                    navController.navigate(voiceChatRoute(name, siteId.toString(), nodeId.toString()))
+                }
             )
         }
 
@@ -98,26 +90,28 @@ fun AppNavigation() {
             ProfileScreen(onBack = { navController.popBackStack() })
         }
 
+        // ── Voice — now has nodeId segment ────────────────────────────────
         composable(
-            route     = "voice/{siteName}/{siteId}",
+            route     = "voice/{siteName}/{siteId}/{nodeId}",
             arguments = listOf(
                 navArgument("siteName") { type = NavType.StringType },
-                navArgument("siteId")   { type = NavType.StringType }
+                navArgument("siteId")   { type = NavType.StringType },
+                navArgument("nodeId")   { type = NavType.StringType }
             )
         ) { backStack ->
             val siteName = backStack.arguments?.getString("siteName")
                 ?.let { java.net.URLDecoder.decode(it, "UTF-8") } ?: "Heritage Site"
             val siteId   = backStack.arguments?.getString("siteId") ?: ""
-
+            val nodeId   = backStack.arguments?.getString("nodeId") ?: ""
             VoiceChatScreen(
                 siteName             = siteName,
                 siteId               = siteId,
+                nodeId               = nodeId,
                 onBack               = { navController.popBackStack() },
                 onNavigateToSettings = { navController.navigate("profile") }
             )
         }
 
-        // ── QR Scanner ────────────────────────────────────────────────────
         composable(
             route     = "qr/{siteName}/{siteId}",
             arguments = listOf(
@@ -125,13 +119,12 @@ fun AppNavigation() {
                 navArgument("siteId")   { type = NavType.StringType }
             )
         ) { backStack ->
-            val siteName   = backStack.arguments?.getString("siteName")
+            val siteName = backStack.arguments?.getString("siteName")
                 ?.let { java.net.URLDecoder.decode(it, "UTF-8") } ?: ""
-            val siteId     = backStack.arguments?.getString("siteId") ?: ""
-            val trip       = TripManager.state.collectAsState()
-
+            val siteId   = backStack.arguments?.getString("siteId") ?: ""
+            val trip     = TripManager.state.collectAsState()
             QrScanScreen(
-                monumentId   = siteId.toLongOrNull() ?: 0L,   // kept for compat
+                monumentId   = siteId.toLongOrNull() ?: 0L,
                 currentLat   = trip.value.lastLat,
                 currentLng   = trip.value.lastLng,
                 onNodeReady  = { nodeId, _, isKing, scanSiteId ->
@@ -152,9 +145,10 @@ fun heritageDetailRoute(siteName: String, siteId: String): String {
     return "detail/$encoded/$siteId"
 }
 
-fun voiceChatRoute(siteName: String, siteId: String): String {
+// FIXED: voice route now includes nodeId (empty string = site-level context)
+fun voiceChatRoute(siteName: String, siteId: String, nodeId: String): String {
     val encoded = java.net.URLEncoder.encode(siteName, "UTF-8")
-    return "voice/$encoded/$siteId"
+    return "voice/$encoded/$siteId/$nodeId"
 }
 
 fun qrScanRoute(siteName: String, siteId: String): String {

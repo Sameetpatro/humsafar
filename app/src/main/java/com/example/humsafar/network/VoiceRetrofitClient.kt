@@ -23,7 +23,7 @@ import java.util.concurrent.TimeUnit
  */
 object VoiceRetrofitClient {
 
-    private const val BASE_URL = "https://humsafar-backend-59ic.onrender.com/"
+    private const val BASE_URL = "https://humsafar-backend-5u74.onrender.com/"
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(15,  TimeUnit.SECONDS)

@@ -31,6 +31,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.*
 import com.example.humsafar.data.ActiveSiteManager
+import com.example.humsafar.data.ActiveSiteManager.activeNodeId
 import com.example.humsafar.models.ChatMessage as UiChatMessage  // ← RENAMED for UI
 import com.example.humsafar.network.ChatMessage as ApiChatMessage  // ← RENAMED for API
 import com.example.humsafar.network.ChatRequest
@@ -68,6 +69,7 @@ class ChatbotActivity : ComponentActivity() {
         val activeSiteId   = ActiveSiteManager.activeSiteId
         val intentSiteId   = intent.getStringExtra(ChatbotExtras.SITE_ID)?.toIntOrNull()
         val resolvedSiteId = activeSiteId ?: intentSiteId ?: -1
+        Log.d("ChatbotActivity", "SITE_ID_DEBUG: activeSiteId=$activeSiteId | intentSiteId=$intentSiteId | resolvedSiteId=$resolvedSiteId | activeNodeId=$activeNodeId")
 
         // ── Resolve node_id ───────────────────────────────────────────────
         // Primary: ActiveSiteManager — set after QR scan via onNodeScanned()
@@ -144,7 +146,7 @@ suspend fun callChatApi(
             message = message,
             history = historyItems      // ← Now correctly typed as List<ApiChatMessage>
         )
-
+        Log.d("ChatbotActivity", "API_REQUEST_DEBUG: siteId=$siteIdInt nodeId=$nodeIdInt message=${message.take(30)}")
         val resp = HumsafarClient.api.sendChat(request)
         Log.d("ChatbotActivity", "← /chat/ responded ${resp.code()}")
 

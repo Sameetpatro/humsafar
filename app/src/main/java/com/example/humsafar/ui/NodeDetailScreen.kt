@@ -160,7 +160,7 @@ fun NodeDetailScreen(
                                 context.startActivity(
                                     Intent(context, ChatbotActivity::class.java).apply {
                                         putExtra("SITE_NAME", node.name)
-                                        putExtra("SITE_ID", node.id.toString())
+                                        putExtra("SITE_ID", siteId.toString())    // ← siteId is the correct DB FK
                                     }
                                 )
                             },
@@ -244,7 +244,7 @@ private fun NodeActionRow(
                 context.startActivity(
                     Intent(context, ChatbotActivity::class.java).apply {
                         putExtra("SITE_NAME", node.name)
-                        putExtra("SITE_ID", node.id.toString())
+                        putExtra("SITE_ID", siteId.toString())
                     }
                 )
             }
