@@ -26,6 +26,12 @@ interface HumsafarApiService {
         @Path("site_id") siteId: Int
     ): Response<SiteDetail>
 
+    /** Node positions only (exact lat/lng from backend nodes table) for Directions map */
+    @GET("sites/{site_id}/nodes")
+    suspend fun getSiteNodes(
+        @Path("site_id") siteId: Int
+    ): Response<List<NodePositionResponse>>
+
     @GET("sites/scan/{qr_value}")
     suspend fun scanQr(
         @Path("qr_value") qrValue: String

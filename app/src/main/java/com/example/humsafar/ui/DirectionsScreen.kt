@@ -29,15 +29,18 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.humsafar.BuildConfig
 import com.example.humsafar.data.TripManager
 import com.example.humsafar.location.HumsafarLocationManager
-import com.example.humsafar.network.Node
+import com.example.humsafar.models.NodePositionResponse
+import com.example.humsafar.network.HumsafarClient
 import com.example.humsafar.ui.components.AnimatedOrbBackground
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.example.humsafar.ui.components.GlassCard
 import com.example.humsafar.ui.theme.*
 import org.maplibre.android.MapLibre
+import org.maplibre.android.annotations.Marker
 import org.maplibre.android.annotations.MarkerOptions
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
@@ -57,31 +60,67 @@ private val UserLocationColor = Color(0xFF2196F3)
 fun DirectionsScreen(
     siteId: Int,
     siteName: String,
-    onBack: () -> Unit,
-    viewModel: HeritageDetailViewModel = viewModel()
+    onBack: () -> Unit
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val tripState by TripManager.state.collectAsStateWithLifecycle()
-    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
+    // Nodes from dedicated endpoint: exact lat/lng from backend nodes table
+    var nodes by remember { mutableStateOf<List<NodePositionResponse>>(emptyList()) }
+    var nodesLoading by remember { mutableStateOf(true) }
+    var nodesError by remember { mutableStateOf<String?>(null) }
+
+    // User location: prefer live updates, fallback to TripManager's last known
     var userLat by remember { mutableStateOf<Double?>(tripState.lastLat.takeIf { it != 0.0 }) }
     var userLng by remember { mutableStateOf<Double?>(tripState.lastLng.takeIf { it != 0.0 }) }
     var mapLibreMap by remember { mutableStateOf<MapLibreMap?>(null) }
-    var markersAdded by remember { mutableStateOf(false) }
+    var nodeMarkersAdded by remember { mutableStateOf(false) }
+    var userMarkerRef by remember { mutableStateOf<Marker?>(null) }
 
     val mapView = remember { MapLibre.getInstance(context); MapView(context) }
     val locationManager = remember { HumsafarLocationManager(context) }
 
     LaunchedEffect(siteId) {
-        viewModel.loadSite(siteId)
+        nodesLoading = true
+        nodesError = null
+        try {
+            val resp = withContext(Dispatchers.IO) {
+                HumsafarClient.api.getSiteNodes(siteId)
+            }
+            if (resp.isSuccessful && resp.body() != null) {
+                nodes = resp.body()!!.sortedBy { it.sequenceOrder }
+            } else {
+                nodesError = "Could not load nodes"
+            }
+        } catch (e: Exception) {
+            nodesError = e.message ?: "Connection error"
+        }
+        nodesLoading = false
     }
 
+    // Start location updates; getLastLocation() gives an immediate fix when available
     LaunchedEffect(Unit) {
         locationManager.startUpdates { lat, lng ->
             userLat = lat
             userLng = lng
             TripManager.updateLocation(lat, lng)
+        }
+    }
+
+    // Add or update user marker when we have map and location
+    LaunchedEffect(mapLibreMap, userLat, userLng) {
+        val map = mapLibreMap ?: return@LaunchedEffect
+        val lat = userLat ?: return@LaunchedEffect
+        val lng = userLng ?: return@LaunchedEffect
+        val userPos = LatLng(lat, lng)
+        val current = userMarkerRef
+        if (current != null) {
+            current.setPosition(userPos)
+        } else {
+            userMarkerRef = map.addMarker(
+                MarkerOptions().position(userPos).title("You are here")
+            )
         }
     }
 
@@ -110,8 +149,8 @@ fun DirectionsScreen(
     Box(Modifier.fillMaxSize()) {
         AnimatedOrbBackground(Modifier.fillMaxSize())
 
-        when (val s = uiState) {
-            is HeritageDetailUiState.Loading -> {
+        when {
+            nodesLoading -> {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("🗺️", fontSize = 52.sp)
@@ -120,11 +159,22 @@ fun DirectionsScreen(
                     }
                 }
             }
-
-            is HeritageDetailUiState.Ready -> {
-                val site = s.site
-                val nodes = site.nodes.sortedBy { it.sequenceOrder }
-
+            nodesError != null -> {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("⚠️", fontSize = 48.sp)
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            nodesError!!,
+                            color = Color(0xFFFF6B6B),
+                            fontSize = 14.sp,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(32.dp)
+                        )
+                    }
+                }
+            }
+            else -> {
                 Column(Modifier.fillMaxSize()) {
                     DirectionsTopBar(
                         siteName = siteName,
@@ -146,23 +196,21 @@ fun DirectionsScreen(
                             mv.getMapAsync { map ->
                                 mapLibreMap = map
                                 map.setStyle(MAP_STYLE) {
-                                    if (!markersAdded && nodes.isNotEmpty()) {
+                                    // Node markers: exact latitude/longitude from GET /sites/{id}/nodes (backend nodes table)
+                                    if (!nodeMarkersAdded && nodes.isNotEmpty()) {
                                         val boundsBuilder = LatLngBounds.Builder()
 
                                         nodes.forEach { node ->
-                                            val isKing = node.isKing
-                                            val isVisited = node.id in tripState.visitedNodeIds
                                             val position = LatLng(node.latitude, node.longitude)
                                             boundsBuilder.include(position)
-
                                             map.addMarker(
                                                 MarkerOptions()
                                                     .position(position)
                                                     .title(node.name)
                                                     .snippet(
                                                         when {
-                                                            isKing -> "King Node (Start/End)"
-                                                            isVisited -> "Visited"
+                                                            node.isKing -> "King Node (Start/End)"
+                                                            node.id in tripState.visitedNodeIds -> "Visited"
                                                             else -> "Not visited yet"
                                                         }
                                                     )
@@ -171,13 +219,7 @@ fun DirectionsScreen(
 
                                         userLat?.let { lat ->
                                             userLng?.let { lng ->
-                                                val userPos = LatLng(lat, lng)
-                                                boundsBuilder.include(userPos)
-                                                map.addMarker(
-                                                    MarkerOptions()
-                                                        .position(userPos)
-                                                        .title("You are here")
-                                                )
+                                                boundsBuilder.include(LatLng(lat, lng))
                                             }
                                         }
 
@@ -197,7 +239,7 @@ fun DirectionsScreen(
                                             }
                                         }
 
-                                        markersAdded = true
+                                        nodeMarkersAdded = true
                                     }
                                 }
                             }
@@ -223,22 +265,6 @@ fun DirectionsScreen(
                     )
 
                     Spacer(Modifier.height(16.dp))
-                }
-            }
-
-            is HeritageDetailUiState.Error -> {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("⚠️", fontSize = 48.sp)
-                        Spacer(Modifier.height(12.dp))
-                        Text(
-                            s.message,
-                            color = Color(0xFFFF6B6B),
-                            fontSize = 14.sp,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(32.dp)
-                        )
-                    }
                 }
             }
         }
@@ -341,7 +367,7 @@ private fun LegendItem(color: Color, label: String) {
 
 @Composable
 private fun NodesProgressList(
-    nodes: List<Node>,
+    nodes: List<NodePositionResponse>,
     visitedIds: List<Int>,
     currentNodeId: Int,
     modifier: Modifier = Modifier
@@ -398,7 +424,7 @@ private fun NodesProgressList(
 
 @Composable
 private fun NodeProgressItem(
-    node: Node,
+    node: NodePositionResponse,
     isKing: Boolean,
     isVisited: Boolean,
     isCurrent: Boolean

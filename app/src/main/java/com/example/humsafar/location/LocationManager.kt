@@ -21,6 +21,12 @@ class HumsafarLocationManager(context: Context) {
 
     @SuppressLint("MissingPermission")
     fun startUpdates(onLocation: (lat: Double, lng: Double) -> Unit) {
+        // Get last known location immediately so Directions screen has a position without waiting
+        fusedClient.lastLocation.addOnSuccessListener { loc ->
+            loc?.let {
+                onLocation(it.latitude, it.longitude)
+            }
+        }
         callback = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
                 result.lastLocation?.let { loc ->

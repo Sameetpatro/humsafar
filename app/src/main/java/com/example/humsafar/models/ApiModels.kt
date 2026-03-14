@@ -136,6 +136,18 @@ data class NodeDetail(
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
+// /sites/{site_id}/nodes  →  GET /sites/{site_id}/nodes (exact lat/lng for map)
+// ─────────────────────────────────────────────────────────────────────────────
+data class NodePositionResponse(
+    @SerializedName("id")              val id: Int = 0,
+    @SerializedName("name")            val name: String = "",
+    @SerializedName("latitude")       val latitude: Double = 0.0,
+    @SerializedName("longitude")      val longitude: Double = 0.0,
+    @SerializedName("sequence_order") val sequenceOrder: Int = 0,
+    @SerializedName("is_king")        val isKing: Boolean = false
+)
+
+// ─────────────────────────────────────────────────────────────────────────────
 // /sites/{site_id}/recommendations  →  GET /sites/{site_id}/recommendations
 // ─────────────────────────────────────────────────────────────────────────────
 data class RecommendationResponse(
