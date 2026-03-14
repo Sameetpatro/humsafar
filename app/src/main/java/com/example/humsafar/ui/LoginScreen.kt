@@ -36,7 +36,7 @@ fun LoginScreen(
         // ── Animated orb background ──
         AnimatedOrbBackground(modifier = Modifier.fillMaxSize())
 
-        // ── Subtle grid lines (iOS-style depth) ──
+        // ── Subtle grid lines
         Canvas(modifier = Modifier.fillMaxSize()) {
             val lineColor = Color(0x06FFFFFF)
             val step = 60.dp.toPx()
@@ -93,7 +93,7 @@ fun LoginScreen(
                 Spacer(Modifier.height(24.dp))
 
                 Text(
-                    text = "Humsafar",
+                    text = "धरोहरसेतु", //Dharohar Setu
                     color = TextPrimary,
                     fontSize = 38.sp,
                     fontWeight = FontWeight.Black,

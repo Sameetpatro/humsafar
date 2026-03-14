@@ -88,7 +88,7 @@ fun ProfileScreen(onBack: () -> Unit) {
 
                     // Version tag
                     Text(
-                        text      = "Humsafar v1.0  •  Prototype Build",
+                        text      = "धरोहरसेतु v1.0  •  Prototype Build", //Dharohar Setu
                         color     = TextTertiary,
                         fontSize  = 12.sp,
                         textAlign = TextAlign.Center,
@@ -336,7 +336,7 @@ private fun AppSettingsCard() {
 @Composable
 private fun AboutCard(expanded: Boolean, onToggle: () -> Unit) {
     val items = listOf(
-        "ℹ️  About Humsafar" to "Meet the team & tech stack",
+        "ℹ️  About Dharohar Setu" to "Meet the team & tech stack",
         "⭐  Rate the App"   to "Enjoy exploring? Let us know",
         "📤  Share App"      to "Spread the heritage experience",
         "🐛  Report a Bug"   to "Help us improve the app"
@@ -354,7 +354,7 @@ private fun AboutCard(expanded: Boolean, onToggle: () -> Unit) {
                 Text("ℹ️", fontSize = 18.sp, modifier = Modifier.size(24.dp), textAlign = TextAlign.Center)
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("About Humsafar", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    Text("About Dharohar Setu", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                     Text("Meet the team & tech stack", color = TextTertiary, fontSize = 12.sp)
                 }
                 Icon(
@@ -419,7 +419,7 @@ private fun AboutOverlay(onClose: () -> Unit) {
                         Icon(Icons.Default.Close, null, tint = TextPrimary, modifier = Modifier.size(18.dp))
                     }
                     Spacer(Modifier.width(16.dp))
-                    Text("About Humsafar", color = TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    Text("About Dharohar Setu", color = TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 }
             }
 
@@ -444,7 +444,7 @@ private fun AboutOverlay(onClose: () -> Unit) {
                             Text("🏛️", fontSize = 36.sp)
                         }
                         Spacer(Modifier.height(16.dp))
-                        Text("Humsafar", color = TextPrimary, fontSize = 30.sp, fontWeight = FontWeight.Black, letterSpacing = (-1).sp)
+                        Text("Dharohar Setu", color = TextPrimary, fontSize = 30.sp, fontWeight = FontWeight.Black, letterSpacing = (-1).sp)
                         Text("Your Heritage Companion", color = TextTertiary, fontSize = 13.sp)
                         Spacer(Modifier.height(8.dp))
                         Box(
@@ -463,7 +463,7 @@ private fun AboutOverlay(onClose: () -> Unit) {
                 // About section
                 AboutSection(
                     title = "🎯 The Mission",
-                    body  = "Humsafar was built to bridge the gap between India's rich heritage and the modern traveller. Using AI, voice technology, and location awareness, it transforms every heritage site visit into an immersive, personalised learning experience."
+                    body  = "Dharohar Setu was built to bridge the gap between India's rich heritage and the modern traveller. Using AI, voice technology, and location awareness, it transforms every heritage site visit into an immersive, personalised learning experience."
                 )
 
                 Spacer(Modifier.height(16.dp))
@@ -531,7 +531,7 @@ private fun AboutOverlay(onClose: () -> Unit) {
                 Spacer(Modifier.height(16.dp))
 
                 Text(
-                    text      = "Humsafar - 2026",
+                    text      = "Dharohar Setu - 2026",
                     color     = TextTertiary,
                     fontSize  = 12.sp,
                     textAlign = TextAlign.Center,
