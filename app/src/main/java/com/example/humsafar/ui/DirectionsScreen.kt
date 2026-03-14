@@ -40,6 +40,7 @@ import kotlinx.coroutines.withContext
 import com.example.humsafar.ui.components.GlassCard
 import com.example.humsafar.ui.theme.*
 import org.maplibre.android.MapLibre
+import org.maplibre.android.annotations.IconFactory
 import org.maplibre.android.annotations.Marker
 import org.maplibre.android.annotations.MarkerOptions
 import org.maplibre.android.camera.CameraUpdateFactory
@@ -47,6 +48,9 @@ import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.geometry.LatLngBounds
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
 
 private val MAP_STYLE
     get() = "https://api.maptiler.com/maps/streets/style.json?key=${BuildConfig.MAPTILER_KEY}"
@@ -75,13 +79,24 @@ fun DirectionsScreen(
     var userLat by remember { mutableStateOf<Double?>(tripState.lastLat.takeIf { it != 0.0 }) }
     var userLng by remember { mutableStateOf<Double?>(tripState.lastLng.takeIf { it != 0.0 }) }
     var mapLibreMap by remember { mutableStateOf<MapLibreMap?>(null) }
-    var nodeMarkersAdded by remember { mutableStateOf(false) }
+    var styleLoaded by remember(siteId) { mutableStateOf(false) }
+    var nodeMarkersAdded by remember(siteId) { mutableStateOf(false) }
     var userMarkerRef by remember { mutableStateOf<Marker?>(null) }
+    var mapInitRequested by remember(siteId) { mutableStateOf(false) }
 
-    val mapView = remember { MapLibre.getInstance(context); MapView(context) }
+    val mapView = remember(siteId) { MapLibre.getInstance(context); MapView(context) }
     val locationManager = remember { HumsafarLocationManager(context) }
 
+    // Reset user marker ref when map changes (new site = new MapView)
+    LaunchedEffect(mapLibreMap) {
+        userMarkerRef = null
+    }
+
     LaunchedEffect(siteId) {
+        nodeMarkersAdded = false
+        styleLoaded = false
+        userMarkerRef = null
+        mapLibreMap = null
         nodesLoading = true
         nodesError = null
         try {
@@ -124,7 +139,49 @@ fun DirectionsScreen(
         }
     }
 
-    DisposableEffect(lifecycleOwner) {
+    // Add node markers ONLY when style is loaded + we have map + nodes (uses reactive state, not stale closure)
+    LaunchedEffect(styleLoaded, mapLibreMap, nodes, siteId) {
+        val map = mapLibreMap ?: return@LaunchedEffect
+        if (!styleLoaded || nodes.isEmpty() || nodeMarkersAdded) return@LaunchedEffect
+        val nodeList = nodes
+        val visitedIds = tripState.visitedNodeIds
+        val boundsBuilder = LatLngBounds.Builder()
+        nodeList.forEach { node ->
+            val position = LatLng(node.latitude, node.longitude)
+            boundsBuilder.include(position)
+            val isVisited = node.id in visitedIds
+            val markerColor = when {
+                node.isKing -> KingNodeColor
+                isVisited -> VisitedNodeColor
+                else -> UnvisitedNodeColor
+            }
+            val icon = createColoredMarkerIcon(context, markerColor)
+            map.addMarker(
+                MarkerOptions()
+                    .position(position)
+                    .icon(icon)
+                    .title(node.name)
+                    .snippet(
+                        when {
+                            node.isKing -> "King Node (Start/End)"
+                            isVisited -> "Visited"
+                            else -> "Not visited yet"
+                        }
+                    )
+            )
+        }
+        userLat?.let { lat -> userLng?.let { lng -> boundsBuilder.include(LatLng(lat, lng)) } }
+        try {
+            map.moveCamera(CameraUpdateFactory.newLatLngBounds(boundsBuilder.build(), 80))
+        } catch (e: Exception) {
+            nodeList.firstOrNull()?.let { n ->
+                map.moveCamera(CameraUpdateFactory.newLatLngZoom(LatLng(n.latitude, n.longitude), 16.0))
+            }
+        }
+        nodeMarkersAdded = true
+    }
+
+    DisposableEffect(lifecycleOwner, siteId) {
         val obs = LifecycleEventObserver { _, e ->
             when (e) {
                 Lifecycle.Event.ON_START -> mapView.onStart()
@@ -189,57 +246,18 @@ fun DirectionsScreen(
                             .clip(RoundedCornerShape(20.dp))
                             .border(1.dp, GlassBorder, RoundedCornerShape(20.dp))
                     ) {
-                        AndroidView(
-                            factory = { mapView },
-                            modifier = Modifier.fillMaxSize()
-                        ) { mv ->
-                            mv.getMapAsync { map ->
-                                mapLibreMap = map
-                                map.setStyle(MAP_STYLE) {
-                                    // Node markers: exact latitude/longitude from GET /sites/{id}/nodes (backend nodes table)
-                                    if (!nodeMarkersAdded && nodes.isNotEmpty()) {
-                                        val boundsBuilder = LatLngBounds.Builder()
-
-                                        nodes.forEach { node ->
-                                            val position = LatLng(node.latitude, node.longitude)
-                                            boundsBuilder.include(position)
-                                            map.addMarker(
-                                                MarkerOptions()
-                                                    .position(position)
-                                                    .title(node.name)
-                                                    .snippet(
-                                                        when {
-                                                            node.isKing -> "King Node (Start/End)"
-                                                            node.id in tripState.visitedNodeIds -> "Visited"
-                                                            else -> "Not visited yet"
-                                                        }
-                                                    )
-                                            )
+                        key(siteId) {
+                            AndroidView(
+                                factory = { mapView },
+                                modifier = Modifier.fillMaxSize()
+                            ) { mv ->
+                                if (!mapInitRequested) {
+                                    mapInitRequested = true
+                                    mv.getMapAsync { map ->
+                                        mapLibreMap = map
+                                        map.setStyle(MAP_STYLE) {
+                                            styleLoaded = true
                                         }
-
-                                        userLat?.let { lat ->
-                                            userLng?.let { lng ->
-                                                boundsBuilder.include(LatLng(lat, lng))
-                                            }
-                                        }
-
-                                        try {
-                                            val bounds = boundsBuilder.build()
-                                            map.moveCamera(
-                                                CameraUpdateFactory.newLatLngBounds(bounds, 80)
-                                            )
-                                        } catch (e: Exception) {
-                                            nodes.firstOrNull()?.let { firstNode ->
-                                                map.moveCamera(
-                                                    CameraUpdateFactory.newLatLngZoom(
-                                                        LatLng(firstNode.latitude, firstNode.longitude),
-                                                        16.0
-                                                    )
-                                                )
-                                            }
-                                        }
-
-                                        nodeMarkersAdded = true
                                     }
                                 }
                             }
@@ -523,4 +541,29 @@ private fun NodeProgressItem(
             )
         }
     }
+}
+
+private fun createColoredMarkerIcon(context: android.content.Context, composeColor: Color): org.maplibre.android.annotations.Icon {
+    val sizePx = (48 * context.resources.displayMetrics.density).toInt()
+    val bitmap = android.graphics.Bitmap.createBitmap(sizePx, sizePx, android.graphics.Bitmap.Config.ARGB_8888)
+    val canvas = android.graphics.Canvas(bitmap)
+    val androidColor = android.graphics.Color.argb(
+        (composeColor.alpha * 255).toInt(),
+        (composeColor.red * 255).toInt(),
+        (composeColor.green * 255).toInt(),
+        (composeColor.blue * 255).toInt()
+    )
+    val paint = android.graphics.Paint().apply {
+        isAntiAlias = true
+        color = androidColor
+    }
+    canvas.drawCircle(sizePx / 2f, sizePx / 2f, sizePx / 2f - 2, paint)
+    val borderPaint = android.graphics.Paint().apply {
+        isAntiAlias = true
+        style = android.graphics.Paint.Style.STROKE
+        strokeWidth = 3f
+        this.color = android.graphics.Color.WHITE
+    }
+    canvas.drawCircle(sizePx / 2f, sizePx / 2f, sizePx / 2f - 3, borderPaint)
+    return IconFactory.getInstance(context).fromBitmap(bitmap)
 }

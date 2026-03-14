@@ -138,6 +138,17 @@ fun NodeDetailScreen(
                                     Spacer(Modifier.height(14.dp))
                                 }
 
+                                Spacer(Modifier.height(16.dp))
+                                NodeActionCard(
+                                    icon = "📷",
+                                    title = "Scan Next QR",
+                                    subtitle = "Continue your journey to the next node",
+                                    gradientColors = listOf(Color(0xFF0D2825), Color(0xFF091F1E)),
+                                    borderColor = Color(0xFF2DD4BF),
+                                    modifier = Modifier.fillMaxWidth(),
+                                    onClick = { onNavigateToQr(siteId.toLong()) }
+                                )
+
                                 Spacer(Modifier.height(100.dp))
                             }
                         }

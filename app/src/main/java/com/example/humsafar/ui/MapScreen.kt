@@ -64,13 +64,14 @@ fun MapScreen(
     onNavigateToVoice:   (String, String) -> Unit = { _, _ -> },
     onNavigateToDetail:  (String, String) -> Unit = { _, _ -> },
     onNavigateToProfile: () -> Unit = {},
-    onNavigateToQrScan:  (Int) -> Unit = {}          // ← Int, not Long
+    onNavigateToQrScan:  (Int) -> Unit = {},
+    onNavigateToSiteInfo: (Int, String) -> Unit = { _, _ -> }
 ) {
     val locationPermission = rememberPermissionState(android.Manifest.permission.ACCESS_FINE_LOCATION)
     LaunchedEffect(Unit) { locationPermission.launchPermissionRequest() }
 
     if (locationPermission.status.isGranted) {
-        MapContent(onNavigateToVoice, onNavigateToDetail, onNavigateToProfile, onNavigateToQrScan)
+        MapContent(onNavigateToVoice, onNavigateToDetail, onNavigateToProfile, onNavigateToQrScan, onNavigateToSiteInfo)
     } else {
         PermissionGate(locationPermission)
     }
@@ -104,8 +105,9 @@ fun MapContent(
     onNavigateToVoice:   (String, String) -> Unit = { _, _ -> },
     onNavigateToDetail:  (String, String) -> Unit = { _, _ -> },
     onNavigateToProfile: () -> Unit = {},
-    onNavigateToQrScan:  (Int) -> Unit = {}
-) {
+    onNavigateToQrScan:  (Int) -> Unit = {},
+    onNavigateToSiteInfo: (Int, String) -> Unit = { _, _ -> }
+){
     val context        = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 

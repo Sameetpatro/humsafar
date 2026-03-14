@@ -15,19 +15,24 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.*
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.example.humsafar.data.TripManager
 import com.example.humsafar.models.RecommendationResponse
 import com.example.humsafar.network.HumsafarClient
+import com.example.humsafar.utils.haversineDistance
 import com.example.humsafar.ui.components.AnimatedOrbBackground
 import com.example.humsafar.ui.components.GlassCard
 import com.example.humsafar.ui.components.GlassPrimaryButton
@@ -44,6 +49,8 @@ fun TripCompletionScreen(
     onExploreRecommendations: () -> Unit,
     onSkip: () -> Unit
 ) {
+    val context = LocalContext.current
+    val tripState by TripManager.state.collectAsStateWithLifecycle()
     var showFarewellMessage by remember { mutableStateOf(false) }
     var recommendations by remember { mutableStateOf<List<RecommendationResponse>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
@@ -70,9 +77,15 @@ fun TripCompletionScreen(
         isLoading = false
     }
 
-    val nearbyVisits = recommendations.filter { it.type == "monument" }
-    val nearbyStays = recommendations.filter { it.type == "hotel" }
-    val nearbyRestaurants = recommendations.filter { it.type == "restaurant" }
+    val userLat = tripState.lastLat.takeIf { it != 0.0 }
+    val userLng = tripState.lastLng.takeIf { it != 0.0 }
+    val withCoords = recommendations.filter { it.latitude != null && it.longitude != null }
+    val sortedByDist = if (userLat != null && userLng != null) {
+        withCoords.sortedBy { haversineDistance(userLat, userLng, it.latitude!!, it.longitude!!) }
+    } else withCoords
+    val nearbyVisits = sortedByDist.filter { it.type == "monument" }.take(5)
+    val nearbyStays = sortedByDist.filter { it.type == "hotel" }.take(5)
+    val nearbyRestaurants = sortedByDist.filter { it.type == "restaurant" }.take(5)
 
     Box(Modifier.fillMaxSize()) {
         AnimatedOrbBackground(Modifier.fillMaxSize())
@@ -147,27 +160,30 @@ fun TripCompletionScreen(
                     } else {
                         if (nearbyVisits.isNotEmpty()) {
                             RecommendationSection(
-                                title = "🏛️ Nearby Visits",
-                                subtitle = "Other heritage sites nearby",
-                                recommendations = nearbyVisits
+                                title = "🏛️ Spots to Visit",
+                                subtitle = "Top 5 nearest heritage sites",
+                                recommendations = nearbyVisits,
+                                context = context
                             )
                             Spacer(Modifier.height(24.dp))
                         }
 
                         if (nearbyStays.isNotEmpty()) {
                             RecommendationSection(
-                                title = "🏨 Nearby Stays",
-                                subtitle = "Hotels and guest houses",
-                                recommendations = nearbyStays
+                                title = "🏨 Stays",
+                                subtitle = "Top 5 nearest hotels & guest houses",
+                                recommendations = nearbyStays,
+                                context = context
                             )
                             Spacer(Modifier.height(24.dp))
                         }
 
                         if (nearbyRestaurants.isNotEmpty()) {
                             RecommendationSection(
-                                title = "🍽️ Nearby Restaurants",
-                                subtitle = "Places to eat",
-                                recommendations = nearbyRestaurants
+                                title = "🍽️ Restaurants",
+                                subtitle = "Top 5 nearest places to eat",
+                                recommendations = nearbyRestaurants,
+                                context = context
                             )
                         }
 
@@ -320,7 +336,8 @@ private fun StatItem(
 private fun RecommendationSection(
     title: String,
     subtitle: String,
-    recommendations: List<RecommendationResponse>
+    recommendations: List<RecommendationResponse>,
+    context: android.content.Context
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(horizontal = 24.dp)) {
@@ -344,25 +361,41 @@ private fun RecommendationSection(
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             items(recommendations) { recommendation ->
-                RecommendationCard(recommendation = recommendation)
+                RecommendationCard(recommendation = recommendation, context = context)
             }
         }
     }
 }
 
 @Composable
-private fun RecommendationCard(recommendation: RecommendationResponse) {
+private fun RecommendationCard(
+    recommendation: RecommendationResponse,
+    context: android.content.Context
+) {
     val icon = when (recommendation.type) {
         "monument" -> "🏛️"
         "hotel" -> "🏨"
         "restaurant" -> "🍽️"
         else -> "📍"
     }
+    val lat = recommendation.latitude ?: return
+    val lng = recommendation.longitude ?: return
 
     GlassCard(
         modifier = Modifier
             .width(160.dp)
-            .clickable { },
+            .clickable {
+                val uri = Uri.parse("google.navigation:q=$lat,$lng")
+                val intent = Intent(Intent.ACTION_VIEW, uri).apply {
+                    setPackage("com.google.android.apps.maps")
+                }
+                try {
+                    context.startActivity(intent)
+                } catch (_: Exception) {
+                    context.startActivity(Intent(Intent.ACTION_VIEW,
+                        Uri.parse("https://www.google.com/maps/dir/?api=1&destination=$lat,$lng")))
+                }
+            },
         cornerRadius = 16.dp
     ) {
         Column {
