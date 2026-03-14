@@ -3,8 +3,13 @@
 
 package com.example.humsafar.navigation
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.navigation.NavType
 import androidx.navigation.compose.*
 import androidx.navigation.navArgument
@@ -40,8 +45,37 @@ fun AppNavigation() {
                 onNavigateToProfile = { navController.navigate("profile") },
                 onNavigateToQrScan  = { siteId ->
                     navController.navigate(qrScanRoute("Site", siteId.toString()))
+                },
+                onNavigateToSiteInfo = { siteId, siteName ->
+                    navController.navigate(siteInfoRoute(siteId, siteName))
                 }
             )
+        }
+
+        composable(
+            route = "site_info/{siteId}/{siteName}",
+            arguments = listOf(
+                navArgument("siteId") { type = NavType.IntType },
+                navArgument("siteName") { type = NavType.StringType }
+            )
+        ) { backStack ->
+            val siteId = backStack.arguments?.getInt("siteId") ?: 0
+            val siteName = backStack.arguments?.getString("siteName")
+                ?.let { URLDecoder.decode(it, "UTF-8") } ?: "Heritage Site"
+            val site = com.example.humsafar.data.HeritageRepository.sites.find { it.id == siteId.toString() }
+            if (site != null) {
+                SiteInfoScreen(
+                    siteId = siteId,
+                    siteName = siteName,
+                    latitude = site.latitude,
+                    longitude = site.longitude,
+                    onBack = { navController.popBackStack() }
+                )
+            } else {
+                Box(modifier = androidx.compose.ui.Modifier.fillMaxSize()) {
+                    androidx.compose.material3.Text("Site not found")
+                }
+            }
         }
 
         composable(
@@ -227,4 +261,9 @@ fun directionsRoute(siteId: Int, siteName: String): String {
 fun tripCompletionRoute(siteId: Int, siteName: String, visitedCount: Int, totalCount: Int): String {
     val encoded = URLEncoder.encode(siteName, "UTF-8")
     return "trip_completion/$siteId/$encoded/$visitedCount/$totalCount"
+}
+
+fun siteInfoRoute(siteId: Int, siteName: String): String {
+    val encoded = URLEncoder.encode(siteName, "UTF-8")
+    return "site_info/$siteId/$encoded"
 }

@@ -37,7 +37,7 @@ class GeofenceHandlerService : Service() {
             .find { it.id == siteId }?.name ?: "Heritage Site"
 
         // startForeground() is the FIRST thing we do — no exceptions.
-        startForeground(GeofenceConstants.NOTIFICATION_ID, buildNotification(siteName))
+        startForeground(GeofenceConstants.NOTIFICATION_ID, buildNotification(siteId, siteName))
 
         when (intent?.action) {
             ACTION_SITE_ENTERED -> {
@@ -64,21 +64,24 @@ class GeofenceHandlerService : Service() {
      * Tapping it opens MainActivity with a flag so you can navigate to the
      * chatbot or show a site detail screen.
      */
-    private fun buildNotification(siteName: String): Notification {
+    private fun buildNotification(siteId: String, siteName: String): Notification {
         // createNotificationChannel() is idempotent — safe to call every time.
         // On API < 26 it is a no-op.
         createNotificationChannel()
 
-        // Tapping the notification deep-links back into MainActivity.
-        // FLAG_IMMUTABLE is correct here: we do NOT need the system to mutate
-        // this PendingIntent (contrast with the geofence PendingIntent which uses FLAG_MUTABLE).
+        // Tapping the notification brings the app to the foreground in its current state.
+        // REORDER_TO_FRONT: use existing task if app is in background (don't reset to login).
+        // SINGLE_TOP: reuse MainActivity if it's already on top.
+        // Avoid CLEAR_TOP which can reset navigation stack.
         val tapPendingIntent = PendingIntent.getActivity(
             this,
             0,
             Intent(this, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP
                 putExtra(EXTRA_FROM_GEOFENCE, true)
-                putExtra(EXTRA_SITE_ID, siteName)
+                putExtra(EXTRA_SITE_ID, siteId)
             },
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE

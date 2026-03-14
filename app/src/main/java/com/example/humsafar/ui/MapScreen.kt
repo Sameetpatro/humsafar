@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material3.*
@@ -45,7 +46,11 @@ import com.example.humsafar.ui.components.*
 import com.example.humsafar.ui.theme.*
 import com.example.humsafar.utils.haversineDistance
 import com.google.accompanist.permissions.*
+import com.example.humsafar.network.WeatherService
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.maplibre.android.MapLibre
+import org.maplibre.android.annotations.Marker
 import org.maplibre.android.annotations.MarkerOptions
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
@@ -117,6 +122,7 @@ fun MapContent(
     var sortedSites     by remember { mutableStateOf<List<Pair<HeritageSite, Double>>>(emptyList()) }
     var mapLibreMap     by remember { mutableStateOf<MapLibreMap?>(null) }
     var userMarkerAdded by remember { mutableStateOf(false) }
+    var tappedSite      by remember { mutableStateOf<HeritageSite?>(null) }
 
     val mapView         = remember { MapLibre.getInstance(context); MapView(context) }
     val locationManager = remember { HumsafarLocationManager(context) }
@@ -184,7 +190,17 @@ fun MapContent(
                 mapLibreMap = map
                 map.setStyle(MAP_STYLE) {
                     HeritageRepository.sites.forEach { site ->
-                        map.addMarker(MarkerOptions().position(LatLng(site.latitude, site.longitude)).title(site.name))
+                        map.addMarker(
+                            MarkerOptions()
+                                .position(LatLng(site.latitude, site.longitude))
+                                .title(site.name)
+                                .snippet(site.id)
+                        )
+                    }
+                    map.setOnMarkerClickListener { marker ->
+                        val site = HeritageRepository.sites.find { it.id == marker.snippet }
+                        if (site != null) tappedSite = site
+                        true
                     }
                     userLat?.let { lat -> userLng?.let { lng ->
                         map.moveCamera(CameraUpdateFactory.newLatLngZoom(LatLng(lat, lng), 14.0))
@@ -248,12 +264,24 @@ fun MapContent(
         }
 
         BottomGlassPanel(
-            insideSite         = insideSite,
-            sortedSites        = sortedSites,
-            context            = context,
-            onNavigateToDetail = onNavigateToDetail,
-            modifier           = Modifier.align(Alignment.BottomCenter)
+            insideSite          = insideSite,
+            sortedSites         = sortedSites,
+            context             = context,
+            onNavigateToDetail  = onNavigateToDetail,
+            onNavigateToSiteInfo = onNavigateToSiteInfo,
+            modifier            = Modifier.align(Alignment.BottomCenter)
         )
+
+        tappedSite?.let { site ->
+            SiteMarkerBottomSheet(
+                site = site,
+                onDismiss = { tappedSite = null },
+                onInfo = {
+                    tappedSite = null
+                    onNavigateToSiteInfo(site.id.toIntOrNull() ?: 0, site.name)
+                }
+            )
+        }
     }
 }
 
@@ -301,11 +329,12 @@ private fun QrScanButton(onClick: () -> Unit) {
 
 @Composable
 private fun BottomGlassPanel(
-    insideSite:         HeritageSite?,
-    sortedSites:        List<Pair<HeritageSite, Double>>,
-    context:            android.content.Context,
-    onNavigateToDetail: (String, String) -> Unit,
-    modifier:           Modifier = Modifier
+    insideSite:          HeritageSite?,
+    sortedSites:         List<Pair<HeritageSite, Double>>,
+    context:             android.content.Context,
+    onNavigateToDetail:  (String, String) -> Unit,
+    onNavigateToSiteInfo: (Int, String) -> Unit = { _, _ -> },
+    modifier:            Modifier = Modifier
 ) {
     var showNearby by remember { mutableStateOf(false) }
     LaunchedEffect(insideSite) { showNearby = false }
@@ -372,7 +401,7 @@ private fun BottomGlassPanel(
                     } else {
                         LazyColumn(modifier = Modifier.heightIn(max = 220.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             items(sortedSites.filter { (s, _) -> s.id != insideSite.id }) { (site, dist) ->
-                                SiteDistanceRow(site, dist, context)
+                                SiteDistanceRow(site, dist, context, onNavigateToSiteInfo)
                             }
                         }
                     }
@@ -391,7 +420,87 @@ private fun BottomGlassPanel(
                     }
                 } else {
                     LazyColumn(modifier = Modifier.heightIn(max = 240.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(sortedSites) { (site, dist) -> SiteDistanceRow(site, dist, context) }
+                        items(sortedSites) { (site, dist) ->
+                            SiteDistanceRow(site, dist, context, onNavigateToSiteInfo)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SiteMarkerBottomSheet(
+    site: HeritageSite,
+    onDismiss: () -> Unit,
+    onInfo: () -> Unit
+) {
+    var weather by remember { mutableStateOf<WeatherService.WeatherResult?>(null) }
+    var weatherLoading by remember { mutableStateOf(true) }
+
+    LaunchedEffect(site) {
+        weatherLoading = true
+        weather = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            WeatherService.fetchWeather(site.latitude, site.longitude)
+        }
+        weatherLoading = false
+    }
+
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = Color(0xFF050D1A),
+        contentColor = TextPrimary
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 32.dp)
+        ) {
+            Text(site.name, color = TextPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(12.dp))
+            if (weatherLoading) {
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = AccentYellow, modifier = Modifier.size(24.dp))
+                }
+            } else if (weather != null) {
+                val w = weather!!
+                Text("${w.tempC.toInt()}°C • ${w.description}", color = TextSecondary, fontSize = 14.sp)
+                val suggestions = WeatherService.weatherSuggestions(w.tempC, w.weatherCode)
+                if (suggestions.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(suggestions.joinToString(" • "), color = AccentYellow, fontSize = 12.sp)
+                }
+            }
+            Spacer(Modifier.height(20.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(GlassWhite15)
+                        .border(0.5.dp, GlassBorder, RoundedCornerShape(12.dp))
+                        .clickable(onClick = onDismiss)
+                        .padding(vertical = 14.dp),
+                    contentAlignment = Alignment.Center
+                ) { Text("Close", color = TextSecondary, fontSize = 15.sp) }
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(AccentYellow)
+                        .clickable(onClick = onInfo)
+                        .padding(vertical = 14.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Info, null, tint = DeepNavy, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Info", color = DeepNavy, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
@@ -400,19 +509,41 @@ private fun BottomGlassPanel(
 }
 
 @Composable
-private fun SiteDistanceRow(site: HeritageSite, dist: Double, context: android.content.Context) {
+private fun SiteDistanceRow(
+    site: HeritageSite,
+    dist: Double,
+    context: android.content.Context,
+    onNavigateToSiteInfo: (Int, String) -> Unit
+) {
     GlassCard(Modifier.fillMaxWidth(), cornerRadius = 16.dp, tint = GlassWhite10) {
         Row(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(site.name, color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                 Text(if (dist >= 1000) "${"%.1f".format(dist / 1000)} km away" else "${dist.toInt()} m away", color = TextTertiary, fontSize = 12.sp)
             }
-            Box(
-                modifier = Modifier.clip(RoundedCornerShape(12.dp)).background(GlassWhite15)
-                    .border(0.5.dp, GlassBorder, RoundedCornerShape(12.dp))
-                    .clickable { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("geo:${site.latitude},${site.longitude}"))) }
-                    .padding(horizontal = 14.dp, vertical = 8.dp)
-            ) { Text("Maps", color = AccentYellow, fontSize = 13.sp, fontWeight = FontWeight.Medium) }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Box(
+                    modifier = Modifier.clip(RoundedCornerShape(12.dp)).background(GlassWhite15)
+                        .border(0.5.dp, GlassBorder, RoundedCornerShape(12.dp))
+                        .clickable {
+                            onNavigateToSiteInfo(site.id.toIntOrNull() ?: 0, site.name)
+                        }
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Info, null, tint = AccentYellow, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Info", color = AccentYellow, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                    }
+                }
+                Box(
+                    modifier = Modifier.clip(RoundedCornerShape(12.dp)).background(GlassWhite15)
+                        .border(0.5.dp, GlassBorder, RoundedCornerShape(12.dp))
+                        .clickable { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("geo:${site.latitude},${site.longitude}"))) }
+                        .padding(horizontal = 14.dp, vertical = 8.dp)
+                ) { Text("Maps", color = AccentYellow, fontSize = 13.sp, fontWeight = FontWeight.Medium) }
+            }
         }
     }
 }
