@@ -11,7 +11,7 @@ class HumsafarLocationManager(context: Context) {
 
     private val locationRequest = LocationRequest.Builder(
         Priority.PRIORITY_HIGH_ACCURACY,
-        3000L // update every 3 seconds
+        3000L
     ).apply {
         setMinUpdateIntervalMillis(1500L)
         setWaitForAccurateLocation(false)

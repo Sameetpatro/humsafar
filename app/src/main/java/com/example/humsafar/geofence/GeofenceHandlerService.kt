@@ -91,7 +91,7 @@ class GeofenceHandlerService : Service() {
 
         return NotificationCompat.Builder(this, GeofenceConstants.NOTIFICATION_CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle("📍 Heritage Site Nearby")
+            .setContentTitle("Heritage Site Nearby")
             .setContentText("You are at $siteName — tap to explore!")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_LOCATION_SHARING)

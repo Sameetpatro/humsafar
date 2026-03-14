@@ -361,10 +361,9 @@ private fun MapLegend(modifier: Modifier = Modifier) {
             modifier = Modifier.padding(10.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            LegendItem(color = KingNodeColor, label = "King Node")
+            LegendItem(color = KingNodeColor, label = "Entry Gate")
             LegendItem(color = VisitedNodeColor, label = "Visited")
             LegendItem(color = UnvisitedNodeColor, label = "Not Visited")
-            LegendItem(color = UserLocationColor, label = "You")
         }
     }
 }

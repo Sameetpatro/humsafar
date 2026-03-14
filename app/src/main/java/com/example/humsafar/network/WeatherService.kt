@@ -23,6 +23,15 @@ object WeatherService {
         val description: String
     )
 
+    /** Daily forecast from Open-Meteo (temperature_2m_max, temperature_2m_min, weather_code) */
+    data class ForecastDay(
+        val date: String,
+        val tempMax: Double,
+        val tempMin: Double,
+        val weatherCode: Int,
+        val description: String
+    )
+
     suspend fun fetchWeather(latitude: Double, longitude: Double): WeatherResult? = withContext(Dispatchers.IO) {
         try {
             val url = "https://api.open-meteo.com/v1/forecast?latitude=$latitude&longitude=$longitude&current=temperature_2m,weather_code"
@@ -40,7 +49,35 @@ object WeatherService {
         }
     }
 
-    private fun weatherCodeDescription(code: Int): String = when {
+    /** Fetches 7-day daily forecast from Open-Meteo */
+    suspend fun fetchForecast(latitude: Double, longitude: Double): List<ForecastDay> = withContext(Dispatchers.IO) {
+        try {
+            val url = "https://api.open-meteo.com/v1/forecast?latitude=$latitude&longitude=$longitude&daily=temperature_2m_max,temperature_2m_min,weather_code&forecast_days=7"
+            val req = Request.Builder().url(url).build()
+            val resp = client.newCall(req).execute()
+            if (!resp.isSuccessful) return@withContext emptyList()
+            val body = resp.body?.string() ?: return@withContext emptyList()
+            val json = JSONObject(body)
+            val daily = json.getJSONObject("daily")
+            val times = daily.getJSONArray("time")
+            val maxTemps = daily.getJSONArray("temperature_2m_max")
+            val minTemps = daily.getJSONArray("temperature_2m_min")
+            val codes = daily.getJSONArray("weather_code")
+            val list = mutableListOf<ForecastDay>()
+            for (i in 0 until times.length().coerceAtMost(7)) {
+                val date = times.getString(i)
+                val max = maxTemps.getDouble(i)
+                val min = minTemps.getDouble(i)
+                val code = codes.getInt(i)
+                list.add(ForecastDay(date, max, min, code, weatherCodeDescription(code)))
+            }
+            list
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    fun weatherCodeDescription(code: Int): String = when {
         code == 0 -> "Clear sky"
         code in 1..3 -> "Partly cloudy"
         code in 45..48 -> "Foggy"
