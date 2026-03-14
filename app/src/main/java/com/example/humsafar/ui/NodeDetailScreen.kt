@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -51,6 +52,8 @@ fun NodeDetailScreen(
     onBack:            () -> Unit,
     onNavigateToQr:    (Long) -> Unit,
     onNavigateToVoice: (String, String) -> Unit,
+    onNavigateToDirections: ((Int, String) -> Unit)? = null,
+    onNavigateToTripCompletion: ((Int, String, Int, Int) -> Unit)? = null,
     viewModel:         NodeDetailViewModel = viewModel()
 ) {
     val context   = LocalContext.current
@@ -78,12 +81,10 @@ fun NodeDetailScreen(
                 val site     = s.site
                 val allNodes = s.allNodes
 
-                // Build image list: prefer node_images table, fall back to legacy imageUrl
                 val nodeImages = remember(node.images, node.imageUrl) {
                     if (node.images.isNotEmpty()) {
                         node.images.sortedBy { it.displayOrder }
                     } else if (!node.imageUrl.isNullOrBlank()) {
-                        // Legacy single-image fallback
                         listOf(NodeImage(id = 0, imageUrl = node.imageUrl!!, displayOrder = 0))
                     } else {
                         emptyList()
@@ -97,7 +98,6 @@ fun NodeDetailScreen(
                                 .weight(1f)
                                 .verticalScroll(rememberScrollState())
                         ) {
-                            // ── Image gallery hero ──────────────────────────
                             NodeImageGallery(
                                 nodeName   = node.name,
                                 images     = nodeImages,
@@ -107,14 +107,11 @@ fun NodeDetailScreen(
                             Column(Modifier.padding(horizontal = 20.dp)) {
                                 Spacer(Modifier.height(16.dp))
 
-                                // Action chips row
-                                // FIXED: pass siteId (not node.id) to both voice and chatbot
-                                NodeChipsRow(
-                                    node    = node,
-                                    siteId  = siteId,
+                                NodeActionsGrid(
+                                    node = node,
+                                    siteId = siteId,
                                     context = context,
-                                    onVoice = onNavigateToVoice,
-                                    onQr    = onNavigateToQr
+                                    onQr = onNavigateToQr
                                 )
 
                                 Spacer(Modifier.height(20.dp))
@@ -141,48 +138,41 @@ fun NodeDetailScreen(
                                     Spacer(Modifier.height(14.dp))
                                 }
 
-                                if (tripState.isTripActive) {
-                                    Box(
-                                        Modifier.fillMaxWidth()
-                                            .clip(RoundedCornerShape(14.dp))
-                                            .background(Color(0x22FF4444))
-                                            .border(1.dp, Color(0x55FF4444), RoundedCornerShape(14.dp))
-                                            .clickable { viewModel.endTrip() }
-                                            .padding(16.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text("🚪 End Trip", color = Color(0xFFFF6B6B), fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                                    }
-                                }
-
-                                // Bottom padding to clear sticky video bar
-                                Spacer(Modifier.height(if (node.videoUrl != null) 96.dp else 24.dp))
+                                Spacer(Modifier.height(100.dp))
                             }
                         }
                     }
 
-                    // ── Floating action buttons ──────────────────────────────
-                    Row(
+                    FloatingAskShreeButton(
+                        node = node,
+                        siteId = siteId,
+                        context = context,
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
                             .navigationBarsPadding()
-                            .padding(end = 16.dp, bottom = if (node.videoUrl != null) 100.dp else 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        FabCircle(Color(0xFF1A1030), Color(0xFF8A2BE2)) {
-                            Icon(Icons.Default.Mic, null, tint = Color(0xFFCCA8FF), modifier = Modifier.size(22.dp))
-                        }
-                        FabCircle(Color(0xFF001830), AccentYellow) {
-                            Icon(Icons.Default.Chat, null, tint = AccentYellow, modifier = Modifier.size(20.dp))
-                        }
-                    }
+                            .padding(end = 16.dp, bottom = 16.dp)
+                    )
 
-                    // ── Sticky "Watch Video" bar ─────────────────────────────
-                    if (!node.videoUrl.isNullOrBlank()) {
-                        WatchVideoBar(
-                            videoUrl = node.videoUrl!!,
-                            label    = "Watch Node Video",
-                            modifier = Modifier.align(Alignment.BottomCenter)
+                    if (tripState.isTripActive) {
+                        com.example.humsafar.ui.components.TripInfoButton(
+                            siteName = tripState.siteName,
+                            visitedCount = tripState.visitedNodeIds.size,
+                            totalCount = allNodes.size,
+                            onDirectionsClick = {
+                                onNavigateToDirections?.invoke(siteId, tripState.siteName)
+                            },
+                            onEndTripClick = {
+                                val tripSiteId = tripState.siteId
+                                val visitedCount = tripState.visitedNodeIds.size
+                                val totalCount = allNodes.size
+                                val siteName = tripState.siteName
+                                viewModel.endTrip()
+                                onNavigateToTripCompletion?.invoke(tripSiteId, siteName, visitedCount, totalCount)
+                            },
+                            modifier = Modifier
+                                .align(Alignment.BottomStart)
+                                .navigationBarsPadding()
+                                .padding(start = 16.dp, bottom = 16.dp)
                         )
                     }
                 }
@@ -450,38 +440,206 @@ private fun InfoCard(title: String, body: String) {
 }
 
 @Composable
-private fun NodeChipsRow(
+private fun NodeActionsGrid(
     node:    Node,
     siteId:  Int,
     context: android.content.Context,
-    onVoice: (String, String) -> Unit,
     onQr:    (Long) -> Unit
 ) {
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        item {
-            Chip("💬 Ask Shree") {
-                context.startActivity(
-                    Intent(context, ChatbotActivity::class.java).apply {
-                        putExtra("SITE_NAME", node.name)
-                        // FIX 2: was node.id.toString() — wrong, that is the NODE primary key
-                        // FIXED:  siteId.toString() — correct heritage_sites.id
-                        putExtra("SITE_ID",  siteId.toString())
-                        // FIX 3: NODE_ID was missing entirely — chatbot had no node context
-                        // FIXED:  now passes node.id so chatbot loads node-level prompt
-                        putExtra("NODE_ID",  node.id.toString())
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            NodeActionCard(
+                icon = "🎧",
+                title = "Hear This Page",
+                subtitle = "Audio guide",
+                gradientColors = listOf(Color(0xFF1A0050), Color(0xFF0D0030)),
+                borderColor = Color(0xFF9B30FF),
+                modifier = Modifier.weight(1f),
+                onClick = {
+                    android.widget.Toast.makeText(
+                        context,
+                        "Feature coming soon",
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
+                }
+            )
+            
+            NodeActionCard(
+                icon = "🎬",
+                title = "Watch Video",
+                subtitle = "Visual tour",
+                gradientColors = listOf(Color(0xFF002A4D), Color(0xFF001830)),
+                borderColor = Color(0xFF2196F3),
+                modifier = Modifier.weight(1f),
+                onClick = {
+                    if (!node.videoUrl.isNullOrBlank()) {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(node.videoUrl)))
+                    } else {
+                        android.widget.Toast.makeText(
+                            context,
+                            "No video available for this node",
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
                     }
+                }
+            )
+        }
+        
+        NodeActionCard(
+            icon = "📷",
+            title = "Scan Next QR",
+            subtitle = "Continue your journey to the next node",
+            gradientColors = listOf(Color(0xFF0D2825), Color(0xFF091F1E)),
+            borderColor = Color(0xFF2DD4BF),
+            modifier = Modifier.fillMaxWidth(),
+            onClick = { onQr(siteId.toLong()) }
+        )
+    }
+}
+
+@Composable
+private fun NodeActionCard(
+    icon: String,
+    title: String,
+    subtitle: String,
+    gradientColors: List<Color>,
+    borderColor: Color,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "action_card")
+    val glowAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.3f,
+        targetValue = 0.6f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1500, easing = EaseInOutSine),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "glow"
+    )
+
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(Brush.linearGradient(gradientColors))
+            .border(
+                1.dp,
+                borderColor.copy(alpha = glowAlpha),
+                RoundedCornerShape(16.dp)
+            )
+            .clickable { onClick() }
+            .padding(16.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(icon, fontSize = 28.sp)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    title,
+                    color = TextPrimary,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    subtitle,
+                    color = TextTertiary,
+                    fontSize = 11.sp
+                )
+            }
+            Icon(
+                Icons.Default.ChevronRight,
+                null,
+                tint = borderColor.copy(alpha = 0.7f),
+                modifier = Modifier.size(20.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun FloatingAskShreeButton(
+    node: Node,
+    siteId: Int,
+    context: android.content.Context,
+    modifier: Modifier = Modifier
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "ask_shree")
+    val pulseScale by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.05f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000, easing = EaseInOutSine),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulse"
+    )
+    val glowAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.4f,
+        targetValue = 0.8f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200, easing = EaseInOutSine),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "glow"
+    )
+
+    Box(modifier = modifier) {
+        Box(
+            modifier = Modifier
+                .scale(pulseScale)
+                .size(68.dp)
+                .clip(CircleShape)
+                .background(
+                    Brush.radialGradient(
+                        listOf(
+                            AccentYellow.copy(alpha = glowAlpha * 0.4f),
+                            Color.Transparent
+                        )
+                    )
+                )
+        )
+        
+        Box(
+            modifier = Modifier
+                .size(60.dp)
+                .clip(CircleShape)
+                .background(
+                    Brush.linearGradient(listOf(Color(0xFFFFD54F), Color(0xFFFFC107)))
+                )
+                .border(
+                    2.dp,
+                    Brush.linearGradient(listOf(Color(0x66FFFFFF), Color(0x22FFFFFF))),
+                    CircleShape
+                )
+                .clickable {
+                    context.startActivity(
+                        Intent(context, ChatbotActivity::class.java).apply {
+                            putExtra("SITE_NAME", node.name)
+                            putExtra("SITE_ID", siteId.toString())
+                            putExtra("NODE_ID", node.id.toString())
+                        }
+                    )
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(
+                    Icons.AutoMirrored.Filled.Chat,
+                    null,
+                    tint = DeepNavy,
+                    modifier = Modifier.size(22.dp)
+                )
+                Text(
+                    "Ask",
+                    color = DeepNavy,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold
                 )
             }
         }
-        item {
-            // FIX 1: was onVoice(node.name, node.id.toString()) — wrong, node.id is NOT the site id
-            // FIXED:  onVoice(node.name, siteId.toString()) — siteId is the heritage_sites.id PK
-            Chip("🎙️ Hear It") { onVoice(node.name, siteId.toString()) }
-        }
-        item {
-            Chip("📷 Scan Next QR") { onQr(siteId.toLong()) }
-        }
-
     }
 }
 

@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -334,6 +335,7 @@ fun ChatbotScreen(
 
             // ── Input bar ─────────────────────────────────────────────────
             val canSend = inputText.isNotBlank()
+            val context = androidx.compose.ui.platform.LocalContext.current
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -347,6 +349,34 @@ fun ChatbotScreen(
                     .navigationBarsPadding()
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Voice button - opens VoiceChatActivity
+                    Box(
+                        modifier = Modifier
+                            .size(46.dp)
+                            .clip(CircleShape)
+                            .background(
+                                Brush.linearGradient(listOf(Color(0xFF8A2BE2), Color(0xFF6B1FA8)))
+                            )
+                            .border(0.5.dp, Color(0x44FFFFFF), CircleShape)
+                            .clickable {
+                                context.startActivity(
+                                    android.content.Intent(context, VoiceChatActivity::class.java).apply {
+                                        putExtra(VoiceChatExtras.SITE_NAME, siteName)
+                                        putExtra(VoiceChatExtras.SITE_ID, siteId)
+                                        nodeId?.let { putExtra(VoiceChatExtras.NODE_ID, it) }
+                                    }
+                                )
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.Mic,
+                            contentDescription = "Voice Chat",
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Spacer(Modifier.width(10.dp))
                     Box(
                         modifier = Modifier
                             .weight(1f)

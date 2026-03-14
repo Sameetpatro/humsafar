@@ -10,6 +10,8 @@ import androidx.navigation.compose.*
 import androidx.navigation.navArgument
 import com.example.humsafar.data.TripManager
 import com.example.humsafar.ui.*
+import java.net.URLDecoder
+import java.net.URLEncoder
 
 @Composable
 fun AppNavigation() {
@@ -78,10 +80,68 @@ fun AppNavigation() {
                 siteId            = siteId,
                 isKing            = isKing,
                 onBack            = { navController.popBackStack() },
-                onNavigateToQr    = { id -> navController.navigate(qrScanRoute("Site", id.toString())) },
-                // FIXED: pass siteId as siteId, nodeId as nodeId — not node.id as siteId
-                onNavigateToVoice = { name, _ ->
+                onNavigateToQr    = { id: Long -> navController.navigate(qrScanRoute("Site", id.toString())) },
+                onNavigateToVoice = { name: String, _: String ->
                     navController.navigate(voiceChatRoute(name, siteId.toString(), nodeId.toString()))
+                },
+                onNavigateToDirections = { dirSiteId: Int, dirSiteName: String ->
+                    navController.navigate(directionsRoute(dirSiteId, dirSiteName))
+                },
+                onNavigateToTripCompletion = { cSiteId: Int, cSiteName: String, visited: Int, total: Int ->
+                    navController.navigate(tripCompletionRoute(cSiteId, cSiteName, visited, total)) {
+                        popUpTo("home") { inclusive = false }
+                    }
+                }
+            )
+        }
+
+        // ── Directions screen ─────────────────────────────────────────────
+        composable(
+            route     = "directions/{siteId}/{siteName}",
+            arguments = listOf(
+                navArgument("siteId") { type = NavType.IntType },
+                navArgument("siteName") { type = NavType.StringType }
+            )
+        ) { backStack ->
+            val siteId = backStack.arguments?.getInt("siteId") ?: 0
+            val siteName = backStack.arguments?.getString("siteName")
+                ?.let { URLDecoder.decode(it, "UTF-8") } ?: "Heritage Site"
+            DirectionsScreen(
+                siteId   = siteId,
+                siteName = siteName,
+                onBack   = { navController.popBackStack() }
+            )
+        }
+
+        // ── Trip completion screen ────────────────────────────────────────
+        composable(
+            route     = "trip_completion/{siteId}/{siteName}/{visitedCount}/{totalCount}",
+            arguments = listOf(
+                navArgument("siteId") { type = NavType.IntType },
+                navArgument("siteName") { type = NavType.StringType },
+                navArgument("visitedCount") { type = NavType.IntType },
+                navArgument("totalCount") { type = NavType.IntType }
+            )
+        ) { backStack ->
+            val siteId = backStack.arguments?.getInt("siteId") ?: 0
+            val siteName = backStack.arguments?.getString("siteName")
+                ?.let { URLDecoder.decode(it, "UTF-8") } ?: "Heritage Site"
+            val visitedCount = backStack.arguments?.getInt("visitedCount") ?: 0
+            val totalCount = backStack.arguments?.getInt("totalCount") ?: 0
+            TripCompletionScreen(
+                siteId = siteId,
+                siteName = siteName,
+                visitedNodesCount = visitedCount,
+                totalNodesCount = totalCount,
+                onExploreRecommendations = {
+                    navController.navigate("home") {
+                        popUpTo("home") { inclusive = true }
+                    }
+                },
+                onSkip = {
+                    navController.navigate("home") {
+                        popUpTo("home") { inclusive = true }
+                    }
                 }
             )
         }
@@ -158,3 +218,13 @@ fun qrScanRoute(siteName: String, siteId: String): String {
 
 fun nodeDetailRoute(nodeId: Int, siteId: Int, isKing: Boolean): String =
     "node/$nodeId/$siteId/$isKing"
+
+fun directionsRoute(siteId: Int, siteName: String): String {
+    val encoded = URLEncoder.encode(siteName, "UTF-8")
+    return "directions/$siteId/$encoded"
+}
+
+fun tripCompletionRoute(siteId: Int, siteName: String, visitedCount: Int, totalCount: Int): String {
+    val encoded = URLEncoder.encode(siteName, "UTF-8")
+    return "trip_completion/$siteId/$encoded/$visitedCount/$totalCount"
+}

@@ -58,6 +58,12 @@
             android:label="Heritage Guide"
             android:theme="@style/Theme.Humsafar" />
 
+        <activity
+            android:name=".VoiceChatActivity"
+            android:exported="false"
+            android:label="Voice Guide"
+            android:theme="@style/Theme.Humsafar" />
+
         <receiver
             android:name=".geofence.GeofenceTransitionReceiver"
             android:enabled="true"

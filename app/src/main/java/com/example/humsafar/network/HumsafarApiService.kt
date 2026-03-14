@@ -31,6 +31,12 @@ interface HumsafarApiService {
         @Path("qr_value") qrValue: String
     ): Response<QrScanResult>
 
+    @GET("sites/{site_id}/recommendations")
+    suspend fun getRecommendations(
+        @Path("site_id") siteId: Int,
+        @Query("type") type: String? = null
+    ): Response<List<RecommendationResponse>>
+
     // ── Trips ─────────────────────────────────────────────────────────────
 
     @POST("trips/start")

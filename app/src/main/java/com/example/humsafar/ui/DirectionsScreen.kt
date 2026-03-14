@@ -1,0 +1,500 @@
+package com.example.humsafar.ui
+
+import android.os.Bundle
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.*
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.*
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.*
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.*
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.humsafar.BuildConfig
+import com.example.humsafar.data.TripManager
+import com.example.humsafar.location.HumsafarLocationManager
+import com.example.humsafar.network.Node
+import com.example.humsafar.ui.components.AnimatedOrbBackground
+import com.example.humsafar.ui.components.GlassCard
+import com.example.humsafar.ui.theme.*
+import org.maplibre.android.MapLibre
+import org.maplibre.android.annotations.MarkerOptions
+import org.maplibre.android.camera.CameraUpdateFactory
+import org.maplibre.android.geometry.LatLng
+import org.maplibre.android.geometry.LatLngBounds
+import org.maplibre.android.maps.MapLibreMap
+import org.maplibre.android.maps.MapView
+
+private val MAP_STYLE
+    get() = "https://api.maptiler.com/maps/streets/style.json?key=${BuildConfig.MAPTILER_KEY}"
+
+private val KingNodeColor = Color(0xFFFF4444)
+private val VisitedNodeColor = Color(0xFF4ADE80)
+private val UnvisitedNodeColor = Color(0xFFFF9800)
+private val UserLocationColor = Color(0xFF2196F3)
+
+@Composable
+fun DirectionsScreen(
+    siteId: Int,
+    siteName: String,
+    onBack: () -> Unit,
+    viewModel: HeritageDetailViewModel = viewModel()
+) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val tripState by TripManager.state.collectAsStateWithLifecycle()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
+    var userLat by remember { mutableStateOf<Double?>(tripState.lastLat.takeIf { it != 0.0 }) }
+    var userLng by remember { mutableStateOf<Double?>(tripState.lastLng.takeIf { it != 0.0 }) }
+    var mapLibreMap by remember { mutableStateOf<MapLibreMap?>(null) }
+    var markersAdded by remember { mutableStateOf(false) }
+
+    val mapView = remember { MapLibre.getInstance(context); MapView(context) }
+    val locationManager = remember { HumsafarLocationManager(context) }
+
+    LaunchedEffect(siteId) {
+        viewModel.loadSite(siteId)
+    }
+
+    LaunchedEffect(Unit) {
+        locationManager.startUpdates { lat, lng ->
+            userLat = lat
+            userLng = lng
+            TripManager.updateLocation(lat, lng)
+        }
+    }
+
+    DisposableEffect(lifecycleOwner) {
+        val obs = LifecycleEventObserver { _, e ->
+            when (e) {
+                Lifecycle.Event.ON_START -> mapView.onStart()
+                Lifecycle.Event.ON_RESUME -> mapView.onResume()
+                Lifecycle.Event.ON_PAUSE -> mapView.onPause()
+                Lifecycle.Event.ON_STOP -> mapView.onStop()
+                Lifecycle.Event.ON_DESTROY -> {
+                    locationManager.stopUpdates()
+                    mapView.onDestroy()
+                }
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(obs)
+        mapView.onCreate(Bundle())
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(obs)
+            locationManager.stopUpdates()
+        }
+    }
+
+    Box(Modifier.fillMaxSize()) {
+        AnimatedOrbBackground(Modifier.fillMaxSize())
+
+        when (val s = uiState) {
+            is HeritageDetailUiState.Loading -> {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("🗺️", fontSize = 52.sp)
+                        Spacer(Modifier.height(16.dp))
+                        Text("Loading directions…", color = TextPrimary, fontSize = 16.sp)
+                    }
+                }
+            }
+
+            is HeritageDetailUiState.Ready -> {
+                val site = s.site
+                val nodes = site.nodes.sortedBy { it.sequenceOrder }
+
+                Column(Modifier.fillMaxSize()) {
+                    DirectionsTopBar(
+                        siteName = siteName,
+                        onBack = onBack
+                    )
+
+                    Box(
+                        modifier = Modifier
+                            .weight(0.55f)
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp)
+                            .clip(RoundedCornerShape(20.dp))
+                            .border(1.dp, GlassBorder, RoundedCornerShape(20.dp))
+                    ) {
+                        AndroidView(
+                            factory = { mapView },
+                            modifier = Modifier.fillMaxSize()
+                        ) { mv ->
+                            mv.getMapAsync { map ->
+                                mapLibreMap = map
+                                map.setStyle(MAP_STYLE) {
+                                    if (!markersAdded && nodes.isNotEmpty()) {
+                                        val boundsBuilder = LatLngBounds.Builder()
+
+                                        nodes.forEach { node ->
+                                            val isKing = node.isKing
+                                            val isVisited = node.id in tripState.visitedNodeIds
+                                            val position = LatLng(node.latitude, node.longitude)
+                                            boundsBuilder.include(position)
+
+                                            map.addMarker(
+                                                MarkerOptions()
+                                                    .position(position)
+                                                    .title(node.name)
+                                                    .snippet(
+                                                        when {
+                                                            isKing -> "King Node (Start/End)"
+                                                            isVisited -> "Visited"
+                                                            else -> "Not visited yet"
+                                                        }
+                                                    )
+                                            )
+                                        }
+
+                                        userLat?.let { lat ->
+                                            userLng?.let { lng ->
+                                                val userPos = LatLng(lat, lng)
+                                                boundsBuilder.include(userPos)
+                                                map.addMarker(
+                                                    MarkerOptions()
+                                                        .position(userPos)
+                                                        .title("You are here")
+                                                )
+                                            }
+                                        }
+
+                                        try {
+                                            val bounds = boundsBuilder.build()
+                                            map.moveCamera(
+                                                CameraUpdateFactory.newLatLngBounds(bounds, 80)
+                                            )
+                                        } catch (e: Exception) {
+                                            nodes.firstOrNull()?.let { firstNode ->
+                                                map.moveCamera(
+                                                    CameraUpdateFactory.newLatLngZoom(
+                                                        LatLng(firstNode.latitude, firstNode.longitude),
+                                                        16.0
+                                                    )
+                                                )
+                                            }
+                                        }
+
+                                        markersAdded = true
+                                    }
+                                }
+                            }
+                        }
+
+                        MapLegend(
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .padding(12.dp)
+                        )
+                    }
+
+                    Spacer(Modifier.height(16.dp))
+
+                    NodesProgressList(
+                        nodes = nodes,
+                        visitedIds = tripState.visitedNodeIds,
+                        currentNodeId = tripState.currentNodeId,
+                        modifier = Modifier
+                            .weight(0.45f)
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp)
+                    )
+
+                    Spacer(Modifier.height(16.dp))
+                }
+            }
+
+            is HeritageDetailUiState.Error -> {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("⚠️", fontSize = 48.sp)
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            s.message,
+                            color = Color(0xFFFF6B6B),
+                            fontSize = 14.sp,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(32.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DirectionsTopBar(
+    siteName: String,
+    onBack: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Brush.verticalGradient(listOf(Color(0xF0050D1A), Color(0xBB050D1A))))
+            .drawBehind {
+                drawLine(GlassBorder, Offset(0f, size.height), Offset(size.width, size.height), 0.5.dp.toPx())
+            }
+            .statusBarsPadding()
+            .padding(horizontal = 20.dp)
+            .padding(top = 12.dp, bottom = 16.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(GlassWhite15)
+                    .border(0.5.dp, GlassBorder, CircleShape)
+                    .clickable { onBack() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Back",
+                    tint = TextPrimary,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            Spacer(Modifier.width(14.dp))
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(Brush.linearGradient(listOf(Color(0xFF2196F3), Color(0xFF1976D2)))),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.Map, null, tint = Color.White, modifier = Modifier.size(20.dp))
+            }
+            Spacer(Modifier.width(12.dp))
+            Column {
+                Text(
+                    text = "Current Scenario",
+                    color = TextPrimary,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = siteName,
+                    color = TextTertiary,
+                    fontSize = 12.sp
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MapLegend(modifier: Modifier = Modifier) {
+    GlassCard(
+        modifier = modifier,
+        cornerRadius = 12.dp,
+        tint = Color(0xDD050D1A)
+    ) {
+        Column(
+            modifier = Modifier.padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            LegendItem(color = KingNodeColor, label = "King Node")
+            LegendItem(color = VisitedNodeColor, label = "Visited")
+            LegendItem(color = UnvisitedNodeColor, label = "Not Visited")
+            LegendItem(color = UserLocationColor, label = "You")
+        }
+    }
+}
+
+@Composable
+private fun LegendItem(color: Color, label: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            modifier = Modifier
+                .size(10.dp)
+                .clip(CircleShape)
+                .background(color)
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(label, color = TextSecondary, fontSize = 10.sp)
+    }
+}
+
+@Composable
+private fun NodesProgressList(
+    nodes: List<Node>,
+    visitedIds: List<Int>,
+    currentNodeId: Int,
+    modifier: Modifier = Modifier
+) {
+    GlassCard(modifier = modifier, cornerRadius = 20.dp) {
+        Column(Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "🗺️ Trip Progress",
+                    color = TextPrimary,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(GlassWhite15)
+                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        "${visitedIds.size}/${nodes.size} visited",
+                        color = AccentYellow,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(nodes) { node ->
+                    val isKing = node.isKing
+                    val isVisited = node.id in visitedIds
+                    val isCurrent = node.id == currentNodeId
+
+                    NodeProgressItem(
+                        node = node,
+                        isKing = isKing,
+                        isVisited = isVisited,
+                        isCurrent = isCurrent
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun NodeProgressItem(
+    node: Node,
+    isKing: Boolean,
+    isVisited: Boolean,
+    isCurrent: Boolean
+) {
+    val backgroundColor = when {
+        isCurrent -> Color(0x33FFD54F)
+        isVisited -> Color(0x224ADE80)
+        else -> GlassWhite10
+    }
+
+    val borderColor = when {
+        isCurrent -> AccentYellow.copy(alpha = 0.5f)
+        isVisited -> VisitedNodeColor.copy(alpha = 0.3f)
+        else -> GlassBorder
+    }
+
+    val nodeColor = when {
+        isKing -> KingNodeColor
+        isVisited -> VisitedNodeColor
+        else -> UnvisitedNodeColor
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(backgroundColor)
+            .border(0.7.dp, borderColor, RoundedCornerShape(12.dp))
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(32.dp)
+                .clip(CircleShape)
+                .background(nodeColor.copy(alpha = 0.2f))
+                .border(1.5.dp, nodeColor, CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            when {
+                isKing -> Text("👑", fontSize = 14.sp)
+                isVisited -> Icon(
+                    Icons.Default.Check,
+                    null,
+                    tint = VisitedNodeColor,
+                    modifier = Modifier.size(16.dp)
+                )
+                else -> Text(
+                    "${node.sequenceOrder}",
+                    color = UnvisitedNodeColor,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+
+        Spacer(Modifier.width(12.dp))
+
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    node.name,
+                    color = if (isCurrent) AccentYellow else TextPrimary,
+                    fontSize = 14.sp,
+                    fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium
+                )
+                if (isCurrent) {
+                    Spacer(Modifier.width(6.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(AccentYellow)
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text("NOW", color = DeepNavy, fontSize = 8.sp, fontWeight = FontWeight.ExtraBold)
+                    }
+                }
+            }
+            Text(
+                when {
+                    isKing -> "Start/End Point"
+                    isVisited -> "Completed"
+                    else -> "Pending"
+                },
+                color = TextTertiary,
+                fontSize = 11.sp
+            )
+        }
+
+        if (isVisited) {
+            Icon(
+                Icons.Default.CheckCircle,
+                null,
+                tint = VisitedNodeColor,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+    }
+}

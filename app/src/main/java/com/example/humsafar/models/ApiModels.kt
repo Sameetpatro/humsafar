@@ -134,3 +134,16 @@ data class NodeDetail(
     val images:        List<String>,
     val isKing:        Boolean
 )
+
+// ─────────────────────────────────────────────────────────────────────────────
+// /sites/{site_id}/recommendations  →  GET /sites/{site_id}/recommendations
+// ─────────────────────────────────────────────────────────────────────────────
+data class RecommendationResponse(
+    @SerializedName("id")          val id: Int,
+    @SerializedName("site_id")     val siteId: Int,
+    @SerializedName("type")        val type: String,      // monument, hotel, restaurant
+    @SerializedName("name")        val name: String,
+    @SerializedName("description") val description: String? = null,
+    @SerializedName("latitude")    val latitude: Double? = null,
+    @SerializedName("longitude")   val longitude: Double? = null
+)
