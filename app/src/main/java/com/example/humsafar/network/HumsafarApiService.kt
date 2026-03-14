@@ -1,6 +1,17 @@
 package com.example.humsafar.network
 
-import com.example.humsafar.models.*
+import com.example.humsafar.models.ChatRequest
+import com.example.humsafar.models.ChatResponse
+import com.example.humsafar.models.ChatHistoryItem
+import com.example.humsafar.models.NearbySite
+import com.example.humsafar.models.NodePositionResponse
+import com.example.humsafar.models.QrScanResult
+import com.example.humsafar.models.RecommendationResponse
+import com.example.humsafar.models.ReviewSubmitRequest
+import com.example.humsafar.models.ReviewSubmitResponse
+import com.example.humsafar.models.SiteDetail
+import com.example.humsafar.models.TripEndResponse
+import com.example.humsafar.models.TripStartResponse
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.logging.HttpLoggingInterceptor
@@ -53,8 +64,18 @@ interface HumsafarApiService {
 
     @POST("trips/end")
     suspend fun endTrip(
-        @Query("trip_id") tripId: Int
+        @Query("trip_id") tripId: Int,
+        @Query("visited_nodes") visitedNodes: String? = null,
+        @Query("entry_lat") entryLat: Double? = null,
+        @Query("entry_lng") entryLng: Double? = null
     ): Response<TripEndResponse>
+
+    // ── Reviews ─────────────────────────────────────────────────────────────
+
+    @POST("reviews/submit")
+    suspend fun submitReview(
+        @Body request: ReviewSubmitRequest
+    ): Response<ReviewSubmitResponse>
 
     // ── Chat ──────────────────────────────────────────────────────────────
     // Use "chat/" WITH trailing slash so OkHttp never needs to redirect.

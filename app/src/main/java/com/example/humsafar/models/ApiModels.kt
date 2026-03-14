@@ -148,6 +148,26 @@ data class NodePositionResponse(
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
+// /reviews/submit  →  POST /reviews/submit
+// ─────────────────────────────────────────────────────────────────────────────
+data class ReviewSubmitRequest(
+    @SerializedName("trip_id")       val tripId: Int,
+    @SerializedName("site_id")       val siteId: Int,
+    @SerializedName("user_id")       val userId: String,
+    @SerializedName("star_rating")   val starRating: Int,
+    @SerializedName("q1")            val q1: Int,
+    @SerializedName("q2")            val q2: Int,
+    @SerializedName("q3")            val q3: Int,
+    @SerializedName("suggestion_text") val suggestionText: String? = null
+)
+
+data class ReviewSubmitResponse(
+    @SerializedName("message")    val message: String = "",
+    @SerializedName("review_id")  val reviewId: Int = 0,
+    @SerializedName("new_rating") val newRating: Double = 0.0
+)
+
+// ─────────────────────────────────────────────────────────────────────────────
 // /sites/{site_id}/recommendations  →  GET /sites/{site_id}/recommendations
 // ─────────────────────────────────────────────────────────────────────────────
 data class RecommendationResponse(

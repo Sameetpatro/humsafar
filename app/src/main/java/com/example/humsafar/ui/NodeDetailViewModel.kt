@@ -46,14 +46,21 @@ class NodeDetailViewModel : ViewModel() {
         }
     }
 
-    fun endTrip() = viewModelScope.launch {
-        val tripId = TripManager.current().tripId
-        if (tripId != 0) {
+    /** Ends trip via API (user_visit_history inserted). Does NOT clear TripManager — clear when leaving TripCompletionScreen. */
+    fun endTrip(
+        visitedNodeIds: List<Int>,
+        lastLat: Double,
+        lastLng: Double
+    ) = viewModelScope.launch {
+        val trip = TripManager.current()
+        if (trip.tripId != 0) {
             try {
-                HumsafarClient.api.endTrip(tripId)
+                val visitedNodes = visitedNodeIds.joinToString(",")
+                val lat = if (lastLat != 0.0) lastLat else null
+                val lng = if (lastLng != 0.0) lastLng else null
+                HumsafarClient.api.endTrip(trip.tripId, visitedNodes, lat, lng)
             } catch (_: Exception) { }
         }
-        TripManager.clear()
     }
 }
 

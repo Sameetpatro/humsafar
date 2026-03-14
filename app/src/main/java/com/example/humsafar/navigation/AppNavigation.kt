@@ -121,8 +121,8 @@ fun AppNavigation() {
                 onNavigateToDirections = { dirSiteId: Int, dirSiteName: String ->
                     navController.navigate(directionsRoute(dirSiteId, dirSiteName))
                 },
-                onNavigateToTripCompletion = { cSiteId: Int, cSiteName: String, visited: Int, total: Int ->
-                    navController.navigate(tripCompletionRoute(cSiteId, cSiteName, visited, total)) {
+                onNavigateToReview = { tripId: Int, cSiteId: Int, cSiteName: String, visited: Int, total: Int ->
+                    navController.navigate(reviewRoute(tripId, cSiteId, cSiteName, visited, total)) {
                         popUpTo("home") { inclusive = false }
                     }
                 }
@@ -147,6 +147,42 @@ fun AppNavigation() {
             )
         }
 
+        // ── Review screen (after End Trip, before Trip Completion) ────────
+        composable(
+            route     = "review/{tripId}/{siteId}/{siteName}/{visitedCount}/{totalCount}",
+            arguments = listOf(
+                navArgument("tripId") { type = NavType.IntType },
+                navArgument("siteId") { type = NavType.IntType },
+                navArgument("siteName") { type = NavType.StringType },
+                navArgument("visitedCount") { type = NavType.IntType },
+                navArgument("totalCount") { type = NavType.IntType }
+            )
+        ) { backStack ->
+            val tripId = backStack.arguments?.getInt("tripId") ?: 0
+            val siteId = backStack.arguments?.getInt("siteId") ?: 0
+            val siteName = backStack.arguments?.getString("siteName")
+                ?.let { URLDecoder.decode(it, "UTF-8") } ?: "Heritage Site"
+            val visitedCount = backStack.arguments?.getInt("visitedCount") ?: 0
+            val totalCount = backStack.arguments?.getInt("totalCount") ?: 0
+            ReviewScreen(
+                tripId = tripId,
+                siteId = siteId,
+                siteName = siteName,
+                visitedCount = visitedCount,
+                totalCount = totalCount,
+                onNavigateToTripCompletion = {
+                    navController.navigate(tripCompletionRoute(siteId, siteName, visitedCount, totalCount)) {
+                        popUpTo("home") { inclusive = false }
+                    }
+                },
+                onSkip = {
+                    navController.navigate(tripCompletionRoute(siteId, siteName, visitedCount, totalCount)) {
+                        popUpTo("home") { inclusive = false }
+                    }
+                }
+            )
+        }
+
         // ── Trip completion screen ────────────────────────────────────────
         composable(
             route     = "trip_completion/{siteId}/{siteName}/{visitedCount}/{totalCount}",
@@ -168,11 +204,13 @@ fun AppNavigation() {
                 visitedNodesCount = visitedCount,
                 totalNodesCount = totalCount,
                 onExploreRecommendations = {
+                    com.example.humsafar.data.TripManager.clear()
                     navController.navigate("home") {
                         popUpTo("home") { inclusive = true }
                     }
                 },
                 onSkip = {
+                    com.example.humsafar.data.TripManager.clear()
                     navController.navigate("home") {
                         popUpTo("home") { inclusive = true }
                     }
@@ -266,4 +304,9 @@ fun tripCompletionRoute(siteId: Int, siteName: String, visitedCount: Int, totalC
 fun siteInfoRoute(siteId: Int, siteName: String): String {
     val encoded = URLEncoder.encode(siteName, "UTF-8")
     return "site_info/$siteId/$encoded"
+}
+
+fun reviewRoute(tripId: Int, siteId: Int, siteName: String, visitedCount: Int, totalCount: Int): String {
+    val encoded = URLEncoder.encode(siteName, "UTF-8")
+    return "review/$tripId/$siteId/$encoded/$visitedCount/$totalCount"
 }

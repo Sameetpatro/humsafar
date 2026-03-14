@@ -53,7 +53,7 @@ fun NodeDetailScreen(
     onNavigateToQr:    (Long) -> Unit,
     onNavigateToVoice: (String, String) -> Unit,
     onNavigateToDirections: ((Int, String) -> Unit)? = null,
-    onNavigateToTripCompletion: ((Int, String, Int, Int) -> Unit)? = null,
+    onNavigateToReview: ((Int, Int, String, Int, Int) -> Unit)? = null,
     viewModel:         NodeDetailViewModel = viewModel()
 ) {
     val context   = LocalContext.current
@@ -173,12 +173,13 @@ fun NodeDetailScreen(
                                 onNavigateToDirections?.invoke(siteId, tripState.siteName)
                             },
                             onEndTripClick = {
+                                val tripId = tripState.tripId
                                 val tripSiteId = tripState.siteId
                                 val visitedCount = tripState.visitedNodeIds.size
                                 val totalCount = allNodes.size
                                 val siteName = tripState.siteName
-                                viewModel.endTrip()
-                                onNavigateToTripCompletion?.invoke(tripSiteId, siteName, visitedCount, totalCount)
+                                viewModel.endTrip(tripState.visitedNodeIds, tripState.lastLat, tripState.lastLng)
+                                onNavigateToReview?.invoke(tripId, tripSiteId, siteName, visitedCount, totalCount)
                             },
                             modifier = Modifier
                                 .align(Alignment.BottomStart)
