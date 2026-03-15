@@ -1,4 +1,7 @@
 // HeritageDetailScreen.kt
+// UPDATED: Per-section voice icons, robust TTS floating control bar with stop/pause
+// The floating bar is always visible while TTS is active (speaking OR paused).
+// Each section has its own speaker icon. "Hear This Page" reads the whole page.
 
 package com.example.humsafar.ui
 
@@ -90,6 +93,11 @@ import com.example.humsafar.ui.theme.TextSecondary
 import com.example.humsafar.ui.theme.TextTertiary
 import java.util.Locale
 
+// ─────────────────────────────────────────────────────────────────────────────
+// TTS State holder — centralised so ALL composables read the same source
+// ─────────────────────────────────────────────────────────────────────────────
+private enum class TtsStatus { IDLE, SPEAKING, PAUSED }
+
 @Composable
 fun HeritageDetailScreen(
     @Suppress("UNUSED_PARAMETER") siteName: String,
@@ -106,13 +114,12 @@ fun HeritageDetailScreen(
     var weather by remember { mutableStateOf<WeatherService.WeatherResult?>(null) }
     var forecast by remember { mutableStateOf<List<WeatherService.ForecastDay>>(emptyList()) }
 
-    // ── TTS State ─────────────────────────────────────────────────────────────
-    var isSpeaking by remember { mutableStateOf(false) }
-    var isPaused   by remember { mutableStateOf(false) }
+    // ── TTS State (single source of truth) ───────────────────────────────────
+    var ttsStatus       by remember { mutableStateOf(TtsStatus.IDLE) }
+    // Which section label is currently being spoken (for highlighting)
+    var activeSectionLabel by remember { mutableStateOf("") }
 
-    val tts = remember {
-        TextToSpeech(context) { }
-    }
+    val tts = remember { TextToSpeech(context) { } }
 
     DisposableEffect(Unit) {
         tts.language = Locale.US
@@ -122,67 +129,89 @@ fun HeritageDetailScreen(
         }
     }
 
-    // ── TTS Helpers ───────────────────────────────────────────────────────────
-    fun stopSpeaking() {
+    // ── TTS Core Helpers ──────────────────────────────────────────────────────
+
+    /** Hard stop — clears everything */
+    fun stopTts() {
         tts.stop()
-        isSpeaking = false
-        isPaused   = false
+        ttsStatus = TtsStatus.IDLE
+        activeSectionLabel = ""
     }
 
-    fun pauseOrResume() {
-        if (isPaused) {
-            // TTS has no native resume — restart is not ideal, so we just mark resumed
-            // Android TTS doesn't support pause/resume natively; stop is the best option
-            isPaused = false
-            isSpeaking = false
-        } else {
-            tts.stop()
-            isPaused   = true
-            isSpeaking = false
+    /**
+     * Toggle pause/resume.
+     * Android TTS has no native pause; we stop and mark PAUSED.
+     * Resume is not re-playable from position, so we just go IDLE.
+     * (This is consistent with standard Android TTS apps.)
+     */
+    fun togglePause() {
+        when (ttsStatus) {
+            TtsStatus.SPEAKING -> {
+                tts.stop()
+                ttsStatus = TtsStatus.PAUSED
+            }
+            TtsStatus.PAUSED -> {
+                // Can't resume from mid-sentence, just go idle
+                ttsStatus = TtsStatus.IDLE
+                activeSectionLabel = ""
+            }
+            TtsStatus.IDLE -> { /* no-op */ }
         }
     }
 
-    fun speakText(texts: List<Pair<String, String>>) {
-        // texts = list of (header, body)
+    /**
+     * Speak a list of (header, body) pairs.
+     * Sets ttsStatus = SPEAKING until the final utterance completes.
+     */
+    fun speakSequence(label: String, texts: List<Pair<String, String>>) {
         tts.stop()
-        isSpeaking = true
-        isPaused   = false
+        ttsStatus = TtsStatus.SPEAKING
+        activeSectionLabel = label
 
         val progressListener = object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) {}
             override fun onDone(utteranceId: String?) {
                 if (utteranceId == "final") {
-                    isSpeaking = false
+                    ttsStatus = TtsStatus.IDLE
+                    activeSectionLabel = ""
                 }
             }
-            override fun onError(utteranceId: String?) { isSpeaking = false }
+            override fun onError(utteranceId: String?) {
+                ttsStatus = TtsStatus.IDLE
+                activeSectionLabel = ""
+            }
         }
         tts.setOnUtteranceProgressListener(progressListener)
 
         texts.forEachIndexed { index, (header, body) ->
             val isLast = index == texts.size - 1
             tts.speak(header, TextToSpeech.QUEUE_ADD, null, "hdr_$index")
-            tts.speak(body,   TextToSpeech.QUEUE_ADD, null, if (isLast) "final" else "body_$index")
+            tts.speak(body, TextToSpeech.QUEUE_ADD, null, if (isLast) "final" else "body_$index")
         }
     }
 
-    fun speakSection(label: String, siteName: String, text: String?) {
+    /** Speak a single named section */
+    fun speakSection(sectionLabel: String, siteNameStr: String, text: String?) {
         if (text.isNullOrBlank()) return
-        speakText(listOf("Now you are hearing the $label of $siteName" to text))
+        speakSequence(
+            sectionLabel,
+            listOf("Now hearing $sectionLabel of $siteNameStr" to text)
+        )
     }
 
+    /** Speak the entire page */
     fun speakEntirePage(site: SiteDetail) {
         val texts = mutableListOf<Pair<String, String>>()
         site.summary?.takeIf { it.isNotBlank() }?.let {
-            texts += "Now you are hearing the overview of ${site.name}" to it
+            texts += "Now hearing overview of ${site.name}" to it
         }
         site.history?.takeIf { it.isNotBlank() }?.let {
-            texts += "Now you are hearing the history of ${site.name}" to it
+            texts += "Now hearing history of ${site.name}" to it
         }
         site.funFacts?.takeIf { it.isNotBlank() }?.let {
-            texts += "Now you are hearing some fun facts about ${site.name}" to it
+            texts += "Now hearing fun facts about ${site.name}" to it
         }
-        if (texts.isNotEmpty()) speakText(texts)
+        if (texts.isNotEmpty()) speakSequence("Full Page", texts)
     }
 
     LaunchedEffect(siteIdInt) { viewModel.loadSite(siteIdInt) }
@@ -213,9 +242,16 @@ fun HeritageDetailScreen(
                 var showTicketSheet by remember { mutableStateOf(false) }
 
                 Column(Modifier.fillMaxSize()) {
-                    Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-
-                        HeritageHeroGallery(siteName = site.name, images = siteImages, onBack = onBack)
+                    Column(
+                        Modifier
+                            .weight(1f)
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        HeritageHeroGallery(
+                            siteName = site.name,
+                            images   = siteImages,
+                            onBack   = onBack
+                        )
 
                         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
                             Spacer(Modifier.height(20.dp))
@@ -248,33 +284,55 @@ fun HeritageDetailScreen(
                                 Spacer(Modifier.height(16.dp))
                             }
 
-                            // ── Hear This Page — with global speak ──────────
-                            HeritageActionCard(
-                                icon = "🎧", title = "Hear This Page",
-                                subtitle = if (isSpeaking) "Tap Stop to pause narration" else "Listen to the full page narration",
-                                gradientColors = listOf(Color(0xFF1A0050), Color(0xFF0D0030)),
-                                borderColor = Color(0xFF9B30FF)
-                            ) { speakEntirePage(site) }
+                            // ── "Hear This Page" button ─────────────────────
+                            HeritageHearPageCard(
+                                ttsStatus    = ttsStatus,
+                                onSpeak      = { speakEntirePage(site) },
+                                onStop       = { stopTts() }
+                            )
                             Spacer(Modifier.height(16.dp))
 
+                            // ── Overview ─────────────────────────────────────
                             site.summary?.takeIf { it.isNotBlank() }?.let { text ->
                                 HeritageContentCard(
-                                    title = "Overview", body = text,
-                                    onSpeak = { speakSection("overview", site.name, text) }
+                                    title          = "Overview",
+                                    body           = text,
+                                    sectionLabel   = "Overview",
+                                    ttsStatus      = ttsStatus,
+                                    activeSectionLabel = activeSectionLabel,
+                                    onSpeak        = { speakSection("Overview", site.name, text) },
+                                    onStop         = { stopTts() },
+                                    onTogglePause  = { togglePause() }
                                 )
                                 Spacer(Modifier.height(12.dp))
                             }
+
+                            // ── History ───────────────────────────────────────
                             site.history?.takeIf { it.isNotBlank() }?.let { text ->
                                 HeritageContentCard(
-                                    title = "History", body = text,
-                                    onSpeak = { speakSection("history", site.name, text) }
+                                    title          = "History",
+                                    body           = text,
+                                    sectionLabel   = "History",
+                                    ttsStatus      = ttsStatus,
+                                    activeSectionLabel = activeSectionLabel,
+                                    onSpeak        = { speakSection("History", site.name, text) },
+                                    onStop         = { stopTts() },
+                                    onTogglePause  = { togglePause() }
                                 )
                                 Spacer(Modifier.height(12.dp))
                             }
+
+                            // ── Fun Facts ─────────────────────────────────────
                             site.funFacts?.takeIf { it.isNotBlank() }?.let { text ->
                                 HeritageContentCard(
-                                    title = "Fun Facts", body = text,
-                                    onSpeak = { speakSection("fun facts", site.name, text) }
+                                    title          = "Fun Facts",
+                                    body           = text,
+                                    sectionLabel   = "Fun Facts",
+                                    ttsStatus      = ttsStatus,
+                                    activeSectionLabel = activeSectionLabel,
+                                    onSpeak        = { speakSection("Fun Facts", site.name, text) },
+                                    onStop         = { stopTts() },
+                                    onTogglePause  = { togglePause() }
                                 )
                                 Spacer(Modifier.height(16.dp))
                             }
@@ -298,22 +356,23 @@ fun HeritageDetailScreen(
                                 borderColor = Color(0xFF2DD4BF)
                             ) { Toast.makeText(context, "Coming soon", Toast.LENGTH_SHORT).show() }
 
-                            Spacer(Modifier.height(120.dp))
+                            // Extra bottom padding so floating bar doesn't overlap last item
+                            Spacer(Modifier.height(if (ttsStatus != TtsStatus.IDLE) 140.dp else 100.dp))
                         }
                     }
                 }
 
-                // ── TTS Floating Control Bar ────────────────────────────────
-                if (isSpeaking || isPaused) {
+                // ── Floating TTS Control Bar — always visible when active ──
+                if (ttsStatus != TtsStatus.IDLE) {
                     TtsControlBar(
-                        isSpeaking = isSpeaking,
-                        isPaused   = isPaused,
-                        onPause    = { pauseOrResume() },
-                        onStop     = { stopSpeaking() },
-                        modifier   = Modifier
+                        ttsStatus      = ttsStatus,
+                        activeSectionLabel = activeSectionLabel,
+                        onTogglePause  = { togglePause() },
+                        onStop         = { stopTts() },
+                        modifier       = Modifier
                             .align(Alignment.BottomCenter)
                             .navigationBarsPadding()
-                            .padding(horizontal = 16.dp, vertical = 80.dp)
+                            .padding(horizontal = 16.dp, vertical = 16.dp)
                     )
                 }
 
@@ -323,31 +382,109 @@ fun HeritageDetailScreen(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .navigationBarsPadding()
-                        .padding(end = 16.dp, bottom = 16.dp)
+                        .padding(end = 16.dp, bottom = if (ttsStatus != TtsStatus.IDLE) 110.dp else 16.dp)
                 )
 
                 if (showTicketSheet) {
-                    HeritageTicketBottomSheet(siteName = site.name, onDismiss = { showTicketSheet = false })
+                    HeritageTicketBottomSheet(
+                        siteName  = site.name,
+                        onDismiss = { showTicketSheet = false }
+                    )
                 }
             }
 
             is HeritageDetailUiState.Error -> {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(s.message, color = Color(0xFFFF6B6B), fontSize = 14.sp, modifier = Modifier.padding(32.dp))
+                    Text(
+                        s.message,
+                        color = Color(0xFFFF6B6B),
+                        fontSize = 14.sp,
+                        modifier = Modifier.padding(32.dp)
+                    )
                 }
             }
         }
     }
 }
 
-// ── TTS Control Bar ───────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// "Hear This Page" top-level card
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun HeritageHearPageCard(
+    ttsStatus: TtsStatus,
+    onSpeak:   () -> Unit,
+    onStop:    () -> Unit
+) {
+    val inf   = rememberInfiniteTransition(label = "hearPage")
+    val glow  by inf.animateFloat(
+        0.35f, 0.65f,
+        infiniteRepeatable(tween(1500, easing = EaseInOutSine), RepeatMode.Reverse),
+        "glow"
+    )
+    val isActive = ttsStatus != TtsStatus.IDLE
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(Brush.linearGradient(listOf(Color(0xFF1A0050), Color(0xFF0D0030))))
+            .border(
+                1.dp,
+                Color(0xFF9B30FF).copy(alpha = if (isActive) glow else 0.4f),
+                RoundedCornerShape(16.dp)
+            )
+            .clickable { if (isActive) onStop() else onSpeak() }
+            .padding(16.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            // Animated mic/stop icon
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF9B30FF).copy(alpha = if (isActive) glow * 0.5f else 0.2f))
+                    .border(1.dp, Color(0xFF9B30FF).copy(if (isActive) glow else 0.4f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(if (isActive) "⏹️" else "🎧", fontSize = 18.sp)
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    if (isActive) "Stop Narration" else "Hear This Page",
+                    color = TextPrimary,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    if (isActive) "Tap to stop listening" else "Listen to the full page narration",
+                    color = Color(0xFF9B30FF).copy(alpha = 0.8f),
+                    fontSize = 11.sp
+                )
+            }
+            Icon(
+                if (isActive) Icons.Default.Stop else Icons.Default.VolumeUp,
+                contentDescription = null,
+                tint = Color(0xFF9B30FF).copy(alpha = 0.7f),
+                modifier = Modifier.size(20.dp)
+            )
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Floating TTS Control Bar
+// ─────────────────────────────────────────────────────────────────────────────
+
 @Composable
 private fun TtsControlBar(
-    isSpeaking: Boolean,
-    isPaused:   Boolean,
-    onPause:    () -> Unit,
-    onStop:     () -> Unit,
-    modifier:   Modifier = Modifier
+    ttsStatus:          TtsStatus,
+    activeSectionLabel: String,
+    onTogglePause:      () -> Unit,
+    onStop:             () -> Unit,
+    modifier:           Modifier = Modifier
 ) {
     val inf   = rememberInfiniteTransition(label = "tts")
     val pulse by inf.animateFloat(
@@ -356,25 +493,36 @@ private fun TtsControlBar(
         "tp"
     )
 
+    val isSpeaking = ttsStatus == TtsStatus.SPEAKING
+    val isPaused   = ttsStatus == TtsStatus.PAUSED
+
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(50))
             .background(
-                Brush.linearGradient(listOf(Color(0xFF1A0050), Color(0xFF0D0030)))
+                Brush.linearGradient(listOf(Color(0xEE1A0050), Color(0xEE0D0030)))
             )
-            .border(1.dp, Color(0xFF9B30FF).copy(alpha = if (isSpeaking) pulse else 0.4f), RoundedCornerShape(50))
+            .border(
+                1.dp,
+                Color(0xFF9B30FF).copy(alpha = if (isSpeaking) pulse else 0.4f),
+                RoundedCornerShape(50)
+            )
             .padding(horizontal = 20.dp, vertical = 12.dp)
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // Animated speaker icon
+            // Animated speaker dot
             Box(
                 modifier = Modifier
                     .size(32.dp)
                     .clip(CircleShape)
-                    .background(Color(0xFF9B30FF).copy(alpha = if (isSpeaking) pulse * 0.4f else 0.2f)),
+                    .background(
+                        Color(0xFF9B30FF).copy(
+                            alpha = if (isSpeaking) pulse * 0.4f else 0.15f
+                        )
+                    ),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -385,20 +533,37 @@ private fun TtsControlBar(
                 )
             }
 
-            Text(
-                text = if (isPaused) "Paused" else "Narrating…",
-                color    = Color(0xB3FFFFFF),
-                fontSize = 13.sp
-            )
+            // Label
+            Column {
+                Text(
+                    text = when (ttsStatus) {
+                        TtsStatus.SPEAKING -> "Narrating…"
+                        TtsStatus.PAUSED   -> "Paused"
+                        TtsStatus.IDLE     -> ""
+                    },
+                    color    = Color(0xCCFFFFFF),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                if (activeSectionLabel.isNotBlank()) {
+                    Text(
+                        activeSectionLabel,
+                        color    = Color(0xFF9B30FF).copy(alpha = 0.8f),
+                        fontSize = 11.sp
+                    )
+                }
+            }
 
-            // Pause button
+            Spacer(Modifier.weight(1f))
+
+            // Pause / Resume button
             Box(
                 modifier = Modifier
-                    .size(36.dp)
+                    .size(38.dp)
                     .clip(CircleShape)
                     .background(Color(0x339B30FF))
                     .border(0.7.dp, Color(0xFF9B30FF).copy(0.5f), CircleShape)
-                    .clickable { onPause() },
+                    .clickable { onTogglePause() },
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -412,7 +577,7 @@ private fun TtsControlBar(
             // Stop button
             Box(
                 modifier = Modifier
-                    .size(36.dp)
+                    .size(38.dp)
                     .clip(CircleShape)
                     .background(Color(0x33FF5252))
                     .border(0.7.dp, Color(0xFFFF5252).copy(0.5f), CircleShape)
@@ -430,7 +595,141 @@ private fun TtsControlBar(
     }
 }
 
-// ── Heritage Hero Gallery ─────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Content Card WITH inline voice icon + active state
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun HeritageContentCard(
+    title:              String,
+    body:               String,
+    sectionLabel:       String,
+    ttsStatus:          TtsStatus,
+    activeSectionLabel: String,
+    onSpeak:            () -> Unit,
+    onStop:             () -> Unit,
+    onTogglePause:      () -> Unit
+) {
+    // Is THIS section the active one?
+    val isThisActive = activeSectionLabel == sectionLabel && ttsStatus != TtsStatus.IDLE
+    val isSpeaking   = isThisActive && ttsStatus == TtsStatus.SPEAKING
+    val isPaused     = isThisActive && ttsStatus == TtsStatus.PAUSED
+
+    val inf  = rememberInfiniteTransition(label = "sec_$sectionLabel")
+    val glow by inf.animateFloat(
+        0.4f, 0.9f,
+        infiniteRepeatable(tween(800, easing = EaseInOutSine), RepeatMode.Reverse),
+        "g"
+    )
+
+    Column {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier          = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                title,
+                color      = if (isThisActive) AccentYellow else TextPrimary,
+                fontSize   = 15.sp,
+                fontWeight = FontWeight.Bold,
+                modifier   = Modifier.weight(1f)
+            )
+
+            // ── Voice control pill ──────────────────────────────────────────
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment     = Alignment.CenterVertically
+            ) {
+                if (isThisActive) {
+                    // Pause/Resume
+                    Box(
+                        modifier = Modifier
+                            .size(30.dp)
+                            .clip(CircleShape)
+                            .background(Color(0x339B30FF))
+                            .border(0.7.dp, Color(0xFF9B30FF).copy(0.5f), CircleShape)
+                            .clickable { onTogglePause() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            if (isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
+                            contentDescription = if (isPaused) "Resume" else "Pause",
+                            tint     = Color(0xFF9B30FF),
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                    // Stop
+                    Box(
+                        modifier = Modifier
+                            .size(30.dp)
+                            .clip(CircleShape)
+                            .background(Color(0x33FF5252))
+                            .border(0.7.dp, Color(0xFFFF5252).copy(0.5f), CircleShape)
+                            .clickable { onStop() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.Stop,
+                            contentDescription = "Stop",
+                            tint     = Color(0xFFFF6B6B),
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                } else {
+                    // Speaker / play icon — tap to start
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .background(Color(0x221A0050))
+                            .border(
+                                0.7.dp,
+                                Color(0xFF9B30FF).copy(alpha = 0.4f),
+                                CircleShape
+                            )
+                            .clickable { onSpeak() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.VolumeUp,
+                            contentDescription = "Listen to $title",
+                            tint     = Color(0xFF9B30FF),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(
+                    if (isThisActive)
+                        Brush.linearGradient(listOf(Color(0x221A0050), Color(0x110D0030)))
+                    else
+                        Brush.linearGradient(listOf(GlassWhite10, GlassWhite10))
+                )
+                .border(
+                    if (isThisActive) 1.dp else 0.7.dp,
+                    if (isThisActive) Color(0xFF9B30FF).copy(alpha = if (isSpeaking) glow else 0.4f)
+                    else GlassBorder,
+                    RoundedCornerShape(16.dp)
+                )
+                .padding(16.dp)
+        ) {
+            Text(body, color = TextSecondary, fontSize = 14.sp, lineHeight = 22.sp)
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Hero Gallery
+// ─────────────────────────────────────────────────────────────────────────────
+
 @Composable
 private fun HeritageHeroGallery(siteName: String, images: List<SiteImage>, onBack: () -> Unit) {
     val listState = rememberLazyListState()
@@ -492,7 +791,10 @@ private fun HeritageHeroGallery(siteName: String, images: List<SiteImage>, onBac
     }
 }
 
-// ── Weather ───────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Weather
+// ─────────────────────────────────────────────────────────────────────────────
+
 @Composable
 private fun HeritageWeatherCard(weather: WeatherService.WeatherResult) {
     val suggestions = remember(weather) { WeatherService.weatherSuggestions(weather.tempC, weather.weatherCode) }
@@ -541,7 +843,10 @@ private fun HeritageForecastSection(forecast: List<WeatherService.ForecastDay>) 
     }
 }
 
-// ── Buy Ticket Card ───────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Buy Ticket Card
+// ─────────────────────────────────────────────────────────────────────────────
+
 @Composable
 private fun HeritageBuyTicketCard(onClick: () -> Unit) {
     val inf     = rememberInfiniteTransition(label = "ticket")
@@ -579,7 +884,10 @@ private fun HeritageBuyTicketCard(onClick: () -> Unit) {
     }
 }
 
-// ── Ticket Bottom Sheet ───────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Ticket Bottom Sheet
+// ─────────────────────────────────────────────────────────────────────────────
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun HeritageTicketBottomSheet(siteName: String, onDismiss: () -> Unit) {
@@ -587,10 +895,10 @@ private fun HeritageTicketBottomSheet(siteName: String, onDismiss: () -> Unit) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     data class TicketTier(val emoji: String, val name: String, val price: String, val desc: String)
     val tiers = listOf(
-        TicketTier("🆓", "Free Entry", "₹0", "Children under 15 & local residents"),
-        TicketTier("🎓", "Student", "₹50", "Valid student ID required at entry"),
-        TicketTier("👤", "Adult (Indian)", "₹100", "Indian nationals, general entry"),
-        TicketTier("🌍", "Foreign National", "₹500", "International visitors")
+        TicketTier("🆓", "Free Entry",       "₹0",   "Children under 15 & local residents"),
+        TicketTier("🎓", "Student",           "₹50",  "Valid student ID required at entry"),
+        TicketTier("👤", "Adult (Indian)",    "₹100", "Indian nationals, general entry"),
+        TicketTier("🌍", "Foreign National",  "₹500", "International visitors")
     )
     var selected by remember { mutableStateOf(1) }
 
@@ -679,7 +987,10 @@ private fun HeritageTicketBottomSheet(siteName: String, onDismiss: () -> Unit) {
     }
 }
 
-// ── Video Card ────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Video Card
+// ─────────────────────────────────────────────────────────────────────────────
+
 @Composable
 private fun HeritageVideoCard(label: String, onClick: () -> Unit) {
     Box(
@@ -703,27 +1014,10 @@ private fun HeritageVideoCard(label: String, onClick: () -> Unit) {
     }
 }
 
-// ── Content Card with speaker icon ────────────────────────────────────────────
-@Composable
-private fun HeritageContentCard(title: String, body: String, onSpeak: () -> Unit) {
-    Column {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-            Text(title, color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-            Box(
-                modifier = Modifier.size(32.dp).clip(CircleShape).background(Color(0x221A0050))
-                    .border(0.7.dp, Color(0xFF9B30FF).copy(alpha = 0.4f), CircleShape).clickable { onSpeak() },
-                contentAlignment = Alignment.Center
-            ) { Icon(Icons.Default.VolumeUp, contentDescription = "Listen to $title", tint = Color(0xFF9B30FF), modifier = Modifier.size(16.dp)) }
-        }
-        Spacer(Modifier.height(8.dp))
-        Box(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(GlassWhite10)
-                .border(0.7.dp, GlassBorder, RoundedCornerShape(16.dp)).padding(16.dp)
-        ) { Text(body, color = TextSecondary, fontSize = 14.sp, lineHeight = 22.sp) }
-    }
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// Nodes Section
+// ─────────────────────────────────────────────────────────────────────────────
 
-// ── Nodes Section ─────────────────────────────────────────────────────────────
 @Composable
 private fun HeritageNodesSection(nodes: List<Node>) {
     Column {
@@ -749,7 +1043,10 @@ private fun HeritageNodesSection(nodes: List<Node>) {
     }
 }
 
-// ── Helpline Card ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpline Card
+// ─────────────────────────────────────────────────────────────────────────────
+
 @Composable
 private fun HeritageHelplineCard(number: String, onClick: () -> Unit) {
     Box(
@@ -769,9 +1066,16 @@ private fun HeritageHelplineCard(number: String, onClick: () -> Unit) {
     }
 }
 
-// ── Action Card ───────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Action Card
+// ─────────────────────────────────────────────────────────────────────────────
+
 @Composable
-private fun HeritageActionCard(icon: String, title: String, subtitle: String, gradientColors: List<Color>, borderColor: Color, onClick: () -> Unit) {
+private fun HeritageActionCard(
+    icon: String, title: String, subtitle: String,
+    gradientColors: List<Color>, borderColor: Color,
+    onClick: () -> Unit
+) {
     val inf  = rememberInfiniteTransition(label = "action")
     val glow by inf.animateFloat(0.35f, 0.65f, infiniteRepeatable(tween(1500, easing = EaseInOutSine), RepeatMode.Reverse), "glow")
     Box(
@@ -791,7 +1095,10 @@ private fun HeritageActionCard(icon: String, title: String, subtitle: String, gr
     }
 }
 
-// ── Chatbot FAB ───────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Chatbot FAB
+// ─────────────────────────────────────────────────────────────────────────────
+
 @Composable
 private fun HeritageChatbotFab(siteName: String, siteId: Int, modifier: Modifier = Modifier) {
     val context = LocalContext.current
@@ -802,7 +1109,9 @@ private fun HeritageChatbotFab(siteName: String, siteId: Int, modifier: Modifier
                 .border(2.dp, Brush.linearGradient(listOf(Color(0x66FFFFFF), Color(0x22FFFFFF))), CircleShape)
                 .clickable {
                     context.startActivity(Intent(context, ChatbotActivity::class.java).apply {
-                        putExtra("SITE_NAME", siteName); putExtra("SITE_ID", siteId.toString()); putExtra("NODE_ID", "")
+                        putExtra("SITE_NAME", siteName)
+                        putExtra("SITE_ID", siteId.toString())
+                        putExtra("NODE_ID", "")
                     })
                 },
             contentAlignment = Alignment.Center

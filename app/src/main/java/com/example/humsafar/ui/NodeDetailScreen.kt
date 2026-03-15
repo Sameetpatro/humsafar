@@ -1,13 +1,13 @@
 // app/src/main/java/com/example/humsafar/ui/NodeDetailScreen.kt
-// UPDATED: Real image gallery from node_images table (sorted by display_order)
-//          + "Watch Video" sticky bar when node.video_url is present
-//          + TTS narration for node description and "Hear This Node" button
+// UPDATED: Per-section voice icons with pause/stop, floating TTS control bar,
+//          active section highlighting — matches HeritageDetailScreen pattern.
 
 package com.example.humsafar.ui
 
 import android.content.Intent
 import android.net.Uri
 import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
@@ -49,78 +49,112 @@ import com.example.humsafar.ui.components.TripInfoButton
 import com.example.humsafar.ui.theme.*
 import java.util.Locale
 
+// ─────────────────────────────────────────────────────────────────────────────
+// TTS state — same enum as HeritageDetailScreen
+// ─────────────────────────────────────────────────────────────────────────────
+
+private enum class NodeTtsStatus { IDLE, SPEAKING, PAUSED }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NodeDetailScreen
+// ─────────────────────────────────────────────────────────────────────────────
+
 @Composable
 fun NodeDetailScreen(
-    nodeId:            Int,
-    siteId:            Int,
-    isKing:            Boolean,
-    onBack:            () -> Unit,
-    onNavigateToQr:    (Long) -> Unit,
-    onNavigateToVoice: (String, String) -> Unit,
+    nodeId:                 Int,
+    siteId:                 Int,
+    isKing:                 Boolean,
+    onBack:                 () -> Unit,
+    onNavigateToQr:         (Long) -> Unit,
+    onNavigateToVoice:      (String, String) -> Unit,
     onNavigateToDirections: ((Int, String) -> Unit)? = null,
-    onNavigateToReview: ((Int, Int, String, Int, Int) -> Unit)? = null,
-    viewModel:         NodeDetailViewModel = viewModel()
+    onNavigateToReview:     ((Int, Int, String, Int, Int) -> Unit)? = null,
+    viewModel:              NodeDetailViewModel = viewModel()
 ) {
     val context   = LocalContext.current
     val uiState   by viewModel.uiState.collectAsStateWithLifecycle()
     val tripState by TripManager.state.collectAsStateWithLifecycle()
 
-    // ── TTS Setup ─────────────────────────────────────────────────────────────
-    val tts = remember {
-        TextToSpeech(context) { /* status handled silently */ }
-    }
+    // ── TTS State ─────────────────────────────────────────────────────────────
+    var ttsStatus          by remember { mutableStateOf(NodeTtsStatus.IDLE) }
+    var activeSectionLabel by remember { mutableStateOf("") }
+
+    val tts = remember { TextToSpeech(context) { } }
 
     DisposableEffect(Unit) {
         tts.language = Locale.US
-        onDispose {
-            tts.stop()
-            tts.shutdown()
-        }
+        onDispose { tts.stop(); tts.shutdown() }
     }
 
-    // ── TTS Helper Functions ───────────────────────────────────────────────────
-    fun speakNodeSection(nodeName: String, siteName: String, description: String?) {
-        if (description.isNullOrBlank()) return
+    // ── TTS Helpers ───────────────────────────────────────────────────────────
+
+    fun stopTts() {
         tts.stop()
-        tts.speak(
-            "Now you are hearing about $nodeName at $siteName",
-            TextToSpeech.QUEUE_FLUSH,
-            null,
-            "hdr_node"
-        )
-        tts.speak(description, TextToSpeech.QUEUE_ADD, null, "body_node")
+        ttsStatus = NodeTtsStatus.IDLE
+        activeSectionLabel = ""
     }
 
-    fun speakEntireNodePage(node: Node, site: SiteDetail) {
+    fun togglePause() {
+        when (ttsStatus) {
+            NodeTtsStatus.SPEAKING -> {
+                tts.stop()
+                ttsStatus = NodeTtsStatus.PAUSED
+            }
+            NodeTtsStatus.PAUSED -> {
+                ttsStatus = NodeTtsStatus.IDLE
+                activeSectionLabel = ""
+            }
+            NodeTtsStatus.IDLE -> {}
+        }
+    }
+
+    fun speakSequence(label: String, texts: List<Pair<String, String>>) {
         tts.stop()
-        var firstQueued = false
+        ttsStatus = NodeTtsStatus.SPEAKING
+        activeSectionLabel = label
 
-        val aboutSite = site.summary
-        val history   = site.history
-        val nodeDesc  = node.description
+        val listener = object : UtteranceProgressListener() {
+            override fun onStart(id: String?) {}
+            override fun onDone(id: String?) {
+                if (id == "final") {
+                    ttsStatus = NodeTtsStatus.IDLE
+                    activeSectionLabel = ""
+                }
+            }
+            override fun onError(id: String?) {
+                ttsStatus = NodeTtsStatus.IDLE
+                activeSectionLabel = ""
+            }
+        }
+        tts.setOnUtteranceProgressListener(listener)
 
-        if (!aboutSite.isNullOrBlank()) {
-            tts.speak(
-                "Now you are hearing about ${site.name}",
-                TextToSpeech.QUEUE_FLUSH, null, "hdr_about"
-            )
-            tts.speak(aboutSite, TextToSpeech.QUEUE_ADD, null, "body_about")
-            firstQueued = true
-        }
-        if (!history.isNullOrBlank()) {
-            val mode = if (!firstQueued) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
-            tts.speak("Now you are hearing the history of ${site.name}", mode, null, "hdr_hist")
-            tts.speak(history, TextToSpeech.QUEUE_ADD, null, "body_hist")
-            firstQueued = true
-        }
-        if (!nodeDesc.isNullOrBlank()) {
-            val mode = if (!firstQueued) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
-            tts.speak("Now you are hearing about ${node.name} at ${site.name}", mode, null, "hdr_node")
-            tts.speak(nodeDesc, TextToSpeech.QUEUE_ADD, null, "body_node")
+        texts.forEachIndexed { i, (header, body) ->
+            val isLast = i == texts.size - 1
+            tts.speak(header, TextToSpeech.QUEUE_ADD, null, "hdr_$i")
+            tts.speak(body,   TextToSpeech.QUEUE_ADD, null, if (isLast) "final" else "body_$i")
         }
     }
-    // ─────────────────────────────────────────────────────────────────────────
 
+    fun speakSection(label: String, siteName: String, text: String?) {
+        if (text.isNullOrBlank()) return
+        speakSequence(label, listOf("Now hearing $label at $siteName" to text))
+    }
+
+    fun speakEntirePage(node: Node, site: SiteDetail) {
+        val texts = mutableListOf<Pair<String, String>>()
+        site.summary?.takeIf { it.isNotBlank() }?.let {
+            texts += "Now hearing about ${site.name}" to it
+        }
+        site.history?.takeIf { it.isNotBlank() }?.let {
+            texts += "Now hearing the history of ${site.name}" to it
+        }
+        node.description?.takeIf { it.isNotBlank() }?.let {
+            texts += "Now hearing about ${node.name} at ${site.name}" to it
+        }
+        if (texts.isNotEmpty()) speakSequence("Full Page", texts)
+    }
+
+    // ── Load ──────────────────────────────────────────────────────────────────
     LaunchedEffect(nodeId, siteId) { viewModel.loadNode(nodeId, siteId) }
 
     Box(Modifier.fillMaxSize()) {
@@ -153,6 +187,8 @@ fun NodeDetailScreen(
                 }
 
                 Box(Modifier.fillMaxSize()) {
+
+                    // ── Scrollable content ────────────────────────────────────
                     Column(Modifier.fillMaxSize()) {
                         Column(
                             Modifier
@@ -160,43 +196,77 @@ fun NodeDetailScreen(
                                 .verticalScroll(rememberScrollState())
                         ) {
                             NodeImageGallery(
-                                nodeName   = node.name,
-                                images     = nodeImages,
-                                onBack     = onBack
+                                nodeName = node.name,
+                                images   = nodeImages,
+                                onBack   = onBack
                             )
 
                             Column(Modifier.padding(horizontal = 20.dp)) {
                                 Spacer(Modifier.height(16.dp))
 
+                                // ── "Hear This Node" top card ─────────────────
+                                NodeHearPageCard(
+                                    ttsStatus = ttsStatus,
+                                    onSpeak   = { speakEntirePage(node, site) },
+                                    onStop    = { stopTts() }
+                                )
+                                Spacer(Modifier.height(16.dp))
+
+                                // ── Action grid (Watch Video, Scan QR) ────────
                                 NodeActionsGrid(
-                                    node = node,
+                                    node   = node,
                                     siteId = siteId,
                                     context = context,
-                                    onQr = onNavigateToQr,
-                                    onHearThisNode = { speakEntireNodePage(node, site) }
+                                    onQr   = onNavigateToQr
                                 )
-
                                 Spacer(Modifier.height(20.dp))
 
+                                // ── About site ────────────────────────────────
                                 if (!site.summary.isNullOrBlank()) {
-                                    InfoCard("📖 About ${site.name}", site.summary!!)
-                                    Spacer(Modifier.height(14.dp))
-                                }
-                                if (!site.history.isNullOrBlank()) {
-                                    InfoCard("📜 History", site.history!!)
-                                    Spacer(Modifier.height(14.dp))
-                                }
-                                if (!node.description.isNullOrBlank()) {
-                                    // ── Node description WITH speaker icon ──
-                                    NodeDescriptionCard(
-                                        nodeName    = node.name,
-                                        siteName    = site.name,
-                                        description = node.description!!,
-                                        onSpeak     = { speakNodeSection(node.name, site.name, node.description) }
+                                    NodeInfoCard(
+                                        title          = "📖 About ${site.name}",
+                                        body           = site.summary!!,
+                                        sectionLabel   = "About Site",
+                                        ttsStatus      = ttsStatus,
+                                        activeSectionLabel = activeSectionLabel,
+                                        onSpeak        = { speakSection("About Site", site.name, site.summary) },
+                                        onStop         = { stopTts() },
+                                        onTogglePause  = { togglePause() }
                                     )
                                     Spacer(Modifier.height(14.dp))
                                 }
 
+                                // ── History ───────────────────────────────────
+                                if (!site.history.isNullOrBlank()) {
+                                    NodeInfoCard(
+                                        title          = "📜 History",
+                                        body           = site.history!!,
+                                        sectionLabel   = "History",
+                                        ttsStatus      = ttsStatus,
+                                        activeSectionLabel = activeSectionLabel,
+                                        onSpeak        = { speakSection("History", site.name, site.history) },
+                                        onStop         = { stopTts() },
+                                        onTogglePause  = { togglePause() }
+                                    )
+                                    Spacer(Modifier.height(14.dp))
+                                }
+
+                                // ── Node Description ──────────────────────────
+                                if (!node.description.isNullOrBlank()) {
+                                    NodeInfoCard(
+                                        title          = "🗺️ About This Spot",
+                                        body           = node.description!!,
+                                        sectionLabel   = "About This Spot",
+                                        ttsStatus      = ttsStatus,
+                                        activeSectionLabel = activeSectionLabel,
+                                        onSpeak        = { speakSection("About This Spot", node.name, node.description) },
+                                        onStop         = { stopTts() },
+                                        onTogglePause  = { togglePause() }
+                                    )
+                                    Spacer(Modifier.height(14.dp))
+                                }
+
+                                // ── Trip Progress ─────────────────────────────
                                 if (tripState.isTripActive && allNodes.isNotEmpty()) {
                                     TripProgressSection(
                                         nodes      = allNodes,
@@ -206,53 +276,65 @@ fun NodeDetailScreen(
                                     Spacer(Modifier.height(14.dp))
                                 }
 
-                                Spacer(Modifier.height(16.dp))
-                                NodeActionCard(
-                                    icon = "📷",
-                                    title = "Scan Next QR",
-                                    subtitle = "Continue your journey to the next node",
-                                    gradientColors = listOf(Color(0xFF0D2825), Color(0xFF091F1E)),
-                                    borderColor = Color(0xFF2DD4BF),
-                                    modifier = Modifier.fillMaxWidth(),
-                                    onClick = { onNavigateToQr(siteId.toLong()) }
-                                )
-
-                                Spacer(Modifier.height(100.dp))
+                                // Extra bottom padding so floating bar / FABs don't overlap
+                                Spacer(Modifier.height(if (ttsStatus != NodeTtsStatus.IDLE) 150.dp else 100.dp))
                             }
                         }
                     }
 
+                    // ── Floating TTS Control Bar ──────────────────────────────
+                    if (ttsStatus != NodeTtsStatus.IDLE) {
+                        NodeTtsControlBar(
+                            ttsStatus          = ttsStatus,
+                            activeSectionLabel = activeSectionLabel,
+                            onTogglePause      = { togglePause() },
+                            onStop             = { stopTts() },
+                            modifier           = Modifier
+                                .align(Alignment.BottomCenter)
+                                .navigationBarsPadding()
+                                .padding(horizontal = 16.dp, vertical = 16.dp)
+                        )
+                    }
+
+                    // ── Ask FAB ───────────────────────────────────────────────
                     FloatingAskShreeButton(
-                        node = node,
-                        siteId = siteId,
+                        node    = node,
+                        siteId  = siteId,
                         context = context,
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
                             .navigationBarsPadding()
-                            .padding(end = 16.dp, bottom = 16.dp)
+                            .padding(
+                                end    = 16.dp,
+                                bottom = if (ttsStatus != NodeTtsStatus.IDLE) 110.dp else 16.dp
+                            )
                     )
 
+                    // ── Trip Info Button ──────────────────────────────────────
                     if (tripState.isTripActive) {
                         TripInfoButton(
-                            siteName = tripState.siteName,
+                            siteName     = tripState.siteName,
                             visitedCount = tripState.visitedNodeIds.size,
-                            totalCount = allNodes.size,
+                            totalCount   = allNodes.size,
                             onDirectionsClick = {
                                 onNavigateToDirections?.invoke(siteId, tripState.siteName)
                             },
                             onEndTripClick = {
-                                val tripId = tripState.tripId
-                                val tripSiteId = tripState.siteId
+                                val tripId       = tripState.tripId
+                                val tripSiteId   = tripState.siteId
                                 val visitedCount = tripState.visitedNodeIds.size
-                                val totalCount = allNodes.size
-                                val siteName = tripState.siteName
+                                val totalCount   = allNodes.size
+                                val sName        = tripState.siteName
                                 viewModel.endTrip(tripState.visitedNodeIds, tripState.lastLat, tripState.lastLng)
-                                onNavigateToReview?.invoke(tripId, tripSiteId, siteName, visitedCount, totalCount)
+                                onNavigateToReview?.invoke(tripId, tripSiteId, sName, visitedCount, totalCount)
                             },
                             modifier = Modifier
                                 .align(Alignment.BottomStart)
                                 .navigationBarsPadding()
-                                .padding(start = 16.dp, bottom = 16.dp)
+                                .padding(
+                                    start  = 16.dp,
+                                    bottom = if (ttsStatus != NodeTtsStatus.IDLE) 110.dp else 16.dp
+                                )
                         )
                     }
                 }
@@ -260,17 +342,384 @@ fun NodeDetailScreen(
 
             is NodeDetailUiState.Error -> {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(s.message, color = Color(0xFFFF6B6B), fontSize = 14.sp, textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(32.dp))
+                    Text(
+                        s.message,
+                        color    = Color(0xFFFF6B6B),
+                        fontSize = 14.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(32.dp)
+                    )
                 }
             }
         }
     }
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// Shared gallery composable (used in both screens)
-// ──────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// "Hear This Node" top card
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun NodeHearPageCard(
+    ttsStatus: NodeTtsStatus,
+    onSpeak:   () -> Unit,
+    onStop:    () -> Unit
+) {
+    val inf  = rememberInfiniteTransition(label = "hearNode")
+    val glow by inf.animateFloat(
+        0.35f, 0.65f,
+        infiniteRepeatable(tween(1500, easing = EaseInOutSine), RepeatMode.Reverse),
+        "g"
+    )
+    val isActive = ttsStatus != NodeTtsStatus.IDLE
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(Brush.linearGradient(listOf(Color(0xFF1A0050), Color(0xFF0D0030))))
+            .border(
+                1.dp,
+                Color(0xFF9B30FF).copy(alpha = if (isActive) glow else 0.4f),
+                RoundedCornerShape(16.dp)
+            )
+            .clickable { if (isActive) onStop() else onSpeak() }
+            .padding(16.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF9B30FF).copy(alpha = if (isActive) glow * 0.5f else 0.2f))
+                    .border(1.dp, Color(0xFF9B30FF).copy(if (isActive) glow else 0.4f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(if (isActive) "⏹️" else "🎧", fontSize = 18.sp)
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    if (isActive) "Stop Narration" else "Hear This Node",
+                    color      = TextPrimary,
+                    fontSize   = 14.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    if (isActive) "Tap to stop listening"
+                    else "Listen to full node narration",
+                    color    = Color(0xFF9B30FF).copy(alpha = 0.8f),
+                    fontSize = 11.sp
+                )
+            }
+            Icon(
+                if (isActive) Icons.Default.Stop else Icons.Default.VolumeUp,
+                contentDescription = null,
+                tint     = Color(0xFF9B30FF).copy(alpha = 0.7f),
+                modifier = Modifier.size(20.dp)
+            )
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Floating TTS Control Bar
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun NodeTtsControlBar(
+    ttsStatus:          NodeTtsStatus,
+    activeSectionLabel: String,
+    onTogglePause:      () -> Unit,
+    onStop:             () -> Unit,
+    modifier:           Modifier = Modifier
+) {
+    val inf   = rememberInfiniteTransition(label = "nodeTts")
+    val pulse by inf.animateFloat(
+        0.6f, 1f,
+        infiniteRepeatable(tween(800, easing = EaseInOutSine), RepeatMode.Reverse),
+        "p"
+    )
+
+    val isSpeaking = ttsStatus == NodeTtsStatus.SPEAKING
+    val isPaused   = ttsStatus == NodeTtsStatus.PAUSED
+
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(50))
+            .background(Brush.linearGradient(listOf(Color(0xEE1A0050), Color(0xEE0D0030))))
+            .border(
+                1.dp,
+                Color(0xFF9B30FF).copy(alpha = if (isSpeaking) pulse else 0.4f),
+                RoundedCornerShape(50)
+            )
+            .padding(horizontal = 20.dp, vertical = 12.dp)
+    ) {
+        Row(
+            verticalAlignment     = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            // Animated speaker dot
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(
+                        Color(0xFF9B30FF).copy(
+                            alpha = if (isSpeaking) pulse * 0.4f else 0.15f
+                        )
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Default.VolumeUp,
+                    contentDescription = null,
+                    tint     = Color(0xFF9B30FF),
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+
+            // Status text
+            Column {
+                Text(
+                    text = when (ttsStatus) {
+                        NodeTtsStatus.SPEAKING -> "Narrating…"
+                        NodeTtsStatus.PAUSED   -> "Paused"
+                        NodeTtsStatus.IDLE     -> ""
+                    },
+                    color      = Color(0xCCFFFFFF),
+                    fontSize   = 13.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                if (activeSectionLabel.isNotBlank()) {
+                    Text(
+                        activeSectionLabel,
+                        color    = Color(0xFF9B30FF).copy(alpha = 0.8f),
+                        fontSize = 11.sp
+                    )
+                }
+            }
+
+            Spacer(Modifier.weight(1f))
+
+            // Pause / Resume
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(CircleShape)
+                    .background(Color(0x339B30FF))
+                    .border(0.7.dp, Color(0xFF9B30FF).copy(0.5f), CircleShape)
+                    .clickable { onTogglePause() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    if (isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
+                    contentDescription = if (isPaused) "Resume" else "Pause",
+                    tint     = Color(0xFF9B30FF),
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+
+            // Stop
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(CircleShape)
+                    .background(Color(0x33FF5252))
+                    .border(0.7.dp, Color(0xFFFF5252).copy(0.5f), CircleShape)
+                    .clickable { onStop() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Default.Stop,
+                    contentDescription = "Stop",
+                    tint     = Color(0xFFFF6B6B),
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Info Card with inline voice controls
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun NodeInfoCard(
+    title:              String,
+    body:               String,
+    sectionLabel:       String,
+    ttsStatus:          NodeTtsStatus,
+    activeSectionLabel: String,
+    onSpeak:            () -> Unit,
+    onStop:             () -> Unit,
+    onTogglePause:      () -> Unit
+) {
+    val isThisActive = activeSectionLabel == sectionLabel && ttsStatus != NodeTtsStatus.IDLE
+    val isSpeaking   = isThisActive && ttsStatus == NodeTtsStatus.SPEAKING
+    val isPaused     = isThisActive && ttsStatus == NodeTtsStatus.PAUSED
+
+    val inf  = rememberInfiniteTransition(label = "nodeCard_$sectionLabel")
+    val glow by inf.animateFloat(
+        0.4f, 0.9f,
+        infiniteRepeatable(tween(800, easing = EaseInOutSine), RepeatMode.Reverse),
+        "g"
+    )
+
+    Column {
+        // ── Title row with voice controls ──────────────────────────────────────
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier          = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                title,
+                color      = if (isThisActive) AccentYellow else TextPrimary,
+                fontSize   = 15.sp,
+                fontWeight = FontWeight.Bold,
+                modifier   = Modifier.weight(1f)
+            )
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment     = Alignment.CenterVertically
+            ) {
+                if (isThisActive) {
+                    // Pause / Resume
+                    Box(
+                        modifier = Modifier
+                            .size(30.dp)
+                            .clip(CircleShape)
+                            .background(Color(0x339B30FF))
+                            .border(0.7.dp, Color(0xFF9B30FF).copy(0.5f), CircleShape)
+                            .clickable { onTogglePause() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            if (isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
+                            contentDescription = if (isPaused) "Resume" else "Pause",
+                            tint     = Color(0xFF9B30FF),
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                    // Stop
+                    Box(
+                        modifier = Modifier
+                            .size(30.dp)
+                            .clip(CircleShape)
+                            .background(Color(0x33FF5252))
+                            .border(0.7.dp, Color(0xFFFF5252).copy(0.5f), CircleShape)
+                            .clickable { onStop() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.Stop,
+                            contentDescription = "Stop",
+                            tint     = Color(0xFFFF6B6B),
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                } else {
+                    // Speaker icon — tap to listen
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .background(Color(0x221A0050))
+                            .border(0.7.dp, Color(0xFF9B30FF).copy(alpha = 0.4f), CircleShape)
+                            .clickable { onSpeak() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.VolumeUp,
+                            contentDescription = "Listen to $title",
+                            tint     = Color(0xFF9B30FF),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(6.dp))
+
+        // ── Body card — glows when active ──────────────────────────────────────
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(
+                    if (isThisActive)
+                        Brush.linearGradient(listOf(Color(0x221A0050), Color(0x110D0030)))
+                    else
+                        Brush.linearGradient(listOf(GlassWhite10, GlassWhite10))
+                )
+                .border(
+                    if (isThisActive) 1.dp else 0.7.dp,
+                    if (isThisActive) Color(0xFF9B30FF).copy(alpha = if (isSpeaking) glow else 0.4f)
+                    else GlassBorder,
+                    RoundedCornerShape(14.dp)
+                )
+                .padding(14.dp)
+        ) {
+            Text(body, color = TextSecondary, fontSize = 14.sp, lineHeight = 22.sp)
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Action grid — Watch Video + Scan QR (no TTS buttons here, separate actions)
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun NodeActionsGrid(
+    node:    Node,
+    siteId:  Int,
+    context: android.content.Context,
+    onQr:    (Long) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(
+            modifier              = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            NodeActionCard(
+                icon           = "🎬",
+                title          = "Watch Video",
+                subtitle       = "Visual tour",
+                gradientColors = listOf(Color(0xFF002A4D), Color(0xFF001830)),
+                borderColor    = Color(0xFF2196F3),
+                modifier       = Modifier.weight(1f),
+                onClick = {
+                    if (!node.videoUrl.isNullOrBlank()) {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(node.videoUrl)))
+                    } else {
+                        android.widget.Toast.makeText(
+                            context,
+                            "No video available for this node",
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+            )
+
+            NodeActionCard(
+                icon           = "📷",
+                title          = "Scan Next QR",
+                subtitle       = "Continue journey",
+                gradientColors = listOf(Color(0xFF0D2825), Color(0xFF091F1E)),
+                borderColor    = Color(0xFF2DD4BF),
+                modifier       = Modifier.weight(1f),
+                onClick        = { onQr(siteId.toLong()) }
+            )
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Shared gallery composable
+// ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
 fun NodeImageGallery(
@@ -285,28 +734,20 @@ fun NodeImageGallery(
         currentIndex = listState.firstVisibleItemIndex
     }
 
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .height(300.dp)
-    ) {
+    Box(Modifier.fillMaxWidth().height(300.dp)) {
         if (images.isNotEmpty()) {
             LazyRow(
-                state    = listState,
-                modifier = Modifier.fillMaxSize(),
+                state             = listState,
+                modifier          = Modifier.fillMaxSize(),
                 userScrollEnabled = true
             ) {
                 itemsIndexed(images) { _, img ->
                     SubcomposeAsyncImage(
                         model = ImageRequest.Builder(LocalContext.current)
-                            .data(img.imageUrl)
-                            .crossfade(400)
-                            .build(),
+                            .data(img.imageUrl).crossfade(400).build(),
                         contentDescription = null,
                         contentScale       = ContentScale.Crop,
-                        modifier           = Modifier
-                            .fillParentMaxWidth()
-                            .fillMaxHeight()
+                        modifier           = Modifier.fillParentMaxWidth().fillMaxHeight()
                     ) {
                         when (painter.state) {
                             is AsyncImagePainter.State.Loading -> ShimmerBox()
@@ -318,29 +759,24 @@ fun NodeImageGallery(
             }
 
             Box(
-                Modifier
-                    .align(Alignment.TopEnd)
-                    .statusBarsPadding()
-                    .padding(12.dp)
-                    .clip(RoundedCornerShape(50))
-                    .background(Color(0xBB000000))
+                Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(12.dp)
+                    .clip(RoundedCornerShape(50)).background(Color(0xBB000000))
                     .padding(horizontal = 10.dp, vertical = 4.dp)
             ) {
-                Text("${currentIndex + 1} / ${images.size}", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "${currentIndex + 1} / ${images.size}",
+                    color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold
+                )
             }
 
             if (images.size > 1) {
                 Row(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = 46.dp),
+                    modifier              = Modifier.align(Alignment.BottomCenter).padding(bottom = 46.dp),
                     horizontalArrangement = Arrangement.spacedBy(5.dp)
                 ) {
                     images.forEachIndexed { i, _ ->
                         Box(
-                            Modifier
-                                .size(if (i == currentIndex) 8.dp else 5.dp)
-                                .clip(CircleShape)
+                            Modifier.size(if (i == currentIndex) 8.dp else 5.dp).clip(CircleShape)
                                 .background(if (i == currentIndex) AccentYellow else Color(0x66FFFFFF))
                         )
                     }
@@ -360,34 +796,28 @@ fun NodeImageGallery(
         )
 
         Box(
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .statusBarsPadding()
-                .padding(12.dp)
-                .size(42.dp)
-                .clip(CircleShape)
-                .background(Color(0xBB000000))
-                .border(0.5.dp, GlassBorder, CircleShape)
-                .clickable { onBack() },
+            modifier = Modifier.align(Alignment.TopStart).statusBarsPadding().padding(12.dp)
+                .size(42.dp).clip(CircleShape).background(Color(0xBB000000))
+                .border(0.5.dp, GlassBorder, CircleShape).clickable { onBack() },
             contentAlignment = Alignment.Center
         ) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = Color.White, modifier = Modifier.size(20.dp))
+            Icon(
+                Icons.AutoMirrored.Filled.ArrowBack, null,
+                tint = Color.White, modifier = Modifier.size(20.dp)
+            )
         }
 
         Column(
-            Modifier
-                .align(Alignment.BottomStart)
-                .padding(horizontal = 18.dp, vertical = 10.dp)
+            Modifier.align(Alignment.BottomStart).padding(horizontal = 18.dp, vertical = 10.dp)
         ) {
             Text(nodeName, color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Black)
         }
     }
 
+    // Thumbnail strip
     if (images.size > 1) {
         LazyRow(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(Color(0xFF050D1A))
+            modifier              = Modifier.fillMaxWidth().background(Color(0xFF050D1A))
                 .padding(horizontal = 14.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(7.dp)
         ) {
@@ -398,9 +828,7 @@ fun NodeImageGallery(
                         .data(img.imageUrl).crossfade(300).build(),
                     contentDescription = null,
                     contentScale       = ContentScale.Crop,
-                    modifier = Modifier
-                        .size(64.dp, 44.dp)
-                        .clip(RoundedCornerShape(8.dp))
+                    modifier = Modifier.size(64.dp, 44.dp).clip(RoundedCornerShape(8.dp))
                         .border(
                             if (selected) 2.dp else 0.dp,
                             if (selected) AccentYellow else Color.Transparent,
@@ -413,9 +841,9 @@ fun NodeImageGallery(
     }
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// Shared "Watch Video" sticky bar (used in both screens)
-// ──────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// WatchVideoBar
+// ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
 fun WatchVideoBar(
@@ -424,54 +852,29 @@ fun WatchVideoBar(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val inf = rememberInfiniteTransition(label = "vb")
-    val pulse by inf.animateFloat(
-        0.94f, 1.06f,
-        infiniteRepeatable(tween(1000, easing = EaseInOutSine), RepeatMode.Reverse),
-        label = "vp"
-    )
-    val glow by inf.animateFloat(
-        0.5f, 1f,
-        infiniteRepeatable(tween(1400, easing = EaseInOutSine), RepeatMode.Reverse),
-        label = "vg"
-    )
+    val inf     = rememberInfiniteTransition(label = "vb")
+    val pulse   by inf.animateFloat(0.94f, 1.06f, infiniteRepeatable(tween(1000, easing = EaseInOutSine), RepeatMode.Reverse), "vp")
+    val glow    by inf.animateFloat(0.5f, 1f,    infiniteRepeatable(tween(1400, easing = EaseInOutSine), RepeatMode.Reverse), "vg")
 
     Box(
-        modifier = modifier
-            .fillMaxWidth()
+        modifier = modifier.fillMaxWidth()
             .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xF5050D1A))))
-            .navigationBarsPadding()
-            .padding(horizontal = 18.dp, vertical = 10.dp)
+            .navigationBarsPadding().padding(horizontal = 18.dp, vertical = 10.dp)
     ) {
         Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(18.dp))
-                .background(
-                    Brush.linearGradient(listOf(Color(0xFF120038), Color(0xFF06001E), Color(0xFF1A0050)))
-                )
-                .border(
-                    1.5.dp,
-                    Brush.linearGradient(
-                        listOf(
-                            Color(0xFF9B30FF).copy(alpha = glow),
-                            Color(0xFF5B5FFF).copy(alpha = glow * 0.6f),
-                            Color(0xFF9B30FF).copy(alpha = 0.2f)
-                        )
-                    ),
-                    RoundedCornerShape(18.dp)
-                )
-                .clickable {
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(videoUrl)))
-                }
+            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp))
+                .background(Brush.linearGradient(listOf(Color(0xFF120038), Color(0xFF06001E), Color(0xFF1A0050))))
+                .border(1.5.dp, Brush.linearGradient(listOf(
+                    Color(0xFF9B30FF).copy(alpha = glow),
+                    Color(0xFF5B5FFF).copy(alpha = glow * 0.6f),
+                    Color(0xFF9B30FF).copy(alpha = 0.2f)
+                )), RoundedCornerShape(18.dp))
+                .clickable { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(videoUrl))) }
                 .padding(horizontal = 18.dp, vertical = 14.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
-                    Modifier
-                        .size(42.dp)
-                        .scale(pulse)
-                        .clip(CircleShape)
+                    Modifier.size(42.dp).scale(pulse).clip(CircleShape)
                         .background(Brush.linearGradient(listOf(Color(0xFF9B30FF), Color(0xFF5B5FFF)))),
                     contentAlignment = Alignment.Center
                 ) {
@@ -488,248 +891,63 @@ fun WatchVideoBar(
     }
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// Small helpers
-// ──────────────────────────────────────────────────────────────────────────────
-
-@Composable
-private fun InfoCard(title: String, body: String) {
-    Column {
-        Text(title, color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(6.dp))
-        Box(
-            Modifier.fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
-                .background(GlassWhite10)
-                .border(0.7.dp, GlassBorder, RoundedCornerShape(14.dp))
-                .padding(14.dp)
-        ) {
-            Text(body, color = TextSecondary, fontSize = 14.sp, lineHeight = 22.sp)
-        }
-    }
-}
-
-// ── Node Description Card WITH speaker icon ───────────────────────────────────
-@Composable
-private fun NodeDescriptionCard(
-    nodeName:    String,
-    siteName:    String,
-    description: String,
-    onSpeak:     () -> Unit
-) {
-    Column {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text(
-                "🗺️ About This Spot",
-                color = TextPrimary,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(1f)
-            )
-            Box(
-                modifier = Modifier
-                    .size(32.dp)
-                    .clip(CircleShape)
-                    .background(Color(0x221A0050))
-                    .border(0.7.dp, Color(0xFF9B30FF).copy(alpha = 0.4f), CircleShape)
-                    .clickable { onSpeak() },
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    Icons.Default.VolumeUp,
-                    contentDescription = "Listen to description of $nodeName",
-                    tint = Color(0xFF9B30FF),
-                    modifier = Modifier.size(16.dp)
-                )
-            }
-        }
-        Spacer(Modifier.height(6.dp))
-        Box(
-            Modifier.fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
-                .background(GlassWhite10)
-                .border(0.7.dp, GlassBorder, RoundedCornerShape(14.dp))
-                .padding(14.dp)
-        ) {
-            Text(description, color = TextSecondary, fontSize = 14.sp, lineHeight = 22.sp)
-        }
-    }
-}
-
-@Composable
-private fun NodeActionsGrid(
-    node:           Node,
-    siteId:         Int,
-    context:        android.content.Context,
-    onQr:           (Long) -> Unit,
-    onHearThisNode: () -> Unit
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            // ── Hear This Node button — NOW FUNCTIONAL ──────────────────────
-            NodeActionCard(
-                icon = "🎧",
-                title = "Hear This Node",
-                subtitle = "Listen to node narration",
-                gradientColors = listOf(Color(0xFF1A0050), Color(0xFF0D0030)),
-                borderColor = Color(0xFF9B30FF),
-                modifier = Modifier.weight(1f),
-                onClick = { onHearThisNode() }
-            )
-
-            NodeActionCard(
-                icon = "🎬",
-                title = "Watch Video",
-                subtitle = "Visual tour",
-                gradientColors = listOf(Color(0xFF002A4D), Color(0xFF001830)),
-                borderColor = Color(0xFF2196F3),
-                modifier = Modifier.weight(1f),
-                onClick = {
-                    if (!node.videoUrl.isNullOrBlank()) {
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(node.videoUrl)))
-                    } else {
-                        android.widget.Toast.makeText(
-                            context,
-                            "No video available for this node",
-                            android.widget.Toast.LENGTH_SHORT
-                        ).show()
-                    }
-                }
-            )
-        }
-
-        NodeActionCard(
-            icon = "📷",
-            title = "Scan Next QR",
-            subtitle = "Continue your journey to the next node",
-            gradientColors = listOf(Color(0xFF0D2825), Color(0xFF091F1E)),
-            borderColor = Color(0xFF2DD4BF),
-            modifier = Modifier.fillMaxWidth(),
-            onClick = { onQr(siteId.toLong()) }
-        )
-    }
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// Small reusable cards / helpers
+// ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
 private fun NodeActionCard(
-    icon: String,
-    title: String,
-    subtitle: String,
+    icon:           String,
+    title:          String,
+    subtitle:       String,
     gradientColors: List<Color>,
-    borderColor: Color,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
+    borderColor:    Color,
+    modifier:       Modifier = Modifier,
+    onClick:        () -> Unit
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "action_card")
-    val glowAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.3f,
-        targetValue = 0.6f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1500, easing = EaseInOutSine),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "glow"
+    val inf      = rememberInfiniteTransition(label = "ac")
+    val glowAlpha by inf.animateFloat(
+        0.3f, 0.6f,
+        infiniteRepeatable(tween(1500, easing = EaseInOutSine), RepeatMode.Reverse),
+        "glow"
     )
 
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(16.dp))
             .background(Brush.linearGradient(gradientColors))
-            .border(
-                1.dp,
-                borderColor.copy(alpha = glowAlpha),
-                RoundedCornerShape(16.dp)
-            )
+            .border(1.dp, borderColor.copy(alpha = glowAlpha), RoundedCornerShape(16.dp))
             .clickable { onClick() }
             .padding(16.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(icon, fontSize = 28.sp)
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    title,
-                    color = TextPrimary,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    subtitle,
-                    color = TextTertiary,
-                    fontSize = 11.sp
-                )
-            }
-            Icon(
-                Icons.Default.ChevronRight,
-                null,
-                tint = borderColor.copy(alpha = 0.7f),
-                modifier = Modifier.size(20.dp)
-            )
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(icon, fontSize = 26.sp)
+            Text(title,    color = TextPrimary,   fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            Text(subtitle, color = TextTertiary,  fontSize = 11.sp)
         }
     }
 }
 
 @Composable
 private fun FloatingAskShreeButton(
-    node: Node,
-    siteId: Int,
+    node:    Node,
+    siteId:  Int,
     context: android.content.Context,
     modifier: Modifier = Modifier
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "ask_shree")
-    val pulseScale by infiniteTransition.animateFloat(
-        initialValue = 1f,
-        targetValue = 1.05f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1000, easing = EaseInOutSine),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "pulse"
-    )
-    val glowAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.4f,
-        targetValue = 0.8f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1200, easing = EaseInOutSine),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "glow"
-    )
+    val inf        = rememberInfiniteTransition(label = "ask")
+    val pulse      by inf.animateFloat(1f, 1.05f, infiniteRepeatable(tween(1000, easing = EaseInOutSine), RepeatMode.Reverse), "ps")
+    val glowAlpha  by inf.animateFloat(0.4f, 0.8f, infiniteRepeatable(tween(1200, easing = EaseInOutSine), RepeatMode.Reverse), "ga")
 
     Box(modifier = modifier) {
         Box(
-            modifier = Modifier
-                .scale(pulseScale)
-                .size(68.dp)
-                .clip(CircleShape)
-                .background(
-                    Brush.radialGradient(
-                        listOf(
-                            AccentYellow.copy(alpha = glowAlpha * 0.4f),
-                            Color.Transparent
-                        )
-                    )
-                )
+            modifier = Modifier.scale(pulse).size(68.dp).clip(CircleShape)
+                .background(Brush.radialGradient(listOf(AccentYellow.copy(alpha = glowAlpha * 0.4f), Color.Transparent)))
         )
-
         Box(
-            modifier = Modifier
-                .size(60.dp)
-                .clip(CircleShape)
-                .background(
-                    Brush.linearGradient(listOf(Color(0xFFFFD54F), Color(0xFFFFC107)))
-                )
-                .border(
-                    2.dp,
-                    Brush.linearGradient(listOf(Color(0x66FFFFFF), Color(0x22FFFFFF))),
-                    CircleShape
-                )
+            modifier = Modifier.size(60.dp).clip(CircleShape)
+                .background(Brush.linearGradient(listOf(Color(0xFFFFD54F), Color(0xFFFFC107))))
+                .border(2.dp, Brush.linearGradient(listOf(Color(0x66FFFFFF), Color(0x22FFFFFF))), CircleShape)
                 .clickable {
                     context.startActivity(
                         Intent(context, ChatbotActivity::class.java).apply {
@@ -742,18 +960,8 @@ private fun FloatingAskShreeButton(
             contentAlignment = Alignment.Center
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(
-                    Icons.AutoMirrored.Filled.Chat,
-                    null,
-                    tint = DeepNavy,
-                    modifier = Modifier.size(22.dp)
-                )
-                Text(
-                    "Ask",
-                    color = DeepNavy,
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                Icon(Icons.AutoMirrored.Filled.Chat, null, tint = DeepNavy, modifier = Modifier.size(22.dp))
+                Text("Ask", color = DeepNavy, fontSize = 9.sp, fontWeight = FontWeight.Bold)
             }
         }
     }
@@ -767,7 +975,10 @@ private fun TripProgressSection(nodes: List<Node>, visitedIds: List<Int>, curren
         nodes.sortedBy { it.sequenceOrder }.forEach { n ->
             val visited   = n.id in visitedIds
             val isCurrent = n.id == currentId
-            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Box(
                     Modifier.size(26.dp).clip(CircleShape).background(
                         when { isCurrent -> AccentYellow; visited -> Color(0xFF4ADE80); else -> GlassWhite15 }
@@ -794,11 +1005,7 @@ private fun TripProgressSection(nodes: List<Node>, visitedIds: List<Int>, curren
 @Composable
 private fun ShimmerBox() {
     val inf = rememberInfiniteTransition(label = "sh")
-    val x by inf.animateFloat(
-        -1f, 2f,
-        infiniteRepeatable(tween(1200, easing = LinearEasing), RepeatMode.Restart),
-        label = "sx"
-    )
+    val x   by inf.animateFloat(-1f, 2f, infiniteRepeatable(tween(1200, easing = LinearEasing), RepeatMode.Restart), "sx")
     Box(
         Modifier.fillMaxSize().background(
             Brush.linearGradient(
