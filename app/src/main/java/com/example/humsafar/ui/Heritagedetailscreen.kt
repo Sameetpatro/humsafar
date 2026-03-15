@@ -1,12 +1,13 @@
-// HeritageDetailScreen.kt — DISTINCT layout from NodeDetailScreen
-// Hero gallery → Weather → Forecast → Buy Ticket → Scan QR → Video → Hear This Page → Overview/History/Fun Facts → Nodes → Helpline → Feedback → Chatbot FAB
+// HeritageDetailScreen.kt
 
 package com.example.humsafar.ui
 
 import android.content.Intent
 import android.net.Uri
 import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.EaseInOutSine
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -31,6 +32,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -42,7 +44,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -102,11 +106,12 @@ fun HeritageDetailScreen(
     var weather by remember { mutableStateOf<WeatherService.WeatherResult?>(null) }
     var forecast by remember { mutableStateOf<List<WeatherService.ForecastDay>>(emptyList()) }
 
-    // ── TTS Setup ─────────────────────────────────────────────────────────────
+    // ── TTS State ─────────────────────────────────────────────────────────────
+    var isSpeaking by remember { mutableStateOf(false) }
+    var isPaused   by remember { mutableStateOf(false) }
+
     val tts = remember {
-        TextToSpeech(context) { status ->
-            // Initialization handled silently; language set after init
-        }
+        TextToSpeech(context) { }
     }
 
     DisposableEffect(Unit) {
@@ -117,52 +122,74 @@ fun HeritageDetailScreen(
         }
     }
 
-    // ── TTS Helper Functions ───────────────────────────────────────────────────
-    fun speakSection(sectionLabel: String, siteName: String, text: String?) {
-        if (text.isNullOrBlank()) return
+    // ── TTS Helpers ───────────────────────────────────────────────────────────
+    fun stopSpeaking() {
         tts.stop()
-        tts.speak(
-            "Now you are hearing the $sectionLabel of $siteName",
-            TextToSpeech.QUEUE_FLUSH,
-            null,
-            "header_${sectionLabel}"
-        )
-        tts.speak(text, TextToSpeech.QUEUE_ADD, null, "body_${sectionLabel}")
+        isSpeaking = false
+        isPaused   = false
+    }
+
+    fun pauseOrResume() {
+        if (isPaused) {
+            // TTS has no native resume — restart is not ideal, so we just mark resumed
+            // Android TTS doesn't support pause/resume natively; stop is the best option
+            isPaused = false
+            isSpeaking = false
+        } else {
+            tts.stop()
+            isPaused   = true
+            isSpeaking = false
+        }
+    }
+
+    fun speakText(texts: List<Pair<String, String>>) {
+        // texts = list of (header, body)
+        tts.stop()
+        isSpeaking = true
+        isPaused   = false
+
+        val progressListener = object : UtteranceProgressListener() {
+            override fun onStart(utteranceId: String?) {}
+            override fun onDone(utteranceId: String?) {
+                if (utteranceId == "final") {
+                    isSpeaking = false
+                }
+            }
+            override fun onError(utteranceId: String?) { isSpeaking = false }
+        }
+        tts.setOnUtteranceProgressListener(progressListener)
+
+        texts.forEachIndexed { index, (header, body) ->
+            val isLast = index == texts.size - 1
+            tts.speak(header, TextToSpeech.QUEUE_ADD, null, "hdr_$index")
+            tts.speak(body,   TextToSpeech.QUEUE_ADD, null, if (isLast) "final" else "body_$index")
+        }
+    }
+
+    fun speakSection(label: String, siteName: String, text: String?) {
+        if (text.isNullOrBlank()) return
+        speakText(listOf("Now you are hearing the $label of $siteName" to text))
     }
 
     fun speakEntirePage(site: SiteDetail) {
-        tts.stop()
-        val hasSummary = !site.summary.isNullOrBlank()
-        val hasHistory = !site.history.isNullOrBlank()
-        val hasFacts   = !site.funFacts.isNullOrBlank()
-
-        var firstQueued = false
-
-        if (hasSummary) {
-            val mode = if (!firstQueued) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
-            tts.speak("Now you are hearing the overview of ${site.name}", mode, null, "hdr_overview")
-            tts.speak(site.summary, TextToSpeech.QUEUE_ADD, null, "body_overview")
-            firstQueued = true
+        val texts = mutableListOf<Pair<String, String>>()
+        site.summary?.takeIf { it.isNotBlank() }?.let {
+            texts += "Now you are hearing the overview of ${site.name}" to it
         }
-        if (hasHistory) {
-            val mode = if (!firstQueued) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
-            tts.speak("Now you are hearing the history of ${site.name}", mode, null, "hdr_history")
-            tts.speak(site.history, TextToSpeech.QUEUE_ADD, null, "body_history")
-            firstQueued = true
+        site.history?.takeIf { it.isNotBlank() }?.let {
+            texts += "Now you are hearing the history of ${site.name}" to it
         }
-        if (hasFacts) {
-            val mode = if (!firstQueued) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
-            tts.speak("Now you are hearing some fun facts about ${site.name}", mode, null, "hdr_facts")
-            tts.speak(site.funFacts, TextToSpeech.QUEUE_ADD, null, "body_facts")
+        site.funFacts?.takeIf { it.isNotBlank() }?.let {
+            texts += "Now you are hearing some fun facts about ${site.name}" to it
         }
+        if (texts.isNotEmpty()) speakText(texts)
     }
-    // ─────────────────────────────────────────────────────────────────────────
 
     LaunchedEffect(siteIdInt) { viewModel.loadSite(siteIdInt) }
 
     LaunchedEffect(uiState) {
         val site = (uiState as? HeritageDetailUiState.Ready)?.site ?: return@LaunchedEffect
-        weather = WeatherService.fetchWeather(site.latitude, site.longitude)
+        weather  = WeatherService.fetchWeather(site.latitude, site.longitude)
         forecast = WeatherService.fetchForecast(site.latitude, site.longitude)
     }
 
@@ -181,62 +208,39 @@ fun HeritageDetailScreen(
             }
 
             is HeritageDetailUiState.Ready -> {
-                val site = s.site
-                val siteImages = remember(site.images) {
-                    site.images.sortedBy { it.displayOrder }
-                }
-
+                val site       = s.site
+                val siteImages = remember(site.images) { site.images.sortedBy { it.displayOrder } }
                 var showTicketSheet by remember { mutableStateOf(false) }
 
                 Column(Modifier.fillMaxSize()) {
-                    Column(
-                        Modifier
-                            .weight(1f)
-                            .verticalScroll(rememberScrollState())
-                    ) {
-                        // ── Hero image gallery ──────────────────────────────
-                        HeritageHeroGallery(
-                            siteName = site.name,
-                            images = siteImages,
-                            onBack = onBack
-                        )
+                    Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
 
-                        Column(
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 20.dp)
-                        ) {
+                        HeritageHeroGallery(siteName = site.name, images = siteImages, onBack = onBack)
+
+                        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
                             Spacer(Modifier.height(20.dp))
 
-                            // ── Weather card (current) ──────────────────────
                             weather?.let { w ->
                                 HeritageWeatherCard(weather = w)
                                 Spacer(Modifier.height(16.dp))
                             }
 
-                            // ── Forecast horizontal scroll ──────────────────
                             if (forecast.isNotEmpty()) {
                                 HeritageForecastSection(forecast = forecast)
                                 Spacer(Modifier.height(20.dp))
                             }
 
-                            // ── Buy Ticket ──────────────────────────────────
                             HeritageBuyTicketCard(onClick = { showTicketSheet = true })
                             Spacer(Modifier.height(16.dp))
 
-                            // ── Scan Node to Start Trip ─────────────────────
                             HeritageActionCard(
-                                icon = "📷",
-                                title = "Scan Node to Start Trip",
+                                icon = "📷", title = "Scan Node to Start Trip",
                                 subtitle = "Scan QR & explore nodes",
                                 gradientColors = listOf(Color(0xFF0D2825), Color(0xFF091F1E)),
                                 borderColor = Color(0xFF2DD4BF)
-                            ) {
-                                onNavigateToQrScan(siteId)
-                            }
+                            ) { onNavigateToQrScan(siteId) }
                             Spacer(Modifier.height(16.dp))
 
-                            // ── Video card ──────────────────────────────────
                             site.introVideoUrl?.takeIf { it.isNotBlank() }?.let { url ->
                                 HeritageVideoCard(label = "Watch Intro Video") {
                                     context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
@@ -244,109 +248,183 @@ fun HeritageDetailScreen(
                                 Spacer(Modifier.height(16.dp))
                             }
 
-                            // ── Hear This Page — NOW FUNCTIONAL ────────────
+                            // ── Hear This Page — with global speak ──────────
                             HeritageActionCard(
-                                icon = "🎧",
-                                title = "Hear This Page",
-                                subtitle = "Listen to the full page narration",
+                                icon = "🎧", title = "Hear This Page",
+                                subtitle = if (isSpeaking) "Tap Stop to pause narration" else "Listen to the full page narration",
                                 gradientColors = listOf(Color(0xFF1A0050), Color(0xFF0D0030)),
                                 borderColor = Color(0xFF9B30FF)
-                            ) {
-                                speakEntirePage(site)
-                            }
+                            ) { speakEntirePage(site) }
                             Spacer(Modifier.height(16.dp))
 
-                            // ── Content: Overview, History, Fun Facts ───────
                             site.summary?.takeIf { it.isNotBlank() }?.let { text ->
                                 HeritageContentCard(
-                                    title = "Overview",
-                                    body = text,
+                                    title = "Overview", body = text,
                                     onSpeak = { speakSection("overview", site.name, text) }
                                 )
                                 Spacer(Modifier.height(12.dp))
                             }
                             site.history?.takeIf { it.isNotBlank() }?.let { text ->
                                 HeritageContentCard(
-                                    title = "History",
-                                    body = text,
+                                    title = "History", body = text,
                                     onSpeak = { speakSection("history", site.name, text) }
                                 )
                                 Spacer(Modifier.height(12.dp))
                             }
                             site.funFacts?.takeIf { it.isNotBlank() }?.let { text ->
                                 HeritageContentCard(
-                                    title = "Fun Facts",
-                                    body = text,
+                                    title = "Fun Facts", body = text,
                                     onSpeak = { speakSection("fun facts", site.name, text) }
                                 )
                                 Spacer(Modifier.height(16.dp))
                             }
 
-                            // ── Nodes ───────────────────────────────────────
                             if (site.nodes.isNotEmpty()) {
-                                HeritageNodesSection(
-                                    nodes = site.nodes.sortedBy { it.sequenceOrder }
-                                )
+                                HeritageNodesSection(nodes = site.nodes.sortedBy { it.sequenceOrder })
                                 Spacer(Modifier.height(16.dp))
                             }
 
-                            // ── Helpline ────────────────────────────────────
                             site.helplineNumber?.takeIf { it.isNotBlank() }?.let { num ->
-                                HeritageHelplineCard(
-                                    number = num,
-                                    onClick = {
-                                        context.startActivity(
-                                            Intent(Intent.ACTION_DIAL, Uri.parse("tel:$num"))
-                                        )
-                                    }
-                                )
+                                HeritageHelplineCard(number = num) {
+                                    context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$num")))
+                                }
                                 Spacer(Modifier.height(16.dp))
                             }
 
-                            // ── Feedback ────────────────────────────────────
                             HeritageActionCard(
-                                icon = "💬",
-                                title = "Feedback",
+                                icon = "💬", title = "Feedback",
                                 subtitle = "Share your experience",
                                 gradientColors = listOf(Color(0xFF0D2825), Color(0xFF091F1E)),
                                 borderColor = Color(0xFF2DD4BF)
-                            ) {
-                                Toast.makeText(context, "Coming soon", Toast.LENGTH_SHORT).show()
-                            }
+                            ) { Toast.makeText(context, "Coming soon", Toast.LENGTH_SHORT).show() }
 
-                            Spacer(Modifier.height(100.dp))
+                            Spacer(Modifier.height(120.dp))
                         }
                     }
                 }
 
+                // ── TTS Floating Control Bar ────────────────────────────────
+                if (isSpeaking || isPaused) {
+                    TtsControlBar(
+                        isSpeaking = isSpeaking,
+                        isPaused   = isPaused,
+                        onPause    = { pauseOrResume() },
+                        onStop     = { stopSpeaking() },
+                        modifier   = Modifier
+                            .align(Alignment.BottomCenter)
+                            .navigationBarsPadding()
+                            .padding(horizontal = 16.dp, vertical = 80.dp)
+                    )
+                }
+
                 // ── Chatbot FAB ─────────────────────────────────────────────
                 HeritageChatbotFab(
-                    siteName = site.name,
-                    siteId = site.id,
+                    siteName = site.name, siteId = site.id,
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .navigationBarsPadding()
                         .padding(end = 16.dp, bottom = 16.dp)
                 )
 
-                // ── Ticket bottom sheet ─────────────────────────────────────
                 if (showTicketSheet) {
-                    HeritageTicketBottomSheet(
-                        siteName = site.name,
-                        onDismiss = { showTicketSheet = false }
-                    )
+                    HeritageTicketBottomSheet(siteName = site.name, onDismiss = { showTicketSheet = false })
                 }
             }
 
             is HeritageDetailUiState.Error -> {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(
-                        s.message,
-                        color = Color(0xFFFF6B6B),
-                        fontSize = 14.sp,
-                        modifier = Modifier.padding(32.dp)
-                    )
+                    Text(s.message, color = Color(0xFFFF6B6B), fontSize = 14.sp, modifier = Modifier.padding(32.dp))
                 }
+            }
+        }
+    }
+}
+
+// ── TTS Control Bar ───────────────────────────────────────────────────────────
+@Composable
+private fun TtsControlBar(
+    isSpeaking: Boolean,
+    isPaused:   Boolean,
+    onPause:    () -> Unit,
+    onStop:     () -> Unit,
+    modifier:   Modifier = Modifier
+) {
+    val inf   = rememberInfiniteTransition(label = "tts")
+    val pulse by inf.animateFloat(
+        0.6f, 1f,
+        infiniteRepeatable(tween(800, easing = EaseInOutSine), RepeatMode.Reverse),
+        "tp"
+    )
+
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(50))
+            .background(
+                Brush.linearGradient(listOf(Color(0xFF1A0050), Color(0xFF0D0030)))
+            )
+            .border(1.dp, Color(0xFF9B30FF).copy(alpha = if (isSpeaking) pulse else 0.4f), RoundedCornerShape(50))
+            .padding(horizontal = 20.dp, vertical = 12.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // Animated speaker icon
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF9B30FF).copy(alpha = if (isSpeaking) pulse * 0.4f else 0.2f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Default.VolumeUp,
+                    contentDescription = null,
+                    tint     = Color(0xFF9B30FF),
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+
+            Text(
+                text = if (isPaused) "Paused" else "Narrating…",
+                color    = Color(0xB3FFFFFF),
+                fontSize = 13.sp
+            )
+
+            // Pause button
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(Color(0x339B30FF))
+                    .border(0.7.dp, Color(0xFF9B30FF).copy(0.5f), CircleShape)
+                    .clickable { onPause() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    if (isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
+                    contentDescription = if (isPaused) "Resume" else "Pause",
+                    tint     = Color(0xFF9B30FF),
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+
+            // Stop button
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(Color(0x33FF5252))
+                    .border(0.7.dp, Color(0xFFFF5252).copy(0.5f), CircleShape)
+                    .clickable { onStop() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Default.Stop,
+                    contentDescription = "Stop",
+                    tint     = Color(0xFFFF6B6B),
+                    modifier = Modifier.size(18.dp)
+                )
             }
         }
     }
@@ -354,162 +432,77 @@ fun HeritageDetailScreen(
 
 // ── Heritage Hero Gallery ─────────────────────────────────────────────────────
 @Composable
-private fun HeritageHeroGallery(
-    siteName: String,
-    images: List<SiteImage>,
-    onBack: () -> Unit
-) {
+private fun HeritageHeroGallery(siteName: String, images: List<SiteImage>, onBack: () -> Unit) {
     val listState = rememberLazyListState()
     var currentIndex by remember { mutableStateOf(0) }
-    LaunchedEffect(listState.firstVisibleItemIndex) {
-        currentIndex = listState.firstVisibleItemIndex
-    }
+    LaunchedEffect(listState.firstVisibleItemIndex) { currentIndex = listState.firstVisibleItemIndex }
 
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .height(360.dp)
-    ) {
+    Box(Modifier.fillMaxWidth().height(360.dp)) {
         if (images.isNotEmpty()) {
-            LazyRow(
-                state = listState,
-                modifier = Modifier.fillMaxSize(),
-                userScrollEnabled = true
-            ) {
+            LazyRow(state = listState, modifier = Modifier.fillMaxSize(), userScrollEnabled = true) {
                 itemsIndexed(images) { _, img ->
                     SubcomposeAsyncImage(
-                        model = ImageRequest.Builder(LocalContext.current)
-                            .data(img.imageUrl)
-                            .crossfade(400)
-                            .build(),
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .fillParentMaxWidth()
-                            .fillParentMaxHeight()
+                        model = ImageRequest.Builder(LocalContext.current).data(img.imageUrl).crossfade(400).build(),
+                        contentDescription = null, contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillParentMaxWidth().fillParentMaxHeight()
                     )
                 }
             }
-
             Box(
-                Modifier
-                    .align(Alignment.TopEnd)
-                    .statusBarsPadding()
-                    .padding(14.dp)
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(Color(0xCC1A1A2E))
+                Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(14.dp)
+                    .clip(RoundedCornerShape(20.dp)).background(Color(0xCC1A1A2E))
                     .padding(horizontal = 12.dp, vertical = 6.dp)
-            ) {
-                Text(
-                    "${currentIndex + 1} / ${images.size}",
-                    color = Color.White,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
+            ) { Text("${currentIndex + 1} / ${images.size}", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold) }
 
             if (images.size > 1) {
                 Row(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = 52.dp),
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 52.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     images.forEachIndexed { i, _ ->
                         Box(
-                            Modifier
-                                .size(if (i == currentIndex) 10.dp else 6.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    if (i == currentIndex) AccentYellow
-                                    else Color.White.copy(alpha = 0.5f)
-                                )
+                            Modifier.size(if (i == currentIndex) 10.dp else 6.dp).clip(CircleShape)
+                                .background(if (i == currentIndex) AccentYellow else Color.White.copy(alpha = 0.5f))
                         )
                     }
                 }
             }
         } else {
             Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(listOf(Color(0xFF1A1A2E), Color(0xFF0D0D1A)))
-                    ),
+                Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF1A1A2E), Color(0xFF0D0D1A)))),
                 contentAlignment = Alignment.Center
-            ) {
-                Text("🏛️", fontSize = 80.sp, modifier = Modifier.alpha(0.3f))
-            }
+            ) { Text("🏛️", fontSize = 80.sp, modifier = Modifier.alpha(0.3f)) }
         }
 
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(120.dp)
-                .align(Alignment.TopCenter)
-                .background(
-                    Brush.verticalGradient(listOf(Color(0xE61A1A2E), Color.Transparent))
-                )
-        )
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(140.dp)
-                .align(Alignment.BottomCenter)
-                .background(
-                    Brush.verticalGradient(listOf(Color.Transparent, Color(0xFF050D1A)))
-                )
-        )
+        Box(Modifier.fillMaxWidth().height(120.dp).align(Alignment.TopCenter)
+            .background(Brush.verticalGradient(listOf(Color(0xE61A1A2E), Color.Transparent))))
+        Box(Modifier.fillMaxWidth().height(140.dp).align(Alignment.BottomCenter)
+            .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xFF050D1A)))))
 
         Box(
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .statusBarsPadding()
-                .padding(12.dp)
-                .size(44.dp)
-                .clip(CircleShape)
-                .background(Color(0xBB1A1A2E))
-                .border(0.5.dp, Color.White.copy(alpha = 0.2f), CircleShape)
-                .clickable { onBack() },
+            modifier = Modifier.align(Alignment.TopStart).statusBarsPadding().padding(12.dp)
+                .size(44.dp).clip(CircleShape).background(Color(0xBB1A1A2E))
+                .border(0.5.dp, Color.White.copy(alpha = 0.2f), CircleShape).clickable { onBack() },
             contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                Icons.AutoMirrored.Filled.ArrowBack,
-                null,
-                tint = Color.White,
-                modifier = Modifier.size(22.dp)
-            )
-        }
+        ) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = Color.White, modifier = Modifier.size(22.dp)) }
 
-        Column(
-            Modifier
-                .align(Alignment.BottomStart)
-                .padding(horizontal = 20.dp, vertical = 16.dp)
-        ) {
+        Column(Modifier.align(Alignment.BottomStart).padding(horizontal = 20.dp, vertical = 16.dp)) {
             Text(siteName, color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Black)
         }
     }
 }
 
-// ── Weather & Forecast ────────────────────────────────────────────────────────
+// ── Weather ───────────────────────────────────────────────────────────────────
 @Composable
 private fun HeritageWeatherCard(weather: WeatherService.WeatherResult) {
-    val suggestions = remember(weather) {
-        WeatherService.weatherSuggestions(weather.tempC, weather.weatherCode)
-    }
+    val suggestions = remember(weather) { WeatherService.weatherSuggestions(weather.tempC, weather.weatherCode) }
     Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp))
             .background(Brush.linearGradient(listOf(Color(0xFF1E3A5F), Color(0xFF0D2137))))
-            .border(1.dp, Color(0xFF2E5A8F).copy(alpha = 0.5f), RoundedCornerShape(20.dp))
-            .padding(20.dp)
+            .border(1.dp, Color(0xFF2E5A8F).copy(alpha = 0.5f), RoundedCornerShape(20.dp)).padding(20.dp)
     ) {
         Column {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Column {
                     Text("%.0f°C".format(weather.tempC), color = TextPrimary, fontSize = 32.sp, fontWeight = FontWeight.Bold)
                     Text(weather.description, color = TextSecondary, fontSize = 14.sp)
@@ -519,9 +512,7 @@ private fun HeritageWeatherCard(weather: WeatherService.WeatherResult) {
             if (suggestions.isNotEmpty()) {
                 Spacer(Modifier.height(14.dp))
                 Text("Suggestions:", color = TextTertiary, fontSize = 12.sp)
-                suggestions.forEach { sugg ->
-                    Text("• $sugg", color = AccentYellow, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp))
-                }
+                suggestions.forEach { Text("• $it", color = AccentYellow, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp)) }
             }
         }
     }
@@ -532,21 +523,14 @@ private fun HeritageForecastSection(forecast: List<WeatherService.ForecastDay>) 
     Column {
         Text("7-Day Forecast", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(10.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
+        Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             forecast.forEach { day ->
-                val shortDate = day.date.takeLast(5)
                 Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(GlassWhite10)
-                        .border(0.7.dp, GlassBorder, RoundedCornerShape(14.dp))
-                        .padding(horizontal = 14.dp, vertical = 12.dp)
+                    modifier = Modifier.clip(RoundedCornerShape(14.dp)).background(GlassWhite10)
+                        .border(0.7.dp, GlassBorder, RoundedCornerShape(14.dp)).padding(horizontal = 14.dp, vertical = 12.dp)
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(shortDate, color = TextSecondary, fontSize = 11.sp)
+                        Text(day.date.takeLast(5), color = TextSecondary, fontSize = 11.sp)
                         Spacer(Modifier.height(4.dp))
                         Text("%.0f°".format(day.tempMax), color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                         Text("%.0f°".format(day.tempMin), color = TextTertiary, fontSize = 12.sp)
@@ -557,324 +541,158 @@ private fun HeritageForecastSection(forecast: List<WeatherService.ForecastDay>) 
     }
 }
 
-// ── Buy Ticket animated card ───────────────────────────────────────────────────
+// ── Buy Ticket Card ───────────────────────────────────────────────────────────
 @Composable
 private fun HeritageBuyTicketCard(onClick: () -> Unit) {
-    val inf = rememberInfiniteTransition(label = "ticket")
-    val glow by inf.animateFloat(
-        0.4f, 0.9f,
-        infiniteRepeatable(tween(1200, easing = EaseInOutSine), RepeatMode.Reverse),
-        "tg"
-    )
-    val shimmer by inf.animateFloat(
-        0f, 1f,
-        infiniteRepeatable(tween(2800, easing = LinearEasing), RepeatMode.Restart),
-        "ts"
-    )
+    val inf     = rememberInfiniteTransition(label = "ticket")
+    val glow    by inf.animateFloat(0.4f, 0.9f, infiniteRepeatable(tween(1200, easing = EaseInOutSine), RepeatMode.Reverse), "tg")
+    val shimmer by inf.animateFloat(0f, 1f, infiniteRepeatable(tween(2800, easing = LinearEasing), RepeatMode.Restart), "ts")
 
     Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .background(
-                Brush.linearGradient(
-                    listOf(Color(0xFF0A2340), Color(0xFF061628), Color(0xFF0D2845))
-                )
-            )
-            .border(
-                1.5.dp,
-                Brush.linearGradient(
-                    colorStops = arrayOf(
-                        (shimmer + 0.0f).rem(1f) to Color(0xFF4A90D9).copy(alpha = glow),
-                        (shimmer + 0.4f).rem(1f) to Color(0xFF7BB8F0).copy(alpha = glow * 0.5f),
-                        (shimmer + 0.8f).rem(1f) to Color(0xFF4A90D9).copy(alpha = glow)
-                    )
-                ),
-                RoundedCornerShape(20.dp)
-            )
-            .clickable { onClick() }
-            .padding(horizontal = 20.dp, vertical = 18.dp)
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp))
+            .background(Brush.linearGradient(listOf(Color(0xFF0A2340), Color(0xFF061628), Color(0xFF0D2845))))
+            .border(1.5.dp, Brush.linearGradient(colorStops = arrayOf(
+                (shimmer + 0.0f).rem(1f) to Color(0xFF4A90D9).copy(alpha = glow),
+                (shimmer + 0.4f).rem(1f) to Color(0xFF7BB8F0).copy(alpha = glow * 0.5f),
+                (shimmer + 0.8f).rem(1f) to Color(0xFF4A90D9).copy(alpha = glow)
+            )), RoundedCornerShape(20.dp))
+            .clickable { onClick() }.padding(horizontal = 20.dp, vertical = 18.dp)
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth()
-        ) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             Box(
-                modifier = Modifier
-                    .size(50.dp)
-                    .clip(CircleShape)
-                    .background(
-                        Brush.radialGradient(
-                            listOf(Color(0xFF4A90D9).copy(0.25f), Color(0xFF2255AA).copy(0.1f))
-                        )
-                    )
+                modifier = Modifier.size(50.dp).clip(CircleShape)
+                    .background(Brush.radialGradient(listOf(Color(0xFF4A90D9).copy(0.25f), Color(0xFF2255AA).copy(0.1f))))
                     .border(1.dp, Color(0xFF4A90D9).copy(0.4f), CircleShape),
                 contentAlignment = Alignment.Center
-            ) {
-                Text("🎟️", fontSize = 22.sp)
-            }
-
+            ) { Text("🎟️", fontSize = 22.sp) }
             Spacer(Modifier.size(16.dp))
-
             Column(Modifier.weight(1f)) {
-                Text(
-                    "Buy Entry Ticket",
-                    color = Color.White,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    "Skip the queue • Fast-track entry",
-                    color = Color(0xFF7BB8F0).copy(alpha = 0.8f),
-                    fontSize = 12.sp
-                )
+                Text("Buy Entry Ticket", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text("Skip the queue • Fast-track entry", color = Color(0xFF7BB8F0).copy(alpha = 0.8f), fontSize = 12.sp)
             }
-
             Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(50))
-                    .background(Color(0xFF4A90D9).copy(alpha = 0.15f))
-                    .border(0.5.dp, Color(0xFF4A90D9).copy(0.35f), RoundedCornerShape(50))
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                modifier = Modifier.clip(RoundedCornerShape(50)).background(Color(0xFF4A90D9).copy(alpha = 0.15f))
+                    .border(0.5.dp, Color(0xFF4A90D9).copy(0.35f), RoundedCornerShape(50)).padding(horizontal = 10.dp, vertical = 6.dp),
                 contentAlignment = Alignment.Center
-            ) {
-                Text("›", color = Color(0xFF7BB8F0), fontSize = 20.sp, fontWeight = FontWeight.Light)
-            }
+            ) { Text("›", color = Color(0xFF7BB8F0), fontSize = 20.sp, fontWeight = FontWeight.Light) }
         }
     }
 }
 
-// ── Ticket bottom sheet ────────────────────────────────────────────────────────
+// ── Ticket Bottom Sheet ───────────────────────────────────────────────────────
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun HeritageTicketBottomSheet(
-    siteName: String,
-    onDismiss: () -> Unit
-) {
-    val context = LocalContext.current
+private fun HeritageTicketBottomSheet(siteName: String, onDismiss: () -> Unit) {
+    val context    = LocalContext.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-
-    data class TicketTier(
-        val emoji: String,
-        val name: String,
-        val price: String,
-        val desc: String
-    )
-
+    data class TicketTier(val emoji: String, val name: String, val price: String, val desc: String)
     val tiers = listOf(
-        TicketTier("🆓", "Free Entry",        "₹0",   "Children under 15 & local residents"),
-        TicketTier("🎓", "Student",           "₹50",  "Valid student ID required at entry"),
-        TicketTier("👤", "Adult (Indian)",    "₹100", "Indian nationals, general entry"),
-        TicketTier("🌍", "Foreign National",  "₹500", "International visitors")
+        TicketTier("🆓", "Free Entry", "₹0", "Children under 15 & local residents"),
+        TicketTier("🎓", "Student", "₹50", "Valid student ID required at entry"),
+        TicketTier("👤", "Adult (Indian)", "₹100", "Indian nationals, general entry"),
+        TicketTier("🌍", "Foreign National", "₹500", "International visitors")
     )
-
     var selected by remember { mutableStateOf(1) }
 
     ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
+        onDismissRequest = onDismiss, sheetState = sheetState,
         containerColor = Color(0xFF080F1E),
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
         dragHandle = {
-            Box(
-                Modifier
-                    .padding(top = 12.dp, bottom = 8.dp)
-                    .size(width = 36.dp, height = 4.dp)
-                    .clip(RoundedCornerShape(50))
-                    .background(Color(0x4DFFFFFF))
-            )
+            Box(Modifier.padding(top = 12.dp, bottom = 8.dp).size(width = 36.dp, height = 4.dp)
+                .clip(RoundedCornerShape(50)).background(Color(0x4DFFFFFF)))
         }
     ) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 36.dp)
-        ) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 36.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
-                    modifier = Modifier
-                        .size(52.dp)
-                        .clip(CircleShape)
+                    modifier = Modifier.size(52.dp).clip(CircleShape)
                         .background(Brush.linearGradient(listOf(Color(0xFF1A3A6B), Color(0xFF0D2040))))
                         .border(1.dp, Color(0xFF4A90D9).copy(0.4f), CircleShape),
                     contentAlignment = Alignment.Center
-                ) {
-                    Text("🎟️", fontSize = 24.sp)
-                }
+                ) { Text("🎟️", fontSize = 24.sp) }
                 Spacer(Modifier.size(14.dp))
                 Column {
                     Text("Entry Tickets", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                     Text(siteName, color = Color(0x73FFFFFF), fontSize = 13.sp)
                 }
             }
-
             Spacer(Modifier.height(14.dp))
-
             Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color(0x1A4A90D9))
-                    .border(0.7.dp, Color(0xFF4A90D9).copy(0.2f), RoundedCornerShape(12.dp))
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                    .background(Color(0x1A4A90D9)).border(0.7.dp, Color(0xFF4A90D9).copy(0.2f), RoundedCornerShape(12.dp))
                     .padding(horizontal = 14.dp, vertical = 10.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("ℹ️", fontSize = 14.sp)
-                    Spacer(Modifier.size(8.dp))
-                    Text(
-                        "Tickets valid for same-day entry only. Carry valid ID proof.",
-                        color = Color(0xFF7BB8F0),
-                        fontSize = 12.sp,
-                        lineHeight = 17.sp
-                    )
+                    Text("ℹ️", fontSize = 14.sp); Spacer(Modifier.size(8.dp))
+                    Text("Tickets valid for same-day entry only. Carry valid ID proof.", color = Color(0xFF7BB8F0), fontSize = 12.sp, lineHeight = 17.sp)
                 }
             }
-
             Spacer(Modifier.height(16.dp))
-
             tiers.forEachIndexed { i, tier ->
                 val isSelected = selected == i
                 Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(
-                            if (isSelected)
-                                Brush.linearGradient(listOf(Color(0x331A5FA8), Color(0x220D3A6B)))
-                            else
-                                Brush.linearGradient(listOf(Color(0x1AFFFFFF), Color(0x1AFFFFFF)))
-                        )
-                        .border(
-                            if (isSelected) 1.5.dp else 0.7.dp,
-                            if (isSelected) Color(0xFF4A90D9).copy(alpha = 0.7f) else Color(0x33FFFFFF),
-                            RoundedCornerShape(16.dp)
-                        )
-                        .clickable { selected = i }
-                        .padding(horizontal = 16.dp, vertical = 14.dp)
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clip(RoundedCornerShape(16.dp))
+                        .background(if (isSelected) Brush.linearGradient(listOf(Color(0x331A5FA8), Color(0x220D3A6B))) else Brush.linearGradient(listOf(Color(0x1AFFFFFF), Color(0x1AFFFFFF))))
+                        .border(if (isSelected) 1.5.dp else 0.7.dp, if (isSelected) Color(0xFF4A90D9).copy(alpha = 0.7f) else Color(0x33FFFFFF), RoundedCornerShape(16.dp))
+                        .clickable { selected = i }.padding(horizontal = 16.dp, vertical = 14.dp)
                 ) {
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Box(
-                            modifier = Modifier
-                                .size(22.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    if (isSelected) Color(0xFF4A90D9) else Color(0x1AFFFFFF)
-                                )
-                                .border(
-                                    1.5.dp,
-                                    if (isSelected) Color(0xFF4A90D9) else Color(0x44FFFFFF),
-                                    CircleShape
-                                ),
+                            modifier = Modifier.size(22.dp).clip(CircleShape)
+                                .background(if (isSelected) Color(0xFF4A90D9) else Color(0x1AFFFFFF))
+                                .border(1.5.dp, if (isSelected) Color(0xFF4A90D9) else Color(0x44FFFFFF), CircleShape),
                             contentAlignment = Alignment.Center
-                        ) {
-                            if (isSelected) {
-                                Text("✓", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-
-                        Spacer(Modifier.size(12.dp))
-                        Text(tier.emoji, fontSize = 20.sp)
-                        Spacer(Modifier.size(10.dp))
-
+                        ) { if (isSelected) Text("✓", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                        Spacer(Modifier.size(12.dp)); Text(tier.emoji, fontSize = 20.sp); Spacer(Modifier.size(10.dp))
                         Column(Modifier.weight(1f)) {
-                            Text(
-                                tier.name,
-                                color = if (isSelected) Color(0xFF7BB8F0) else Color.White,
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
+                            Text(tier.name, color = if (isSelected) Color(0xFF7BB8F0) else Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                             Text(tier.desc, color = Color(0x73FFFFFF), fontSize = 11.sp)
                         }
-
-                        Text(
-                            tier.price,
-                            color = if (isSelected) Color(0xFF7BB8F0) else Color(0xB3FFFFFF),
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Text(tier.price, color = if (isSelected) Color(0xFF7BB8F0) else Color(0xB3FFFFFF), fontSize = 17.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
-
             Spacer(Modifier.height(24.dp))
-
             Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(50))
-                    .background(
-                        Brush.linearGradient(listOf(Color(0xFF2A6CC8), Color(0xFF1A4A90)))
-                    )
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(50))
+                    .background(Brush.linearGradient(listOf(Color(0xFF2A6CC8), Color(0xFF1A4A90))))
                     .border(1.dp, Color(0xFF7BB8F0).copy(alpha = 0.4f), RoundedCornerShape(50))
                     .clickable {
-                        context.startActivity(
-                            Intent(
-                                Intent.ACTION_VIEW,
-                                Uri.parse("https://tickets.dharoharsetu.in/buy?site=${siteName}&tier=${tiers[selected].name}")
-                            )
-                        )
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://tickets.dharoharsetu.in/buy?site=$siteName&tier=${tiers[selected].name}")))
                         onDismiss()
-                    }
-                    .padding(vertical = 16.dp),
+                    }.padding(vertical = 16.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("🎟️", fontSize = 16.sp)
-                    Spacer(Modifier.size(10.dp))
-                    Text(
-                        "Proceed to Payment  •  ${tiers[selected].price}",
-                        color = Color.White,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Text("🎟️", fontSize = 16.sp); Spacer(Modifier.size(10.dp))
+                    Text("Proceed to Payment  •  ${tiers[selected].price}", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                 }
             }
-
             Spacer(Modifier.height(10.dp))
-
             Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(50))
-                    .background(Color(0x1AFFFFFF))
-                    .border(0.7.dp, Color(0x33FFFFFF), RoundedCornerShape(50))
-                    .clickable { onDismiss() }
-                    .padding(vertical = 14.dp),
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(50)).background(Color(0x1AFFFFFF))
+                    .border(0.7.dp, Color(0x33FFFFFF), RoundedCornerShape(50)).clickable { onDismiss() }.padding(vertical = 14.dp),
                 contentAlignment = Alignment.Center
-            ) {
-                Text("Cancel", color = Color(0x73FFFFFF), fontSize = 14.sp)
-            }
+            ) { Text("Cancel", color = Color(0x73FFFFFF), fontSize = 14.sp) }
         }
     }
 }
 
-// ── Video card ─────────────────────────────────────────────────────────────────
+// ── Video Card ────────────────────────────────────────────────────────────────
 @Composable
 private fun HeritageVideoCard(label: String, onClick: () -> Unit) {
     Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp))
             .background(Brush.linearGradient(listOf(Color(0xFF120038), Color(0xFF06001E))))
             .border(1.dp, Color(0xFF9B30FF).copy(alpha = 0.5f), RoundedCornerShape(18.dp))
-            .clickable(onClick = onClick)
-            .padding(18.dp)
+            .clickable(onClick = onClick).padding(18.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             Box(
-                Modifier
-                    .size(48.dp)
-                    .clip(CircleShape)
-                    .background(Brush.linearGradient(listOf(Color(0xFF9B30FF), Color(0xFF5B5FFF)))),
+                Modifier.size(48.dp).clip(CircleShape).background(Brush.linearGradient(listOf(Color(0xFF9B30FF), Color(0xFF5B5FFF)))),
                 contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Default.PlayArrow, null, tint = Color.White, modifier = Modifier.size(26.dp))
-            }
+            ) { Icon(Icons.Default.PlayArrow, null, tint = Color.White, modifier = Modifier.size(26.dp)) }
             Spacer(Modifier.size(16.dp))
             Column(Modifier.weight(1f)) {
                 Text(label, color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
@@ -885,53 +703,27 @@ private fun HeritageVideoCard(label: String, onClick: () -> Unit) {
     }
 }
 
-// ── Content cards — UPDATED with speaker icon ─────────────────────────────────
+// ── Content Card with speaker icon ────────────────────────────────────────────
 @Composable
 private fun HeritageContentCard(title: String, body: String, onSpeak: () -> Unit) {
     Column {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text(
-                title,
-                color = TextPrimary,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(1f)
-            )
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Text(title, color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
             Box(
-                modifier = Modifier
-                    .size(32.dp)
-                    .clip(CircleShape)
-                    .background(Color(0x221A0050))
-                    .border(0.7.dp, Color(0xFF9B30FF).copy(alpha = 0.4f), CircleShape)
-                    .clickable { onSpeak() },
+                modifier = Modifier.size(32.dp).clip(CircleShape).background(Color(0x221A0050))
+                    .border(0.7.dp, Color(0xFF9B30FF).copy(alpha = 0.4f), CircleShape).clickable { onSpeak() },
                 contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    Icons.Default.VolumeUp,
-                    contentDescription = "Listen to $title",
-                    tint = Color(0xFF9B30FF),
-                    modifier = Modifier.size(16.dp)
-                )
-            }
+            ) { Icon(Icons.Default.VolumeUp, contentDescription = "Listen to $title", tint = Color(0xFF9B30FF), modifier = Modifier.size(16.dp)) }
         }
         Spacer(Modifier.height(8.dp))
         Box(
-            Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
-                .background(GlassWhite10)
-                .border(0.7.dp, GlassBorder, RoundedCornerShape(16.dp))
-                .padding(16.dp)
-        ) {
-            Text(body, color = TextSecondary, fontSize = 14.sp, lineHeight = 22.sp)
-        }
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(GlassWhite10)
+                .border(0.7.dp, GlassBorder, RoundedCornerShape(16.dp)).padding(16.dp)
+        ) { Text(body, color = TextSecondary, fontSize = 14.sp, lineHeight = 22.sp) }
     }
 }
 
-// ── Nodes section ─────────────────────────────────────────────────────────────
+// ── Nodes Section ─────────────────────────────────────────────────────────────
 @Composable
 private fun HeritageNodesSection(nodes: List<Node>) {
     Column {
@@ -940,23 +732,14 @@ private fun HeritageNodesSection(nodes: List<Node>) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             nodes.forEach { node ->
                 Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(GlassWhite10)
-                        .border(0.7.dp, GlassBorder, RoundedCornerShape(12.dp))
-                        .padding(14.dp)
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(GlassWhite10)
+                        .border(0.7.dp, GlassBorder, RoundedCornerShape(12.dp)).padding(14.dp)
                 ) {
                     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Box(
-                            Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFF2E5A8F).copy(alpha = 0.5f)),
+                            Modifier.size(36.dp).clip(CircleShape).background(Color(0xFF2E5A8F).copy(alpha = 0.5f)),
                             contentAlignment = Alignment.Center
-                        ) {
-                            Text("${node.sequenceOrder}", color = AccentYellow, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        }
+                        ) { Text("${node.sequenceOrder}", color = AccentYellow, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
                         Spacer(Modifier.size(12.dp))
                         Text(node.name, color = TextPrimary, fontSize = 14.sp)
                     }
@@ -966,21 +749,17 @@ private fun HeritageNodesSection(nodes: List<Node>) {
     }
 }
 
-// ── Helpline card ─────────────────────────────────────────────────────────────
+// ── Helpline Card ─────────────────────────────────────────────────────────────
 @Composable
 private fun HeritageHelplineCard(number: String, onClick: () -> Unit) {
     Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
             .background(Brush.linearGradient(listOf(Color(0xFF0D2825), Color(0xFF051F1E))))
             .border(1.dp, Color(0xFF2DD4BF).copy(alpha = 0.4f), RoundedCornerShape(16.dp))
-            .clickable(onClick = onClick)
-            .padding(16.dp)
+            .clickable(onClick = onClick).padding(16.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-            Text("📞", fontSize = 28.sp)
-            Spacer(Modifier.size(14.dp))
+            Text("📞", fontSize = 28.sp); Spacer(Modifier.size(14.dp))
             Column(Modifier.weight(1f)) {
                 Text("Helpline", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                 Text(number, color = TextSecondary, fontSize = 13.sp)
@@ -990,34 +769,19 @@ private fun HeritageHelplineCard(number: String, onClick: () -> Unit) {
     }
 }
 
-// ── Action card (reusable) ────────────────────────────────────────────────────
+// ── Action Card ───────────────────────────────────────────────────────────────
 @Composable
-private fun HeritageActionCard(
-    icon: String,
-    title: String,
-    subtitle: String,
-    gradientColors: List<Color>,
-    borderColor: Color,
-    onClick: () -> Unit
-) {
-    val inf = rememberInfiniteTransition(label = "action")
-    val glow by inf.animateFloat(
-        0.35f, 0.65f,
-        infiniteRepeatable(tween(1500, easing = EaseInOutSine), RepeatMode.Reverse),
-        "glow"
-    )
+private fun HeritageActionCard(icon: String, title: String, subtitle: String, gradientColors: List<Color>, borderColor: Color, onClick: () -> Unit) {
+    val inf  = rememberInfiniteTransition(label = "action")
+    val glow by inf.animateFloat(0.35f, 0.65f, infiniteRepeatable(tween(1500, easing = EaseInOutSine), RepeatMode.Reverse), "glow")
     Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
             .background(Brush.linearGradient(gradientColors))
             .border(1.dp, borderColor.copy(alpha = glow), RoundedCornerShape(16.dp))
-            .clickable(onClick = onClick)
-            .padding(16.dp)
+            .clickable(onClick = onClick).padding(16.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(icon, fontSize = 28.sp)
-            Spacer(Modifier.size(14.dp))
+            Text(icon, fontSize = 28.sp); Spacer(Modifier.size(14.dp))
             Column(Modifier.weight(1f)) {
                 Text(title, color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                 Text(subtitle, color = TextTertiary, fontSize = 11.sp)
@@ -1029,27 +793,17 @@ private fun HeritageActionCard(
 
 // ── Chatbot FAB ───────────────────────────────────────────────────────────────
 @Composable
-private fun HeritageChatbotFab(
-    siteName: String,
-    siteId: Int,
-    modifier: Modifier = Modifier
-) {
+private fun HeritageChatbotFab(siteName: String, siteId: Int, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     Box(modifier = modifier) {
         Box(
-            modifier = Modifier
-                .size(64.dp)
-                .clip(CircleShape)
+            modifier = Modifier.size(64.dp).clip(CircleShape)
                 .background(Brush.linearGradient(listOf(Color(0xFFFFD54F), Color(0xFFFFC107))))
                 .border(2.dp, Brush.linearGradient(listOf(Color(0x66FFFFFF), Color(0x22FFFFFF))), CircleShape)
                 .clickable {
-                    context.startActivity(
-                        Intent(context, ChatbotActivity::class.java).apply {
-                            putExtra("SITE_NAME", siteName)
-                            putExtra("SITE_ID", siteId.toString())
-                            putExtra("NODE_ID", "")
-                        }
-                    )
+                    context.startActivity(Intent(context, ChatbotActivity::class.java).apply {
+                        putExtra("SITE_NAME", siteName); putExtra("SITE_ID", siteId.toString()); putExtra("NODE_ID", "")
+                    })
                 },
             contentAlignment = Alignment.Center
         ) {

@@ -299,7 +299,7 @@ fun AppNavigation() {
                 currentLng  = trip.value.lastLng,
                 onNodeReady = { nodeId, _, isKing, scanSiteId ->
                     navController.navigate(nodeDetailRoute(nodeId, scanSiteId, isKing)) {
-                        popUpTo("qr/$siteName/$siteId") { inclusive = true }
+                        popUpTo("home") { inclusive = false }  // clears QR + any previous nodes from stack
                     }
                 },
                 onBack = { navController.popBackStack() }
