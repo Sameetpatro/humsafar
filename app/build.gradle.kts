@@ -11,7 +11,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
-    id("com.google.gms.google-services")  // ← Firebase
+    id("com.google.gms.google-services")
 }
 
 android {
@@ -91,14 +91,20 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.0")
 
-    // Import the BoM for the Firebase platform
+    // ═══════════════════════════════════════════════════════════════════════
+    // FIREBASE DEPENDENCIES - CORRECTED
+    // ═══════════════════════════════════════════════════════════════════════
+    // Import the Firebase BoM (Bill of Materials)
+    // This manages all Firebase library versions automatically
     implementation(platform("com.google.firebase:firebase-bom:34.10.0"))
 
-    // Add the dependency for the Firebase Authentication library
-    // When using the BoM, you don't specify versions in Firebase library dependencies
+    // Firebase Authentication (version managed by BoM)
     implementation("com.google.firebase:firebase-auth")
 
-    // Also add the dependency for the Google Play services library and specify its version
+    // Firebase Analytics (optional but recommended)
+    implementation("com.google.firebase:firebase-analytics")
+
+    // Google Play Services for Google Sign-In
     implementation("com.google.android.gms:play-services-auth:21.5.1")
 
     // ExoPlayer / Media3
@@ -113,9 +119,4 @@ dependencies {
     implementation("androidx.camera:camera-camera2:1.3.4")
     implementation("androidx.camera:camera-lifecycle:1.3.4")
     implementation("androidx.camera:camera-view:1.3.4")
-
-    // Firebase ← ADDED
-    implementation(platform("com.google.firebase:firebase-bom:34.10.0"))
-    implementation("com.google.firebase:firebase-analytics")
-    implementation("com.google.firebase:firebase-auth-ktx")
 }

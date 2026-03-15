@@ -5,6 +5,7 @@ package com.example.humsafar.ui
 
 import android.content.Intent
 import android.net.Uri
+import android.speech.tts.TextToSpeech
 import android.widget.Toast
 import androidx.compose.animation.core.EaseInOutSine
 import androidx.compose.animation.core.LinearEasing
@@ -42,12 +43,14 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -81,6 +84,7 @@ import com.example.humsafar.ui.theme.GlassWhite10
 import com.example.humsafar.ui.theme.TextPrimary
 import com.example.humsafar.ui.theme.TextSecondary
 import com.example.humsafar.ui.theme.TextTertiary
+import java.util.Locale
 
 @Composable
 fun HeritageDetailScreen(
@@ -97,6 +101,62 @@ fun HeritageDetailScreen(
 
     var weather by remember { mutableStateOf<WeatherService.WeatherResult?>(null) }
     var forecast by remember { mutableStateOf<List<WeatherService.ForecastDay>>(emptyList()) }
+
+    // ── TTS Setup ─────────────────────────────────────────────────────────────
+    val tts = remember {
+        TextToSpeech(context) { status ->
+            // Initialization handled silently; language set after init
+        }
+    }
+
+    DisposableEffect(Unit) {
+        tts.language = Locale.US
+        onDispose {
+            tts.stop()
+            tts.shutdown()
+        }
+    }
+
+    // ── TTS Helper Functions ───────────────────────────────────────────────────
+    fun speakSection(sectionLabel: String, siteName: String, text: String?) {
+        if (text.isNullOrBlank()) return
+        tts.stop()
+        tts.speak(
+            "Now you are hearing the $sectionLabel of $siteName",
+            TextToSpeech.QUEUE_FLUSH,
+            null,
+            "header_${sectionLabel}"
+        )
+        tts.speak(text, TextToSpeech.QUEUE_ADD, null, "body_${sectionLabel}")
+    }
+
+    fun speakEntirePage(site: SiteDetail) {
+        tts.stop()
+        val hasSummary = !site.summary.isNullOrBlank()
+        val hasHistory = !site.history.isNullOrBlank()
+        val hasFacts   = !site.funFacts.isNullOrBlank()
+
+        var firstQueued = false
+
+        if (hasSummary) {
+            val mode = if (!firstQueued) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
+            tts.speak("Now you are hearing the overview of ${site.name}", mode, null, "hdr_overview")
+            tts.speak(site.summary, TextToSpeech.QUEUE_ADD, null, "body_overview")
+            firstQueued = true
+        }
+        if (hasHistory) {
+            val mode = if (!firstQueued) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
+            tts.speak("Now you are hearing the history of ${site.name}", mode, null, "hdr_history")
+            tts.speak(site.history, TextToSpeech.QUEUE_ADD, null, "body_history")
+            firstQueued = true
+        }
+        if (hasFacts) {
+            val mode = if (!firstQueued) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
+            tts.speak("Now you are hearing some fun facts about ${site.name}", mode, null, "hdr_facts")
+            tts.speak(site.funFacts, TextToSpeech.QUEUE_ADD, null, "body_facts")
+        }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 
     LaunchedEffect(siteIdInt) { viewModel.loadSite(siteIdInt) }
 
@@ -126,7 +186,6 @@ fun HeritageDetailScreen(
                     site.images.sortedBy { it.displayOrder }
                 }
 
-                // Ticket sheet state — declared here so it's accessible in the Box scope
                 var showTicketSheet by remember { mutableStateOf(false) }
 
                 Column(Modifier.fillMaxSize()) {
@@ -185,29 +244,41 @@ fun HeritageDetailScreen(
                                 Spacer(Modifier.height(16.dp))
                             }
 
-                            // ── Hear This Page ──────────────────────────────
+                            // ── Hear This Page — NOW FUNCTIONAL ────────────
                             HeritageActionCard(
                                 icon = "🎧",
                                 title = "Hear This Page",
-                                subtitle = "Feature coming soon",
+                                subtitle = "Listen to the full page narration",
                                 gradientColors = listOf(Color(0xFF1A0050), Color(0xFF0D0030)),
                                 borderColor = Color(0xFF9B30FF)
                             ) {
-                                Toast.makeText(context, "Feature coming soon", Toast.LENGTH_SHORT).show()
+                                speakEntirePage(site)
                             }
                             Spacer(Modifier.height(16.dp))
 
                             // ── Content: Overview, History, Fun Facts ───────
                             site.summary?.takeIf { it.isNotBlank() }?.let { text ->
-                                HeritageContentCard(title = "Overview", body = text)
+                                HeritageContentCard(
+                                    title = "Overview",
+                                    body = text,
+                                    onSpeak = { speakSection("overview", site.name, text) }
+                                )
                                 Spacer(Modifier.height(12.dp))
                             }
                             site.history?.takeIf { it.isNotBlank() }?.let { text ->
-                                HeritageContentCard(title = "History", body = text)
+                                HeritageContentCard(
+                                    title = "History",
+                                    body = text,
+                                    onSpeak = { speakSection("history", site.name, text) }
+                                )
                                 Spacer(Modifier.height(12.dp))
                             }
                             site.funFacts?.takeIf { it.isNotBlank() }?.let { text ->
-                                HeritageContentCard(title = "Fun Facts", body = text)
+                                HeritageContentCard(
+                                    title = "Fun Facts",
+                                    body = text,
+                                    onSpeak = { speakSection("fun facts", site.name, text) }
+                                )
                                 Spacer(Modifier.height(16.dp))
                             }
 
@@ -620,7 +691,6 @@ private fun HeritageTicketBottomSheet(
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 36.dp)
         ) {
-            // ── Header ───────────────────────────────────────────────────
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     modifier = Modifier
@@ -641,7 +711,6 @@ private fun HeritageTicketBottomSheet(
 
             Spacer(Modifier.height(14.dp))
 
-            // ── Info strip ───────────────────────────────────────────────
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -664,7 +733,6 @@ private fun HeritageTicketBottomSheet(
 
             Spacer(Modifier.height(16.dp))
 
-            // ── Ticket tiers ─────────────────────────────────────────────
             tiers.forEachIndexed { i, tier ->
                 val isSelected = selected == i
                 Box(
@@ -690,7 +758,6 @@ private fun HeritageTicketBottomSheet(
                         Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Radio circle
                         Box(
                             modifier = Modifier
                                 .size(22.dp)
@@ -736,7 +803,6 @@ private fun HeritageTicketBottomSheet(
 
             Spacer(Modifier.height(24.dp))
 
-            // ── Proceed button ───────────────────────────────────────────
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -746,7 +812,6 @@ private fun HeritageTicketBottomSheet(
                     )
                     .border(1.dp, Color(0xFF7BB8F0).copy(alpha = 0.4f), RoundedCornerShape(50))
                     .clickable {
-                        // TODO: replace with your real ticketing URL
                         context.startActivity(
                             Intent(
                                 Intent.ACTION_VIEW,
@@ -772,7 +837,6 @@ private fun HeritageTicketBottomSheet(
 
             Spacer(Modifier.height(10.dp))
 
-            // ── Cancel ───────────────────────────────────────────────────
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -821,11 +885,38 @@ private fun HeritageVideoCard(label: String, onClick: () -> Unit) {
     }
 }
 
-// ── Content cards ──────────────────────────────────────────────────────────────
+// ── Content cards — UPDATED with speaker icon ─────────────────────────────────
 @Composable
-private fun HeritageContentCard(title: String, body: String) {
+private fun HeritageContentCard(title: String, body: String, onSpeak: () -> Unit) {
     Column {
-        Text(title, color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                title,
+                color = TextPrimary,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f)
+            )
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(Color(0x221A0050))
+                    .border(0.7.dp, Color(0xFF9B30FF).copy(alpha = 0.4f), CircleShape)
+                    .clickable { onSpeak() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Default.VolumeUp,
+                    contentDescription = "Listen to $title",
+                    tint = Color(0xFF9B30FF),
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        }
         Spacer(Modifier.height(8.dp))
         Box(
             Modifier

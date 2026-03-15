@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.firebase.auth.ActionCodeSettings
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
@@ -22,7 +23,6 @@ object AuthManager {
     private val _currentUser = MutableStateFlow<FirebaseUser?>(auth.currentUser)
     val currentUser: StateFlow<FirebaseUser?> = _currentUser.asStateFlow()
 
-    // Firebase UID — "guest_anonymous" if somehow null
     val uid: String
         get() = auth.currentUser?.uid ?: "guest_anonymous"
 
@@ -30,7 +30,6 @@ object AuthManager {
         get() = auth.currentUser != null
 
     init {
-        // Keep StateFlow in sync with Firebase auth state changes
         auth.addAuthStateListener { firebaseAuth ->
             _currentUser.value = firebaseAuth.currentUser
             Log.d(TAG, "Auth state changed: uid=${firebaseAuth.currentUser?.uid}")
@@ -47,15 +46,11 @@ object AuthManager {
         val result = auth.createUserWithEmailAndPassword(email, password).await()
         val user = result.user!!
 
-        // Save display name to Firebase profile
         val profileUpdate = userProfileChangeRequest {
             displayName = name
         }
         user.updateProfile(profileUpdate).await()
 
-        // NOTE: phone is saved to Firebase profile as photoUrl workaround
-        // (Firebase free tier doesn't store custom fields — use your own backend for phone)
-        // You can store phone in your PostgreSQL users table via a POST /users endpoint later.
         Log.i(TAG, "Sign up success: uid=${user.uid} name=$name email=$email phone=$phone")
         user
     }
@@ -68,7 +63,7 @@ object AuthManager {
         user
     }
 
-    // ── Google Sign In (pass the ID token from GoogleSignInAccount) ───────────
+    // ── Google Sign In ────────────────────────────────────────────────────────
     suspend fun signInWithGoogle(idToken: String): Result<FirebaseUser> = runCatching {
         val credential = GoogleAuthProvider.getCredential(idToken, null)
         val result = auth.signInWithCredential(credential).await()
@@ -91,18 +86,69 @@ object AuthManager {
         Log.i(TAG, "Password reset email sent to $email")
     }
 
+    // ── Email Link (Passwordless) Login ───────────────────────────────────────
+    // IMPORTANT: Replace 'dharoharsetu' with YOUR Firebase Project ID
+    suspend fun sendSignInLinkToEmail(email: String, context: Context): Result<Unit> = runCatching {
+        val actionCodeSettings = ActionCodeSettings.newBuilder()
+            // ⚠️ CHANGE 'dharoharsetu' to YOUR Firebase Project ID
+            .setUrl("https://dharoharsetu.firebaseapp.com/__/auth/action")
+            .setHandleCodeInApp(true)
+            .setAndroidPackageName(
+                context.packageName,
+                true,  // Install app if not available
+                null   // Minimum version
+            )
+            .build()
+
+        auth.sendSignInLinkToEmail(email, actionCodeSettings).await()
+
+        // Save email locally for later retrieval
+        context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
+            .edit()
+            .putString("pending_email_link_email", email)
+            .apply()
+
+        Log.i(TAG, "Sign-in link sent to $email")
+    }
+
+    suspend fun signInWithEmailLink(email: String, emailLink: String): Result<FirebaseUser> = runCatching {
+        if (!auth.isSignInWithEmailLink(emailLink)) {
+            throw IllegalArgumentException("Invalid email link")
+        }
+
+        val result = auth.signInWithEmailLink(email, emailLink).await()
+        val user = result.user!!
+        Log.i(TAG, "Email link sign in success: uid=${user.uid}")
+        user
+    }
+
+    fun isSignInWithEmailLink(link: String): Boolean {
+        return auth.isSignInWithEmailLink(link)
+    }
+
+    fun getPendingEmailLinkEmail(context: Context): String? {
+        return context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
+            .getString("pending_email_link_email", null)
+    }
+
+    fun clearPendingEmailLinkEmail(context: Context) {
+        context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
+            .edit()
+            .remove("pending_email_link_email")
+            .apply()
+    }
+
     // ── Sign Out ──────────────────────────────────────────────────────────────
     fun signOut() {
         auth.signOut()
         Log.i(TAG, "Signed out")
     }
 
-    // ── Google Sign-In Client helper ──────────────────────────────────────────
-    // Call this in your Activity/Composable to get the GoogleSignInClient
+    // ── Google Sign-In Client ─────────────────────────────────────────────────
     fun getGoogleSignInClient(context: Context) = GoogleSignIn.getClient(
         context,
         GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-            .requestIdToken("865150467468-p0in0ue0agavb8196s27sdnq5sq9rhdi.apps.googleusercontent.com") // ← replace with your Web Client ID from Firebase Console
+            .requestIdToken("865150467468-p0in0ue0agavb8196s27sdnq5sq9rhdi.apps.googleusercontent.com")
             .requestEmail()
             .build()
     )

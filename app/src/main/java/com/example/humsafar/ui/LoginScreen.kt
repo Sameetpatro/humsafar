@@ -40,6 +40,7 @@ fun LoginScreen(
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
     var forgotSent by remember { mutableStateOf(false) }
+    var emailLinkSent by remember { mutableStateOf(false) }
 
     var visible by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { visible = true }
@@ -130,7 +131,7 @@ fun LoginScreen(
 
                         GlassTextField(
                             value = email,
-                            onValueChange = { email = it; errorMessage = "" },
+                            onValueChange = { email = it; errorMessage = ""; emailLinkSent = false },
                             placeholder = "Email address",
                             modifier = Modifier.fillMaxWidth()
                         )
@@ -147,15 +148,17 @@ fun LoginScreen(
 
                         Spacer(Modifier.height(8.dp))
 
-                        // Forgot Password
-                        Text(
-                            text = if (forgotSent) "✓ Reset email sent!" else "Forgot Password?",
-                            color = if (forgotSent) Color(0xFF4ADE80) else AccentYellow,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Medium,
-                            modifier = Modifier
-                                .align(Alignment.End)
-                                .clickable {
+                        // Forgot Password + Email Link
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = if (forgotSent) "✓ Reset email sent!" else "Forgot Password?",
+                                color = if (forgotSent) Color(0xFF4ADE80) else AccentYellow,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium,
+                                modifier = Modifier.clickable {
                                     if (email.isNotBlank() && !forgotSent) {
                                         scope.launch {
                                             AuthManager.sendPasswordReset(email)
@@ -166,7 +169,43 @@ fun LoginScreen(
                                         errorMessage = "Enter your email above first"
                                     }
                                 }
-                        )
+                            )
+
+                            Text(
+                                text = if (emailLinkSent) "✓ Link sent!" else "Email Link",
+                                color = if (emailLinkSent) Color(0xFF4ADE80) else Color(0xFF2196F3),
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium,
+                                modifier = Modifier.clickable {
+                                    if (email.isNotBlank() && !emailLinkSent) {
+                                        scope.launch {
+                                            isLoading = true
+                                            AuthManager.sendSignInLinkToEmail(email.trim(), context)
+                                                .onSuccess {
+                                                    emailLinkSent = true
+                                                    errorMessage = ""
+                                                }
+                                                .onFailure { errorMessage = it.message ?: "Failed to send link" }
+                                            isLoading = false
+                                        }
+                                    } else if (email.isBlank()) {
+                                        errorMessage = "Enter your email above first"
+                                    }
+                                }
+                            )
+                        }
+
+                        // Success message for email link
+                        if (emailLinkSent) {
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                "Check your email and click the sign-in link",
+                                color = Color(0xFF4ADE80),
+                                fontSize = 12.sp,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
 
                         // Error message
                         if (errorMessage.isNotBlank()) {

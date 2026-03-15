@@ -1,11 +1,13 @@
 // app/src/main/java/com/example/humsafar/ui/NodeDetailScreen.kt
 // UPDATED: Real image gallery from node_images table (sorted by display_order)
 //          + "Watch Video" sticky bar when node.video_url is present
+//          + TTS narration for node description and "Hear This Node" button
 
 package com.example.humsafar.ui
 
 import android.content.Intent
 import android.net.Uri
+import android.speech.tts.TextToSpeech
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
@@ -41,8 +43,11 @@ import com.example.humsafar.ChatbotActivity
 import com.example.humsafar.data.TripManager
 import com.example.humsafar.network.Node
 import com.example.humsafar.network.NodeImage
+import com.example.humsafar.network.SiteDetail
 import com.example.humsafar.ui.components.AnimatedOrbBackground
+import com.example.humsafar.ui.components.TripInfoButton
 import com.example.humsafar.ui.theme.*
+import java.util.Locale
 
 @Composable
 fun NodeDetailScreen(
@@ -59,6 +64,62 @@ fun NodeDetailScreen(
     val context   = LocalContext.current
     val uiState   by viewModel.uiState.collectAsStateWithLifecycle()
     val tripState by TripManager.state.collectAsStateWithLifecycle()
+
+    // ── TTS Setup ─────────────────────────────────────────────────────────────
+    val tts = remember {
+        TextToSpeech(context) { /* status handled silently */ }
+    }
+
+    DisposableEffect(Unit) {
+        tts.language = Locale.US
+        onDispose {
+            tts.stop()
+            tts.shutdown()
+        }
+    }
+
+    // ── TTS Helper Functions ───────────────────────────────────────────────────
+    fun speakNodeSection(nodeName: String, siteName: String, description: String?) {
+        if (description.isNullOrBlank()) return
+        tts.stop()
+        tts.speak(
+            "Now you are hearing about $nodeName at $siteName",
+            TextToSpeech.QUEUE_FLUSH,
+            null,
+            "hdr_node"
+        )
+        tts.speak(description, TextToSpeech.QUEUE_ADD, null, "body_node")
+    }
+
+    fun speakEntireNodePage(node: Node, site: SiteDetail) {
+        tts.stop()
+        var firstQueued = false
+
+        val aboutSite = site.summary
+        val history   = site.history
+        val nodeDesc  = node.description
+
+        if (!aboutSite.isNullOrBlank()) {
+            tts.speak(
+                "Now you are hearing about ${site.name}",
+                TextToSpeech.QUEUE_FLUSH, null, "hdr_about"
+            )
+            tts.speak(aboutSite, TextToSpeech.QUEUE_ADD, null, "body_about")
+            firstQueued = true
+        }
+        if (!history.isNullOrBlank()) {
+            val mode = if (!firstQueued) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
+            tts.speak("Now you are hearing the history of ${site.name}", mode, null, "hdr_hist")
+            tts.speak(history, TextToSpeech.QUEUE_ADD, null, "body_hist")
+            firstQueued = true
+        }
+        if (!nodeDesc.isNullOrBlank()) {
+            val mode = if (!firstQueued) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
+            tts.speak("Now you are hearing about ${node.name} at ${site.name}", mode, null, "hdr_node")
+            tts.speak(nodeDesc, TextToSpeech.QUEUE_ADD, null, "body_node")
+        }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 
     LaunchedEffect(nodeId, siteId) { viewModel.loadNode(nodeId, siteId) }
 
@@ -111,7 +172,8 @@ fun NodeDetailScreen(
                                     node = node,
                                     siteId = siteId,
                                     context = context,
-                                    onQr = onNavigateToQr
+                                    onQr = onNavigateToQr,
+                                    onHearThisNode = { speakEntireNodePage(node, site) }
                                 )
 
                                 Spacer(Modifier.height(20.dp))
@@ -125,7 +187,13 @@ fun NodeDetailScreen(
                                     Spacer(Modifier.height(14.dp))
                                 }
                                 if (!node.description.isNullOrBlank()) {
-                                    InfoCard("🗺️ About This Spot", node.description!!)
+                                    // ── Node description WITH speaker icon ──
+                                    NodeDescriptionCard(
+                                        nodeName    = node.name,
+                                        siteName    = site.name,
+                                        description = node.description!!,
+                                        onSpeak     = { speakNodeSection(node.name, site.name, node.description) }
+                                    )
                                     Spacer(Modifier.height(14.dp))
                                 }
 
@@ -165,7 +233,7 @@ fun NodeDetailScreen(
                     )
 
                     if (tripState.isTripActive) {
-                        com.example.humsafar.ui.components.TripInfoButton(
+                        TripInfoButton(
                             siteName = tripState.siteName,
                             visitedCount = tripState.visitedNodeIds.size,
                             totalCount = allNodes.size,
@@ -213,7 +281,6 @@ fun NodeImageGallery(
     val listState    = rememberLazyListState()
     var currentIndex by remember { mutableStateOf(0) }
 
-    // Track scroll position → update dot indicator
     LaunchedEffect(listState.firstVisibleItemIndex) {
         currentIndex = listState.firstVisibleItemIndex
     }
@@ -224,7 +291,6 @@ fun NodeImageGallery(
             .height(300.dp)
     ) {
         if (images.isNotEmpty()) {
-            // Full-width horizontal scroll of images
             LazyRow(
                 state    = listState,
                 modifier = Modifier.fillMaxSize(),
@@ -251,7 +317,6 @@ fun NodeImageGallery(
                 }
             }
 
-            // Image counter badge
             Box(
                 Modifier
                     .align(Alignment.TopEnd)
@@ -264,7 +329,6 @@ fun NodeImageGallery(
                 Text("${currentIndex + 1} / ${images.size}", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
             }
 
-            // Dot indicators (only if multiple images)
             if (images.size > 1) {
                 Row(
                     modifier = Modifier
@@ -286,18 +350,15 @@ fun NodeImageGallery(
             EmptyImageBox()
         }
 
-        // Top scrim
         Box(
             Modifier.fillMaxWidth().height(100.dp).align(Alignment.TopCenter)
                 .background(Brush.verticalGradient(listOf(Color(0xCC050D1A), Color.Transparent)))
         )
-        // Bottom scrim
         Box(
             Modifier.fillMaxWidth().height(100.dp).align(Alignment.BottomCenter)
                 .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xFF050D1A))))
         )
 
-        // Back button
         Box(
             modifier = Modifier
                 .align(Alignment.TopStart)
@@ -313,7 +374,6 @@ fun NodeImageGallery(
             Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = Color.White, modifier = Modifier.size(20.dp))
         }
 
-        // Name overlay at bottom
         Column(
             Modifier
                 .align(Alignment.BottomStart)
@@ -323,7 +383,6 @@ fun NodeImageGallery(
         }
     }
 
-    // Thumbnail filmstrip below hero
     if (images.size > 1) {
         LazyRow(
             modifier = Modifier
@@ -408,7 +467,6 @@ fun WatchVideoBar(
                 .padding(horizontal = 18.dp, vertical = 14.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                // Play button circle
                 Box(
                     Modifier
                         .size(42.dp)
@@ -451,34 +509,80 @@ private fun InfoCard(title: String, body: String) {
     }
 }
 
+// ── Node Description Card WITH speaker icon ───────────────────────────────────
+@Composable
+private fun NodeDescriptionCard(
+    nodeName:    String,
+    siteName:    String,
+    description: String,
+    onSpeak:     () -> Unit
+) {
+    Column {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                "🗺️ About This Spot",
+                color = TextPrimary,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f)
+            )
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(Color(0x221A0050))
+                    .border(0.7.dp, Color(0xFF9B30FF).copy(alpha = 0.4f), CircleShape)
+                    .clickable { onSpeak() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Default.VolumeUp,
+                    contentDescription = "Listen to description of $nodeName",
+                    tint = Color(0xFF9B30FF),
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        Box(
+            Modifier.fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(GlassWhite10)
+                .border(0.7.dp, GlassBorder, RoundedCornerShape(14.dp))
+                .padding(14.dp)
+        ) {
+            Text(description, color = TextSecondary, fontSize = 14.sp, lineHeight = 22.sp)
+        }
+    }
+}
+
 @Composable
 private fun NodeActionsGrid(
-    node:    Node,
-    siteId:  Int,
-    context: android.content.Context,
-    onQr:    (Long) -> Unit
+    node:           Node,
+    siteId:         Int,
+    context:        android.content.Context,
+    onQr:           (Long) -> Unit,
+    onHearThisNode: () -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            // ── Hear This Node button — NOW FUNCTIONAL ──────────────────────
             NodeActionCard(
                 icon = "🎧",
-                title = "Hear This Page",
-                subtitle = "Audio guide",
+                title = "Hear This Node",
+                subtitle = "Listen to node narration",
                 gradientColors = listOf(Color(0xFF1A0050), Color(0xFF0D0030)),
                 borderColor = Color(0xFF9B30FF),
                 modifier = Modifier.weight(1f),
-                onClick = {
-                    android.widget.Toast.makeText(
-                        context,
-                        "Feature coming soon",
-                        android.widget.Toast.LENGTH_SHORT
-                    ).show()
-                }
+                onClick = { onHearThisNode() }
             )
-            
+
             NodeActionCard(
                 icon = "🎬",
                 title = "Watch Video",
@@ -499,7 +603,7 @@ private fun NodeActionsGrid(
                 }
             )
         }
-        
+
         NodeActionCard(
             icon = "📷",
             title = "Scan Next QR",
@@ -613,7 +717,7 @@ private fun FloatingAskShreeButton(
                     )
                 )
         )
-        
+
         Box(
             modifier = Modifier
                 .size(60.dp)
@@ -653,33 +757,6 @@ private fun FloatingAskShreeButton(
             }
         }
     }
-}
-
-@Composable
-private fun Chip(label: String, onClick: () -> Unit) {
-    Box(
-        Modifier
-            .clip(RoundedCornerShape(50))
-            .background(GlassWhite15)
-            .border(0.7.dp, GlassBorder, RoundedCornerShape(50))
-            .clickable { onClick() }
-            .padding(horizontal = 14.dp, vertical = 9.dp)
-    ) {
-        Text(label, color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-    }
-}
-
-@Composable
-private fun FabCircle(bgColor: Color, borderColor: Color, content: @Composable () -> Unit) {
-    Box(
-        Modifier
-            .size(50.dp)
-            .clip(CircleShape)
-            .background(bgColor)
-            .border(1.dp, borderColor.copy(alpha = 0.4f), CircleShape),
-        contentAlignment = Alignment.Center,
-        content = { content() }
-    )
 }
 
 @Composable

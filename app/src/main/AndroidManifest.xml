@@ -1,34 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- AndroidManifest.xml  ← REPLACE EXISTING FILE
-     CHANGES vs original:
-       + RECORD_AUDIO permission
-       + uses-feature android.hardware.microphone (not required — degrades gracefully)
-     All existing entries preserved unchanged.
--->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
-
-    <!-- NEW: microphone access for voice recording -->
-    <uses-permission android:name="android.permission.RECORD_AUDIO" />
-
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
-    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
-
-    <uses-permission android:name="android.permission.CAMERA" />
-    <uses-feature android:name="android.hardware.camera" android:required="false" />
-
-    <!-- NEW: declare mic hardware as optional so app installs on tablets without mic -->
     <uses-feature
-        android:name="android.hardware.microphone"
+        android:name="android.hardware.camera"
         android:required="false" />
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="com.google.android.gms.permission.ACTIVITY_RECOGNITION" />
 
     <application
         android:allowBackup="true"
@@ -41,64 +26,46 @@
         android:theme="@style/Theme.Humsafar"
         tools:targetApi="31">
 
+        <!-- Main Activity -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:launchMode="singleTop"
-            android:label="@string/app_name"
-            android:theme="@style/Theme.Humsafar">
+            android:theme="@style/Theme.Humsafar"
+            android:launchMode="singleTask">
+
+            <!-- Default launcher -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!-- Email Link Authentication - Firebase Hosting Subdomain -->
+            <!-- IMPORTANT: Replace 'dharoharsetu' with YOUR Firebase Project ID -->
+            <!-- Get it from: Firebase Console → Project Settings → Project ID -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <!-- Firebase Auth Action Handler -->
+                <data
+                    android:scheme="https"
+                    android:host="dharoharsetu.firebaseapp.com"
+                    android:path="/__/auth/action" />
+            </intent-filter>
         </activity>
 
+        <!-- Chatbot Activity -->
         <activity
             android:name=".ChatbotActivity"
             android:exported="false"
-            android:label="Heritage Guide"
             android:theme="@style/Theme.Humsafar" />
 
-        <activity
-            android:name=".VoiceChatActivity"
-            android:exported="false"
-            android:label="Voice Guide"
-            android:theme="@style/Theme.Humsafar" />
-
+        <!-- Geofence Transition Receiver -->
         <receiver
             android:name=".geofence.GeofenceTransitionReceiver"
             android:enabled="true"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="com.example.humsafar.ACTION_GEOFENCE_EVENT" />
-            </intent-filter>
-        </receiver>
-
-        <receiver
-            android:name=".geofence.ActivityTransitionReceiver"
-            android:enabled="true"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="com.example.humsafar.ACTION_ACTIVITY_UPDATE" />
-            </intent-filter>
-        </receiver>
-
-        <receiver
-            android:name=".geofence.BootReceiver"
-            android:enabled="true"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
-            </intent-filter>
-        </receiver>
-
-        <service
-            android:name=".geofence.GeofenceHandlerService"
-            android:enabled="true"
-            android:exported="false"
-            android:foregroundServiceType="location" />
-
+            android:exported="false" />
     </application>
 
 </manifest>
