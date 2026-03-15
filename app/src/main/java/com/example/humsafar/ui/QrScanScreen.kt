@@ -34,7 +34,7 @@ import androidx.compose.ui.unit.*
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.humsafar.network.QrScanResult   // ← network package
+import com.example.humsafar.models.QrScanResult
 import com.example.humsafar.network.SiteDetail     // ← network package
 import com.example.humsafar.ui.components.AnimatedOrbBackground
 import com.example.humsafar.ui.theme.*

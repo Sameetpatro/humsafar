@@ -43,18 +43,24 @@ data class SiteImage(
     @SerializedName("display_order") val displayOrder: Int = 0
 )
 
-// FIX: Added description and videoUrl fields.
-// NodeDetailScreen accesses node.description and these were missing,
-// causing a compile error. Both fields are nullable — they may not be
-// populated for every node, so the screen guards with ?.isNotBlank() checks.
+// Matches backend NodeResponse — used by NodeDetailScreen (images, isKing, etc.)
 data class SiteNode(
     @SerializedName("id")              val id: Int = 0,
     @SerializedName("name")            val name: String = "",
     @SerializedName("latitude")        val latitude: Double = 0.0,
     @SerializedName("longitude")       val longitude: Double = 0.0,
     @SerializedName("sequence_order")  val sequenceOrder: Int = 0,
-    @SerializedName("description")     val description: String? = null,   // FIX: was missing
-    @SerializedName("video_url")       val videoUrl: String? = null        // FIX: was missing
+    @SerializedName("is_king")         val isKing: Boolean = false,
+    @SerializedName("description")    val description: String? = null,
+    @SerializedName("video_url")       val videoUrl: String? = null,
+    @SerializedName("image_url")       val imageUrl: String? = null,
+    @SerializedName("images")          val images: List<NodeImage> = emptyList()
+)
+
+data class NodeImage(
+    @SerializedName("id")            val id: Int = 0,
+    @SerializedName("image_url")     val imageUrl: String = "",
+    @SerializedName("display_order") val displayOrder: Int = 0
 )
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -29,7 +29,8 @@ class NodeDetailViewModel : ViewModel() {
                 return@launch
             }
 
-            val site = resp.body()!!
+            val body = resp.body()!!
+            val site = body as com.example.humsafar.network.SiteDetail
             val node = site.nodes.find { it.id == nodeId }
                 ?: run {
                     _uiState.value = NodeDetailUiState.Error("Node not found in site")

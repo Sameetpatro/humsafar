@@ -6,9 +6,9 @@ package com.example.humsafar.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.humsafar.data.TripManager
-import com.example.humsafar.network.QrScanResult    // ← CHANGED: use network models
-import com.example.humsafar.network.SiteDetail      // ← CHANGED: use network models
+import com.example.humsafar.models.QrScanResult
 import com.example.humsafar.network.HumsafarClient
+import com.example.humsafar.network.SiteDetail
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow

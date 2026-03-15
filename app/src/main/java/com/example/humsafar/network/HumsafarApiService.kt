@@ -9,9 +9,9 @@ import com.example.humsafar.models.QrScanResult
 import com.example.humsafar.models.RecommendationResponse
 import com.example.humsafar.models.ReviewSubmitRequest
 import com.example.humsafar.models.ReviewSubmitResponse
-import com.example.humsafar.models.SiteDetail
 import com.example.humsafar.models.TripEndResponse
 import com.example.humsafar.models.TripStartResponse
+import com.example.humsafar.network.SiteDetail
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.logging.HttpLoggingInterceptor
@@ -35,7 +35,7 @@ interface HumsafarApiService {
     @GET("sites/{site_id}")
     suspend fun getSiteDetail(
         @Path("site_id") siteId: Int
-    ): Response<SiteDetail>
+    ): Response<com.example.humsafar.network.SiteDetail>
 
     /** Node positions only (exact lat/lng from backend nodes table) for Directions map */
     @GET("sites/{site_id}/nodes")

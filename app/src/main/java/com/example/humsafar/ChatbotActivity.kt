@@ -34,8 +34,8 @@ import androidx.compose.ui.unit.*
 import com.example.humsafar.data.ActiveSiteManager
 import com.example.humsafar.data.ActiveSiteManager.activeNodeId
 import com.example.humsafar.models.ChatMessage as UiChatMessage  // ← RENAMED for UI
-import com.example.humsafar.network.ChatMessage as ApiChatMessage  // ← RENAMED for API
-import com.example.humsafar.network.ChatRequest
+import com.example.humsafar.models.ChatHistoryItem as ApiChatMessage  // ← matches API schema
+import com.example.humsafar.models.ChatRequest
 import com.example.humsafar.network.HumsafarClient
 import com.example.humsafar.ui.components.AnimatedOrbBackground
 import com.example.humsafar.ui.theme.*
