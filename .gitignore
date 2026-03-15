@@ -47,3 +47,5 @@ obj/
 # Temporary files
 *.tmp
 *.swp
+
+*.google-services.json

@@ -17,8 +17,8 @@ object TripManager {
     private val _state = MutableStateFlow(TripSnapshot())
     val state: StateFlow<TripSnapshot> = _state.asStateFlow()
 
-    // Hardcoded guest user — replace with auth UID when you add login
-    const val USER_ID = "guest_user_001"
+    // NEW — reads Firebase UID at call time (not at init time)
+    val USER_ID: String get() = com.example.humsafar.auth.AuthManager.uid
 
     fun init(context: Context) {
         prefs = context.getSharedPreferences("trip_prefs_v2", Context.MODE_PRIVATE)
