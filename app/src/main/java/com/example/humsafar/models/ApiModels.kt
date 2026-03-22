@@ -185,3 +185,20 @@ data class RecommendationResponse(
     @SerializedName("latitude")    val latitude: Double? = null,
     @SerializedName("longitude")   val longitude: Double? = null
 )
+// ─────────────────────────────────────────────────────────────────────────────
+// /amenities/near-node  →  GET /amenities/near-node?node_id=&top_n=
+// ─────────────────────────────────────────────────────────────────────────────
+data class AmenityResponse(
+    @SerializedName("id")               val id:             Int,
+    @SerializedName("site_id")          val siteId:         Int,
+    @SerializedName("node_id")          val nodeId:         Int?    = null,
+    @SerializedName("type")             val type:           String,   // "washroom" | "shop"
+    @SerializedName("name")             val name:           String,
+    @SerializedName("description")      val description:    String? = null,
+    @SerializedName("latitude")         val latitude:       Double,
+    @SerializedName("longitude")        val longitude:      Double,
+    @SerializedName("price_info")       val priceInfo:      String? = null,
+    @SerializedName("timing")           val timing:         String? = null,
+    @SerializedName("is_paid")          val isPaid:         Boolean = false,
+    @SerializedName("distance_meters")  val distanceMeters: Double? = null
+)

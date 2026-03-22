@@ -1,12 +1,11 @@
 // app/src/main/java/com/example/humsafar/ui/NodeDetailViewModel.kt
-// UPDATED: keeps exact same pattern as original but now Node.images is populated
-// (no changes needed here — images come from the updated ApiModels.kt + backend)
 
 package com.example.humsafar.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.humsafar.data.TripManager
+import com.example.humsafar.models.AmenityResponse
 import com.example.humsafar.network.SiteDetail
 import com.example.humsafar.network.Node
 import com.example.humsafar.network.HumsafarClient
@@ -29,18 +28,25 @@ class NodeDetailViewModel : ViewModel() {
                 return@launch
             }
 
-            val body = resp.body()!!
-            val site = body as com.example.humsafar.network.SiteDetail
-            val node = site.nodes.find { it.id == nodeId }
-                ?: run {
-                    _uiState.value = NodeDetailUiState.Error("Node not found in site")
-                    return@launch
-                }
+            val site = resp.body()!!
+            val node = site.nodes.find { it.id == nodeId } ?: run {
+                _uiState.value = NodeDetailUiState.Error("Node not found in site")
+                return@launch
+            }
+
+            // Load amenities in parallel — fail silently so main content still shows
+            val amenities: List<AmenityResponse> = try {
+                val aResp = HumsafarClient.api.getAmenitiesNearNode(nodeId, topN = 2)
+                if (aResp.isSuccessful) aResp.body() ?: emptyList() else emptyList()
+            } catch (_: Exception) {
+                emptyList()
+            }
 
             _uiState.value = NodeDetailUiState.Ready(
-                node     = node,
-                site     = site,
-                allNodes = site.nodes.sortedBy { it.sequenceOrder }
+                node      = node,
+                site      = site,
+                allNodes  = site.nodes.sortedBy { it.sequenceOrder },
+                amenities = amenities
             )
         } catch (e: Exception) {
             _uiState.value = NodeDetailUiState.Error(e.message ?: "Unknown error")
@@ -65,13 +71,18 @@ class NodeDetailViewModel : ViewModel() {
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// UI State
+// ─────────────────────────────────────────────────────────────────────────────
+
 sealed class NodeDetailUiState {
     data object Loading : NodeDetailUiState()
 
     data class Ready(
-        val node:     Node,
-        val site:     SiteDetail,
-        val allNodes: List<Node>
+        val node:      Node,
+        val site:      SiteDetail,
+        val allNodes:  List<Node>,
+        val amenities: List<AmenityResponse> = emptyList()   // ← NEW
     ) : NodeDetailUiState()
 
     data class Error(val message: String) : NodeDetailUiState()

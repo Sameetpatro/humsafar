@@ -1,5 +1,6 @@
 package com.example.humsafar.network
 
+import com.example.humsafar.models.AmenityResponse
 import com.example.humsafar.models.ChatRequest
 import com.example.humsafar.models.ChatResponse
 import com.example.humsafar.models.ChatHistoryItem
@@ -85,6 +86,28 @@ interface HumsafarApiService {
     suspend fun sendChat(
         @Body request: ChatRequest
     ): Response<ChatResponse>
+
+    // ── Amenities ──────────────────────────────────────────────────────────────
+
+    /** Top-N nearest washrooms + shops relative to a scanned node */
+    @GET("amenities/near-node")
+    suspend fun getAmenitiesNearNode(
+        @Query("node_id") nodeId: Int,
+        @Query("top_n")   topN:   Int = 2
+    ): Response<List<AmenityResponse>>
+
+    /** Full detail for one amenity (AmenityDetailScreen) */
+    @GET("amenities/{amenity_id}")
+    suspend fun getAmenityDetail(
+        @Path("amenity_id") amenityId: Int
+    ): Response<AmenityResponse>
+
+    /** All amenities for a site (optional type filter: "washroom" or "shop") */
+    @GET("amenities/site/{site_id}")
+    suspend fun getSiteAmenities(
+        @Path("site_id") siteId: Int,
+        @Query("type")   type:   String? = null
+    ): Response<List<AmenityResponse>>
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -135,3 +158,5 @@ object HumsafarClient {
             .create(HumsafarApiService::class.java)
     }
 }
+
+

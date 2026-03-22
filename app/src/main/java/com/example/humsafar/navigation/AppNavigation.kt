@@ -22,8 +22,6 @@ import java.net.URLEncoder
 fun AppNavigation() {
     val navController = rememberNavController()
 
-    // ── Auth-aware start destination ──────────────────────────────────────────
-    // If user is already logged in (email, google, or anonymous), skip login screen
     val currentUser by AuthManager.currentUser.collectAsState()
     val startDest = if (currentUser != null) "home" else "login"
 
@@ -33,8 +31,6 @@ fun AppNavigation() {
             LoginScreen(
                 onSignupClick  = { navController.navigate("signup") },
                 onBypassClick  = {
-                    // Guest = anonymous Firebase sign-in, handled inside LoginScreen
-                    // This callback fires after anonymous auth succeeds
                     navController.navigate("home") {
                         popUpTo("login") { inclusive = true }
                     }
@@ -77,6 +73,7 @@ fun AppNavigation() {
             )
         }
 
+        // ── Site Info ─────────────────────────────────────────────────────
         composable(
             route = "site_info/{siteId}/{siteName}",
             arguments = listOf(
@@ -95,7 +92,10 @@ fun AppNavigation() {
                     siteName  = siteName,
                     latitude  = site.latitude,
                     longitude = site.longitude,
-                    onBack    = { navController.popBackStack() }
+                    onBack    = { navController.popBackStack() },
+                    onExplore = { name, id ->                   // ← NEW: goes to HeritageDetailScreen
+                        navController.navigate(heritageDetailRoute(name, id))
+                    }
                 )
             } else {
                 Box(modifier = Modifier.fillMaxSize()) {
@@ -104,6 +104,7 @@ fun AppNavigation() {
             }
         }
 
+        // ── Heritage Detail ───────────────────────────────────────────────
         composable(
             route     = "detail/{siteName}/{siteId}",
             arguments = listOf(
@@ -151,7 +152,24 @@ fun AppNavigation() {
                     navController.navigate(reviewRoute(tripId, cSiteId, cSiteName, visited, total)) {
                         popUpTo("home") { inclusive = false }
                     }
+                },
+                onNavigateToAmenity    = { amenityId ->
+                    navController.navigate(amenityDetailRoute(amenityId))
                 }
+            )
+        }
+
+        // ── Amenity detail ────────────────────────────────────────────────
+        composable(
+            route     = "amenity/{amenityId}",
+            arguments = listOf(
+                navArgument("amenityId") { type = NavType.IntType }
+            )
+        ) { backStack ->
+            val amenityId = backStack.arguments?.getInt("amenityId") ?: return@composable
+            AmenityDetailScreen(
+                amenityId = amenityId,
+                onBack    = { navController.popBackStack() }
             )
         }
 
@@ -244,14 +262,13 @@ fun AppNavigation() {
             )
         }
 
-        // ── Profile — with sign out ────────────────────────────────────────
+        // ── Profile ───────────────────────────────────────────────────────
         composable("profile") {
             ProfileScreen(
-                onBack = { navController.popBackStack() },
+                onBack    = { navController.popBackStack() },
                 onSignOut = {
                     AuthManager.signOut()
                     navController.navigate("login") {
-                        // Clear the ENTIRE back stack — no destination to go back to
                         popUpTo(0) { inclusive = true }
                         launchSingleTop = true
                     }
@@ -299,7 +316,7 @@ fun AppNavigation() {
                 currentLng  = trip.value.lastLng,
                 onNodeReady = { nodeId, _, isKing, scanSiteId ->
                     navController.navigate(nodeDetailRoute(nodeId, scanSiteId, isKing)) {
-                        popUpTo("home") { inclusive = false }  // clears QR + any previous nodes from stack
+                        popUpTo("home") { inclusive = false }
                     }
                 },
                 onBack = { navController.popBackStack() }
@@ -347,3 +364,6 @@ fun reviewRoute(tripId: Int, siteId: Int, siteName: String, visitedCount: Int, t
     val encoded = URLEncoder.encode(siteName, "UTF-8")
     return "review/$tripId/$siteId/$encoded/$visitedCount/$totalCount"
 }
+
+fun amenityDetailRoute(amenityId: Int): String =
+    "amenity/$amenityId"

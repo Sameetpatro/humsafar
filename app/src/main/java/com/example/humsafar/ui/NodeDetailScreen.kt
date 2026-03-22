@@ -1,6 +1,4 @@
 // app/src/main/java/com/example/humsafar/ui/NodeDetailScreen.kt
-// UPDATED: Per-section voice icons with pause/stop, floating TTS control bar,
-//          active section highlighting — matches HeritageDetailScreen pattern.
 
 package com.example.humsafar.ui
 
@@ -41,16 +39,18 @@ import coil.compose.SubcomposeAsyncImageContent
 import coil.request.ImageRequest
 import com.example.humsafar.ChatbotActivity
 import com.example.humsafar.data.TripManager
+import com.example.humsafar.models.AmenityResponse
 import com.example.humsafar.network.Node
 import com.example.humsafar.network.NodeImage
 import com.example.humsafar.network.SiteDetail
 import com.example.humsafar.ui.components.AnimatedOrbBackground
+import com.example.humsafar.ui.components.GlassCard
 import com.example.humsafar.ui.components.TripInfoButton
 import com.example.humsafar.ui.theme.*
 import java.util.Locale
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TTS state — same enum as HeritageDetailScreen
+// TTS state
 // ─────────────────────────────────────────────────────────────────────────────
 
 private enum class NodeTtsStatus { IDLE, SPEAKING, PAUSED }
@@ -69,6 +69,7 @@ fun NodeDetailScreen(
     onNavigateToVoice:      (String, String) -> Unit,
     onNavigateToDirections: ((Int, String) -> Unit)? = null,
     onNavigateToReview:     ((Int, Int, String, Int, Int) -> Unit)? = null,
+    onNavigateToAmenity:    (Int) -> Unit = {},          // ← NEW
     viewModel:              NodeDetailViewModel = viewModel()
 ) {
     val context   = LocalContext.current
@@ -214,24 +215,24 @@ fun NodeDetailScreen(
 
                                 // ── Action grid (Watch Video, Scan QR) ────────
                                 NodeActionsGrid(
-                                    node   = node,
-                                    siteId = siteId,
+                                    node    = node,
+                                    siteId  = siteId,
                                     context = context,
-                                    onQr   = onNavigateToQr
+                                    onQr    = onNavigateToQr
                                 )
                                 Spacer(Modifier.height(20.dp))
 
                                 // ── About site ────────────────────────────────
                                 if (!site.summary.isNullOrBlank()) {
                                     NodeInfoCard(
-                                        title          = "📖 About ${site.name}",
-                                        body           = site.summary!!,
-                                        sectionLabel   = "About Site",
-                                        ttsStatus      = ttsStatus,
+                                        title              = "📖 About ${site.name}",
+                                        body               = site.summary!!,
+                                        sectionLabel       = "About Site",
+                                        ttsStatus          = ttsStatus,
                                         activeSectionLabel = activeSectionLabel,
-                                        onSpeak        = { speakSection("About Site", site.name, site.summary) },
-                                        onStop         = { stopTts() },
-                                        onTogglePause  = { togglePause() }
+                                        onSpeak            = { speakSection("About Site", site.name, site.summary) },
+                                        onStop             = { stopTts() },
+                                        onTogglePause      = { togglePause() }
                                     )
                                     Spacer(Modifier.height(14.dp))
                                 }
@@ -239,14 +240,14 @@ fun NodeDetailScreen(
                                 // ── History ───────────────────────────────────
                                 if (!site.history.isNullOrBlank()) {
                                     NodeInfoCard(
-                                        title          = "📜 History",
-                                        body           = site.history!!,
-                                        sectionLabel   = "History",
-                                        ttsStatus      = ttsStatus,
+                                        title              = "📜 History",
+                                        body               = site.history!!,
+                                        sectionLabel       = "History",
+                                        ttsStatus          = ttsStatus,
                                         activeSectionLabel = activeSectionLabel,
-                                        onSpeak        = { speakSection("History", site.name, site.history) },
-                                        onStop         = { stopTts() },
-                                        onTogglePause  = { togglePause() }
+                                        onSpeak            = { speakSection("History", site.name, site.history) },
+                                        onStop             = { stopTts() },
+                                        onTogglePause      = { togglePause() }
                                     )
                                     Spacer(Modifier.height(14.dp))
                                 }
@@ -254,14 +255,23 @@ fun NodeDetailScreen(
                                 // ── Node Description ──────────────────────────
                                 if (!node.description.isNullOrBlank()) {
                                     NodeInfoCard(
-                                        title          = "🗺️ About This Spot",
-                                        body           = node.description!!,
-                                        sectionLabel   = "About This Spot",
-                                        ttsStatus      = ttsStatus,
+                                        title              = "🗺️ About This Spot",
+                                        body               = node.description!!,
+                                        sectionLabel       = "About This Spot",
+                                        ttsStatus          = ttsStatus,
                                         activeSectionLabel = activeSectionLabel,
-                                        onSpeak        = { speakSection("About This Spot", node.name, node.description) },
-                                        onStop         = { stopTts() },
-                                        onTogglePause  = { togglePause() }
+                                        onSpeak            = { speakSection("About This Spot", node.name, node.description) },
+                                        onStop             = { stopTts() },
+                                        onTogglePause      = { togglePause() }
+                                    )
+                                    Spacer(Modifier.height(14.dp))
+                                }
+
+                                // ── Nearby Amenities ──────────────────────────
+                                if (s.amenities.isNotEmpty()) {
+                                    AmenitiesSection(
+                                        amenities = s.amenities,
+                                        onNavigateToAmenity = onNavigateToAmenity
                                     )
                                     Spacer(Modifier.height(14.dp))
                                 }
@@ -298,9 +308,9 @@ fun NodeDetailScreen(
 
                     // ── Ask FAB ───────────────────────────────────────────────
                     FloatingAskShreeButton(
-                        node    = node,
-                        siteId  = siteId,
-                        context = context,
+                        node     = node,
+                        siteId   = siteId,
+                        context  = context,
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
                             .navigationBarsPadding()
@@ -313,13 +323,13 @@ fun NodeDetailScreen(
                     // ── Trip Info Button ──────────────────────────────────────
                     if (tripState.isTripActive) {
                         TripInfoButton(
-                            siteName     = tripState.siteName,
-                            visitedCount = tripState.visitedNodeIds.size,
-                            totalCount   = allNodes.size,
+                            siteName          = tripState.siteName,
+                            visitedCount      = tripState.visitedNodeIds.size,
+                            totalCount        = allNodes.size,
                             onDirectionsClick = {
                                 onNavigateToDirections?.invoke(siteId, tripState.siteName)
                             },
-                            onEndTripClick = {
+                            onEndTripClick    = {
                                 val tripId       = tripState.tripId
                                 val tripSiteId   = tripState.siteId
                                 val visitedCount = tripState.visitedNodeIds.size
@@ -344,13 +354,141 @@ fun NodeDetailScreen(
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(
                         s.message,
-                        color    = Color(0xFFFF6B6B),
-                        fontSize = 14.sp,
+                        color     = Color(0xFFFF6B6B),
+                        fontSize  = 14.sp,
                         textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(32.dp)
+                        modifier  = Modifier.padding(32.dp)
                     )
                 }
             }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Nearby Amenities section — shown inside NodeDetailScreen
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun AmenitiesSection(
+    amenities:           List<AmenityResponse>,
+    onNavigateToAmenity: (Int) -> Unit
+) {
+    val washrooms = amenities.filter { it.type == "washroom" }
+    val shops     = amenities.filter { it.type == "shop" }
+
+    Column {
+        Text(
+            "🗺️ Nearby Amenities",
+            color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold
+        )
+        Spacer(Modifier.height(10.dp))
+
+        if (washrooms.isNotEmpty()) {
+            Text(
+                "🚻 Washrooms",
+                color = TextSecondary, fontSize = 13.sp, fontWeight = FontWeight.Medium
+            )
+            Spacer(Modifier.height(6.dp))
+            washrooms.forEach { amenity ->
+                AmenityRowCard(
+                    amenity = amenity,
+                    onClick = { onNavigateToAmenity(amenity.id) }
+                )
+                Spacer(Modifier.height(8.dp))
+            }
+        }
+
+        if (shops.isNotEmpty()) {
+            if (washrooms.isNotEmpty()) Spacer(Modifier.height(4.dp))
+            Text(
+                "🛍️ Shops",
+                color = TextSecondary, fontSize = 13.sp, fontWeight = FontWeight.Medium
+            )
+            Spacer(Modifier.height(6.dp))
+            shops.forEach { amenity ->
+                AmenityRowCard(
+                    amenity = amenity,
+                    onClick = { onNavigateToAmenity(amenity.id) }
+                )
+                Spacer(Modifier.height(8.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun AmenityRowCard(
+    amenity: AmenityResponse,
+    onClick: () -> Unit
+) {
+    val isShop    = amenity.type == "shop"
+    val accent    = if (isShop) AccentYellow else Color(0xFF64B5F6)
+    val bgGrad    = if (isShop)
+        listOf(Color(0xFF1A1200), Color(0xFF100C00))
+    else
+        listOf(Color(0xFF001428), Color(0xFF000E1E))
+    val borderClr = if (isShop) Color(0x44FFD54F) else Color(0x442196F3)
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(Brush.linearGradient(bgGrad))
+            .border(0.7.dp, borderClr, RoundedCornerShape(14.dp))
+            .clickable { onClick() }
+            .padding(14.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+
+            // Type icon circle
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(accent.copy(alpha = 0.15f))
+                    .border(1.dp, accent.copy(alpha = 0.4f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(if (isShop) "🛍️" else "🚻", fontSize = 20.sp)
+            }
+
+            Spacer(Modifier.width(12.dp))
+
+            Column(Modifier.weight(1f)) {
+                Text(
+                    amenity.name,
+                    color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold
+                )
+                // Distance if available, else price, else timing
+                val subtitle = amenity.distanceMeters?.let { d ->
+                    if (d >= 1000) "${"%.1f".format(d / 1000)} km away"
+                    else "${d.toInt()} m away"
+                } ?: amenity.priceInfo ?: amenity.timing ?: ""
+
+                if (subtitle.isNotBlank()) {
+                    Text(subtitle, color = TextTertiary, fontSize = 12.sp)
+                }
+            }
+
+            // Price badge
+            amenity.priceInfo?.takeIf { it.isNotBlank() }?.let { price ->
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(accent.copy(alpha = 0.12f))
+                        .border(0.5.dp, accent.copy(0.3f), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text(price, color = accent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+                Spacer(Modifier.width(8.dp))
+            }
+
+            Icon(
+                Icons.Default.ChevronRight, null,
+                tint = TextTertiary, modifier = Modifier.size(16.dp)
+            )
         }
     }
 }
@@ -459,7 +597,6 @@ private fun NodeTtsControlBar(
             verticalAlignment     = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // Animated speaker dot
             Box(
                 modifier = Modifier
                     .size(32.dp)
@@ -479,7 +616,6 @@ private fun NodeTtsControlBar(
                 )
             }
 
-            // Status text
             Column {
                 Text(
                     text = when (ttsStatus) {
@@ -502,7 +638,6 @@ private fun NodeTtsControlBar(
 
             Spacer(Modifier.weight(1f))
 
-            // Pause / Resume
             Box(
                 modifier = Modifier
                     .size(38.dp)
@@ -520,7 +655,6 @@ private fun NodeTtsControlBar(
                 )
             }
 
-            // Stop
             Box(
                 modifier = Modifier
                     .size(38.dp)
@@ -568,7 +702,6 @@ private fun NodeInfoCard(
     )
 
     Column {
-        // ── Title row with voice controls ──────────────────────────────────────
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier          = Modifier.fillMaxWidth()
@@ -586,7 +719,6 @@ private fun NodeInfoCard(
                 verticalAlignment     = Alignment.CenterVertically
             ) {
                 if (isThisActive) {
-                    // Pause / Resume
                     Box(
                         modifier = Modifier
                             .size(30.dp)
@@ -603,7 +735,6 @@ private fun NodeInfoCard(
                             modifier = Modifier.size(14.dp)
                         )
                     }
-                    // Stop
                     Box(
                         modifier = Modifier
                             .size(30.dp)
@@ -621,7 +752,6 @@ private fun NodeInfoCard(
                         )
                     }
                 } else {
-                    // Speaker icon — tap to listen
                     Box(
                         modifier = Modifier
                             .size(32.dp)
@@ -644,7 +774,6 @@ private fun NodeInfoCard(
 
         Spacer(Modifier.height(6.dp))
 
-        // ── Body card — glows when active ──────────────────────────────────────
         Box(
             Modifier
                 .fillMaxWidth()
@@ -669,7 +798,7 @@ private fun NodeInfoCard(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Action grid — Watch Video + Scan QR (no TTS buttons here, separate actions)
+// Action grid — Watch Video + Scan QR
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
@@ -679,46 +808,43 @@ private fun NodeActionsGrid(
     context: android.content.Context,
     onQr:    (Long) -> Unit
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(
-            modifier              = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            NodeActionCard(
-                icon           = "🎬",
-                title          = "Watch Video",
-                subtitle       = "Visual tour",
-                gradientColors = listOf(Color(0xFF002A4D), Color(0xFF001830)),
-                borderColor    = Color(0xFF2196F3),
-                modifier       = Modifier.weight(1f),
-                onClick = {
-                    if (!node.videoUrl.isNullOrBlank()) {
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(node.videoUrl)))
-                    } else {
-                        android.widget.Toast.makeText(
-                            context,
-                            "No video available for this node",
-                            android.widget.Toast.LENGTH_SHORT
-                        ).show()
-                    }
+    Row(
+        modifier              = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        NodeActionCard(
+            icon           = "🎬",
+            title          = "Watch Video",
+            subtitle       = "Visual tour",
+            gradientColors = listOf(Color(0xFF002A4D), Color(0xFF001830)),
+            borderColor    = Color(0xFF2196F3),
+            modifier       = Modifier.weight(1f),
+            onClick        = {
+                if (!node.videoUrl.isNullOrBlank()) {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(node.videoUrl)))
+                } else {
+                    android.widget.Toast.makeText(
+                        context,
+                        "No video available for this node",
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
                 }
-            )
-
-            NodeActionCard(
-                icon           = "📷",
-                title          = "Scan Next QR",
-                subtitle       = "Continue journey",
-                gradientColors = listOf(Color(0xFF0D2825), Color(0xFF091F1E)),
-                borderColor    = Color(0xFF2DD4BF),
-                modifier       = Modifier.weight(1f),
-                onClick        = { onQr(siteId.toLong()) }
-            )
-        }
+            }
+        )
+        NodeActionCard(
+            icon           = "📷",
+            title          = "Scan Next QR",
+            subtitle       = "Continue journey",
+            gradientColors = listOf(Color(0xFF0D2825), Color(0xFF091F1E)),
+            borderColor    = Color(0xFF2DD4BF),
+            modifier       = Modifier.weight(1f),
+            onClick        = { onQr(siteId.toLong()) }
+        )
     }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Shared gallery composable
+// Node image gallery
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
@@ -776,8 +902,12 @@ fun NodeImageGallery(
                 ) {
                     images.forEachIndexed { i, _ ->
                         Box(
-                            Modifier.size(if (i == currentIndex) 8.dp else 5.dp).clip(CircleShape)
-                                .background(if (i == currentIndex) AccentYellow else Color(0x66FFFFFF))
+                            Modifier
+                                .size(if (i == currentIndex) 8.dp else 5.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    if (i == currentIndex) AccentYellow else Color(0x66FFFFFF)
+                                )
                         )
                     }
                 }
@@ -817,7 +947,9 @@ fun NodeImageGallery(
     // Thumbnail strip
     if (images.size > 1) {
         LazyRow(
-            modifier              = Modifier.fillMaxWidth().background(Color(0xFF050D1A))
+            modifier              = Modifier
+                .fillMaxWidth()
+                .background(Color(0xFF050D1A))
                 .padding(horizontal = 14.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(7.dp)
         ) {
@@ -828,7 +960,9 @@ fun NodeImageGallery(
                         .data(img.imageUrl).crossfade(300).build(),
                     contentDescription = null,
                     contentScale       = ContentScale.Crop,
-                    modifier = Modifier.size(64.dp, 44.dp).clip(RoundedCornerShape(8.dp))
+                    modifier           = Modifier
+                        .size(64.dp, 44.dp)
+                        .clip(RoundedCornerShape(8.dp))
                         .border(
                             if (selected) 2.dp else 0.dp,
                             if (selected) AccentYellow else Color.Transparent,
@@ -854,21 +988,29 @@ fun WatchVideoBar(
     val context = LocalContext.current
     val inf     = rememberInfiniteTransition(label = "vb")
     val pulse   by inf.animateFloat(0.94f, 1.06f, infiniteRepeatable(tween(1000, easing = EaseInOutSine), RepeatMode.Reverse), "vp")
-    val glow    by inf.animateFloat(0.5f, 1f,    infiniteRepeatable(tween(1400, easing = EaseInOutSine), RepeatMode.Reverse), "vg")
+    val glow    by inf.animateFloat(0.5f,  1f,    infiniteRepeatable(tween(1400, easing = EaseInOutSine), RepeatMode.Reverse), "vg")
 
     Box(
-        modifier = modifier.fillMaxWidth()
+        modifier = modifier
+            .fillMaxWidth()
             .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xF5050D1A))))
-            .navigationBarsPadding().padding(horizontal = 18.dp, vertical = 10.dp)
+            .navigationBarsPadding()
+            .padding(horizontal = 18.dp, vertical = 10.dp)
     ) {
         Box(
-            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp))
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(18.dp))
                 .background(Brush.linearGradient(listOf(Color(0xFF120038), Color(0xFF06001E), Color(0xFF1A0050))))
-                .border(1.5.dp, Brush.linearGradient(listOf(
-                    Color(0xFF9B30FF).copy(alpha = glow),
-                    Color(0xFF5B5FFF).copy(alpha = glow * 0.6f),
-                    Color(0xFF9B30FF).copy(alpha = 0.2f)
-                )), RoundedCornerShape(18.dp))
+                .border(
+                    1.5.dp,
+                    Brush.linearGradient(listOf(
+                        Color(0xFF9B30FF).copy(alpha = glow),
+                        Color(0xFF5B5FFF).copy(alpha = glow * 0.6f),
+                        Color(0xFF9B30FF).copy(alpha = 0.2f)
+                    )),
+                    RoundedCornerShape(18.dp)
+                )
                 .clickable { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(videoUrl))) }
                 .padding(horizontal = 18.dp, vertical = 14.dp)
         ) {
@@ -921,31 +1063,33 @@ private fun NodeActionCard(
             .padding(16.dp)
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(icon, fontSize = 26.sp)
-            Text(title,    color = TextPrimary,   fontSize = 13.sp, fontWeight = FontWeight.Bold)
-            Text(subtitle, color = TextTertiary,  fontSize = 11.sp)
+            Text(icon,     fontSize = 26.sp)
+            Text(title,    color = TextPrimary,  fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            Text(subtitle, color = TextTertiary, fontSize = 11.sp)
         }
     }
 }
 
 @Composable
 private fun FloatingAskShreeButton(
-    node:    Node,
-    siteId:  Int,
-    context: android.content.Context,
+    node:     Node,
+    siteId:   Int,
+    context:  android.content.Context,
     modifier: Modifier = Modifier
 ) {
-    val inf        = rememberInfiniteTransition(label = "ask")
-    val pulse      by inf.animateFloat(1f, 1.05f, infiniteRepeatable(tween(1000, easing = EaseInOutSine), RepeatMode.Reverse), "ps")
-    val glowAlpha  by inf.animateFloat(0.4f, 0.8f, infiniteRepeatable(tween(1200, easing = EaseInOutSine), RepeatMode.Reverse), "ga")
+    val inf       = rememberInfiniteTransition(label = "ask")
+    val pulse     by inf.animateFloat(1f,   1.05f, infiniteRepeatable(tween(1000, easing = EaseInOutSine), RepeatMode.Reverse), "ps")
+    val glowAlpha by inf.animateFloat(0.4f, 0.8f,  infiniteRepeatable(tween(1200, easing = EaseInOutSine), RepeatMode.Reverse), "ga")
 
     Box(modifier = modifier) {
         Box(
-            modifier = Modifier.scale(pulse).size(68.dp).clip(CircleShape)
+            modifier = Modifier
+                .scale(pulse).size(68.dp).clip(CircleShape)
                 .background(Brush.radialGradient(listOf(AccentYellow.copy(alpha = glowAlpha * 0.4f), Color.Transparent)))
         )
         Box(
-            modifier = Modifier.size(60.dp).clip(CircleShape)
+            modifier = Modifier
+                .size(60.dp).clip(CircleShape)
                 .background(Brush.linearGradient(listOf(Color(0xFFFFD54F), Color(0xFFFFC107))))
                 .border(2.dp, Brush.linearGradient(listOf(Color(0x66FFFFFF), Color(0x22FFFFFF))), CircleShape)
                 .clickable {
@@ -968,7 +1112,11 @@ private fun FloatingAskShreeButton(
 }
 
 @Composable
-private fun TripProgressSection(nodes: List<Node>, visitedIds: List<Int>, currentId: Int) {
+private fun TripProgressSection(
+    nodes:      List<Node>,
+    visitedIds: List<Int>,
+    currentId:  Int
+) {
     Column {
         Text("🗺️ Trip Progress", color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
@@ -981,20 +1129,25 @@ private fun TripProgressSection(nodes: List<Node>, visitedIds: List<Int>, curren
             ) {
                 Box(
                     Modifier.size(26.dp).clip(CircleShape).background(
-                        when { isCurrent -> AccentYellow; visited -> Color(0xFF4ADE80); else -> GlassWhite15 }
+                        when {
+                            isCurrent -> AccentYellow
+                            visited   -> Color(0xFF4ADE80)
+                            else      -> GlassWhite15
+                        }
                     ),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         if (visited || isCurrent) "✓" else "${n.sequenceOrder}",
-                        color = if (visited || isCurrent) Color.Black else TextTertiary,
-                        fontSize = 10.sp, fontWeight = FontWeight.Bold
+                        color      = if (visited || isCurrent) Color.Black else TextTertiary,
+                        fontSize   = 10.sp,
+                        fontWeight = FontWeight.Bold
                     )
                 }
                 Spacer(Modifier.width(10.dp))
                 Text(
                     n.name,
-                    color = when { isCurrent -> AccentYellow; visited -> TextTertiary; else -> TextPrimary },
+                    color    = when { isCurrent -> AccentYellow; visited -> TextTertiary; else -> TextPrimary },
                     fontSize = 13.sp
                 )
             }
@@ -1020,7 +1173,8 @@ private fun ShimmerBox() {
 @Composable
 private fun EmptyImageBox() {
     Box(
-        Modifier.fillMaxSize()
+        Modifier
+            .fillMaxSize()
             .background(Brush.verticalGradient(listOf(Color(0xFF0A1628), Color(0xFF050D1A)))),
         contentAlignment = Alignment.Center
     ) {
