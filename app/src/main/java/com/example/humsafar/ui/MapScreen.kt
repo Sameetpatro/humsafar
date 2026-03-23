@@ -131,92 +131,57 @@ fun MapContent(
     val context        = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
-    var showExitDialog  by remember { mutableStateOf(false) }
-    var userLat         by remember { mutableStateOf<Double?>(null) }
-    var userLng         by remember { mutableStateOf<Double?>(null) }
-    var insideSite      by remember { mutableStateOf<HeritageSite?>(null) }
-    var sortedSites     by remember { mutableStateOf<List<Pair<HeritageSite, Double>>>(emptyList()) }
-    var mapLibreMap     by remember { mutableStateOf<MapLibreMap?>(null) }
-    var userMarkerAdded by remember { mutableStateOf(false) }
-    var tappedSite      by remember { mutableStateOf<HeritageSite?>(null) }
-
-    // Track whether we've done the first force-refresh for fast site detection
-    var firstLocationFix by remember { mutableStateOf(false) }
+    var showExitDialog   by remember { mutableStateOf(false) }
+    var userLat          by remember { mutableStateOf<Double?>(null) }
+    var userLng          by remember { mutableStateOf<Double?>(null) }
+    var mapLibreMap      by remember { mutableStateOf<MapLibreMap?>(null) }
+    var userMarkerAdded  by remember { mutableStateOf(false) }
+    var tappedSite       by remember { mutableStateOf<HeritageSite?>(null) }
+    var firstFix         by remember { mutableStateOf(false) }
 
     val mapView         = remember { MapLibre.getInstance(context); MapView(context) }
     val locationManager = remember { HumsafarLocationManager(context) }
 
     BackHandler { showExitDialog = true }
-
     GeofencePermissionHandler()
 
-    // ── Wire up LocationBasedSiteDetector API (CRITICAL — prevents crash) ──
+    // ── Wire the API once ─────────────────────────────────────────────────
     LaunchedEffect(Unit) {
         LocationBasedSiteDetector.api = HumsafarClient.api
-
-        // Kick off HeritageRepository fetch so the geofence manager
-        // and the map panel have site data immediately
-        HeritageRepository.fetchAll()
     }
 
-    // ── Observe nearbySites from LocationBasedSiteDetector ────────────────
+    // ── Observe detector output ───────────────────────────────────────────
+    // nearbySites  = all sites sorted by distance  → drives the "Nearby" panel
+    // currentSite  = the site user is inside right now (null = outside all)
     val nearbySites by LocationBasedSiteDetector.nearbySites.collectAsStateWithLifecycle()
+    val currentSite by LocationBasedSiteDetector.currentSite.collectAsStateWithLifecycle()
 
-    // Sync insideSite from LocationBasedSiteDetector's state
-    LaunchedEffect(nearbySites) {
-        val inside = nearbySites
-            .filter { it.insideGeofence }
-            .minByOrNull { it.distanceMeters }
-
-        insideSite = if (inside != null) {
-            HeritageRepository.sites.find { it.id == inside.id.toString() }
-        } else {
-            null
-        }
+    // Convert NearbySiteUi → HeritageSite for the bottom panel
+    val insideSite: HeritageSite? = currentSite?.let { s ->
+        HeritageSite(s.id.toString(), s.name, s.latitude, s.longitude, 300.0)
     }
 
-    // ── Geofence broadcast (keep for notification-triggered updates) ──────
-    DisposableEffect(context) {
-        val receiver = object : BroadcastReceiver() {
-            override fun onReceive(ctx: android.content.Context, intent: Intent) {
-                val siteId     = intent.getStringExtra(GeofenceTransitionReceiver.EXTRA_SITE_ID) ?: return
-                val transition = intent.getStringExtra(GeofenceTransitionReceiver.EXTRA_TRANSITION)
-                when (transition) {
-                    GeofenceTransitionReceiver.TRANSITION_ENTER ->
-                        insideSite = HeritageRepository.sites.find { it.id == siteId }
-                    GeofenceTransitionReceiver.TRANSITION_EXIT ->
-                        if (insideSite?.id == siteId) insideSite = null
-                }
-            }
-        }
-        LocalBroadcastManager.getInstance(context)
-            .registerReceiver(receiver, IntentFilter(GeofenceTransitionReceiver.ACTION_GEOFENCE_UI_UPDATE))
-        onDispose { LocalBroadcastManager.getInstance(context).unregisterReceiver(receiver) }
+    val sortedSites: List<Pair<HeritageSite, Double>> = nearbySites.map { s ->
+        HeritageSite(s.id.toString(), s.name, s.latitude, s.longitude, 300.0) to s.distanceMeters
     }
 
-    // ── Location updates ───────────────────────────────────────────────────
+    // ── GPS updates ───────────────────────────────────────────────────────
     LaunchedEffect(Unit) {
         locationManager.startUpdates { lat, lng ->
             userLat = lat
             userLng = lng
 
-            // Push to LocationBasedSiteDetector for real geofence checking
-            // Force a refresh on the very first fix for instant detection
-            if (!firstLocationFix) {
-                firstLocationFix = true
+            if (!firstFix) {
+                firstFix = true
+                // First GPS fix: do an immediate full check
                 LocationBasedSiteDetector.forceRefresh(lat, lng)
+                HeritageRepository.fetchAll(lat, lng)
             } else {
+                // Subsequent ticks: throttled check
                 LocationBasedSiteDetector.onLocationUpdate(lat, lng)
             }
 
-            // Also update the sorted list for the bottom panel
-            val distances = HeritageRepository.sites.map { site ->
-                val d = haversineDistance(lat, lng, site.latitude, site.longitude)
-                site to d
-            }.sortedBy { it.second }
-            sortedSites = distances
-
-            // Move map camera
+            // Move map to user location
             val ll = LatLng(lat, lng)
             mapLibreMap?.animateCamera(CameraUpdateFactory.newLatLngZoom(ll, 14.0))
             if (!userMarkerAdded) {
@@ -226,7 +191,7 @@ fun MapContent(
         }
     }
 
-    // ── Lifecycle observer ─────────────────────────────────────────────────
+    // ── Lifecycle ─────────────────────────────────────────────────────────
     DisposableEffect(lifecycleOwner) {
         val obs = LifecycleEventObserver { _, e ->
             when (e) {
@@ -234,10 +199,7 @@ fun MapContent(
                 Lifecycle.Event.ON_RESUME  -> mapView.onResume()
                 Lifecycle.Event.ON_PAUSE   -> mapView.onPause()
                 Lifecycle.Event.ON_STOP    -> mapView.onStop()
-                Lifecycle.Event.ON_DESTROY -> {
-                    locationManager.stopUpdates()
-                    mapView.onDestroy()
-                }
+                Lifecycle.Event.ON_DESTROY -> { locationManager.stopUpdates(); mapView.onDestroy() }
                 else -> Unit
             }
         }
@@ -249,32 +211,32 @@ fun MapContent(
         }
     }
 
-    // ── Root UI ────────────────────────────────────────────────────────────
+    // ── UI ────────────────────────────────────────────────────────────────
     Box(Modifier.fillMaxSize()) {
 
-        // ── Map ────────────────────────────────────────────────────────────
+        // Map
         AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize()) { mv ->
             mv.getMapAsync { map ->
                 mapLibreMap = map
                 map.setStyle(MAP_STYLE) {
-
-                    // Heritage site markers ONLY — no amenity markers
-                    HeritageRepository.sites.forEach { site ->
+                    // Drop a pin for every known site
+                    nearbySites.forEach { site ->
                         map.addMarker(
                             MarkerOptions()
                                 .position(LatLng(site.latitude, site.longitude))
                                 .title(site.name)
-                                .snippet(site.id)
+                                .snippet(site.id.toString())
                         )
                     }
-
-                    // Marker tap → bottom sheet for heritage sites only
+                    // Tap a pin → show bottom sheet
                     map.setOnMarkerClickListener { marker ->
-                        val site = HeritageRepository.sites.find { it.id == marker.snippet }
-                        if (site != null) tappedSite = site
-                        site != null
+                        val s = nearbySites.find { it.id.toString() == marker.snippet }
+                        if (s != null) {
+                            tappedSite = HeritageSite(s.id.toString(), s.name, s.latitude, s.longitude, 300.0)
+                        }
+                        s != null
                     }
-
+                    // Jump to user location if already known
                     userLat?.let { lat -> userLng?.let { lng ->
                         map.moveCamera(CameraUpdateFactory.newLatLngZoom(LatLng(lat, lng), 14.0))
                     }}
@@ -282,7 +244,7 @@ fun MapContent(
             }
         }
 
-        // ── Top bar ────────────────────────────────────────────────────────
+        // Top status bar
         Column(
             modifier = Modifier
                 .align(Alignment.TopCenter)
@@ -295,6 +257,7 @@ fun MapContent(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
+                // Status pill
                 Box(
                     modifier = Modifier
                         .weight(1f)
@@ -311,16 +274,29 @@ fun MapContent(
                         )
                         Box(
                             Modifier.size(8.dp).scale(dotPulse).clip(CircleShape)
-                                .background(if (insideSite != null) Color(0xFF4ADE80) else AccentYellow)
+                                .background(
+                                    when {
+                                        insideSite != null -> Color(0xFF4ADE80)   // green = inside
+                                        nearbySites.isEmpty() -> AccentYellow     // yellow = scanning
+                                        else -> Color(0xFF60A5FA)                 // blue = nearby found but outside
+                                    }
+                                )
                         )
                         Spacer(Modifier.width(9.dp))
                         Text(
-                            if (insideSite != null) "Inside ${insideSite!!.name}" else "Scanning for heritage sites…",
+                            text = when {
+                                insideSite != null  -> "You are at ${insideSite.name}"
+                                nearbySites.isEmpty() -> if (userLat == null) "Acquiring GPS…" else "Fetching sites…"
+                                else                -> "Nearby sites found"
+                            },
                             color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Medium
                         )
                     }
                 }
+
                 Spacer(Modifier.width(10.dp))
+
+                // Profile button
                 Box(
                     modifier = Modifier.size(46.dp).clip(CircleShape)
                         .background(Brush.linearGradient(listOf(Color(0xCC050D1A), Color(0xBB0A1628))))
@@ -332,6 +308,7 @@ fun MapContent(
                 }
             }
 
+            // QR scan button — only when inside a site
             AnimatedVisibility(
                 visible = insideSite != null,
                 enter   = fadeIn(tween(280)) + slideInVertically(tween(280, easing = EaseOutCubic)) { -it },
@@ -344,7 +321,9 @@ fun MapContent(
             }
         }
 
-        // ── Bottom panel ───────────────────────────────────────────────────
+        // Bottom panel:
+        //   • insideSite != null → show "You are at X" with Explore + Maps buttons
+        //   • insideSite == null → show sorted nearby sites list
         BottomGlassPanel(
             insideSite           = insideSite,
             sortedSites          = sortedSites,
@@ -352,16 +331,16 @@ fun MapContent(
             onNavigateToDetail   = onNavigateToDetail,
             onNavigateToSiteInfo = onNavigateToSiteInfo,
             onRefresh            = {
-                val lat = userLat ?: 28.6
-                val lng = userLng ?: 77.2
-                HeritageRepository.refresh(lat, lng)
-                // Also force a fresh site detection check
-                LocationBasedSiteDetector.forceRefresh(lat, lng)
+                userLat?.let { lat ->
+                    userLng?.let { lng ->
+                        LocationBasedSiteDetector.forceRefresh(lat, lng)
+                    }
+                }
             },
-            modifier             = Modifier.align(Alignment.BottomCenter)
+            modifier = Modifier.align(Alignment.BottomCenter)
         )
 
-        // ── Heritage site marker bottom sheet ──────────────────────────────
+        // Tapped marker bottom sheet
         tappedSite?.let { site ->
             SiteMarkerBottomSheet(
                 site      = site,
@@ -373,7 +352,7 @@ fun MapContent(
             )
         }
 
-        // ── Exit dialog ────────────────────────────────────────────────────
+        // Exit dialog
         if (showExitDialog) {
             androidx.compose.ui.window.Dialog(onDismissRequest = { showExitDialog = false }) {
                 Box(
@@ -386,15 +365,9 @@ fun MapContent(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("🚪", fontSize = 40.sp)
                         Spacer(Modifier.height(12.dp))
-                        Text(
-                            "Exit Dharohar Setu?",
-                            color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold
-                        )
+                        Text("Exit Dharohar Setu?", color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                         Spacer(Modifier.height(8.dp))
-                        Text(
-                            "Are you sure you want to exit the app?",
-                            color = TextSecondary, fontSize = 14.sp, textAlign = TextAlign.Center
-                        )
+                        Text("Are you sure you want to exit?", color = TextSecondary, fontSize = 14.sp, textAlign = TextAlign.Center)
                         Spacer(Modifier.height(24.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             Box(
@@ -409,7 +382,7 @@ fun MapContent(
                                     .clickable { (context as? android.app.Activity)?.finishAffinity() }
                                     .padding(vertical = 14.dp),
                                 contentAlignment = Alignment.Center
-                            ) { Text("Exit", color = Color(0xFFFF6B6B), fontSize = 15.sp, fontWeight = FontWeight.SemiBold) }
+                            ) { Text("Exit", color = Color(0xFFFF6B6B), fontSize = 15.sp, fontWeight = FontWeight.Bold) }
                         }
                     }
                 }
