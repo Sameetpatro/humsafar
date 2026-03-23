@@ -1,13 +1,16 @@
 // app/src/main/java/com/example/humsafar/ui/MapScreen.kt
-// UPDATED — onNavigateToQrScan now passes Int siteId (not Long).
-// Removed dead HeritageRepository.loadMonuments() call.
-// Everything else (map, geofence, UI) unchanged.
+// UPDATED — amenity markers (washrooms 🚻 and shops 🛍️) drawn on the map.
+// Fetches GET /amenities/site/{site_id} for every site after style loads.
 
 package com.example.humsafar.ui
 
 import android.content.BroadcastReceiver
 import android.content.IntentFilter
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Typeface
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.compose.BackHandler
@@ -42,15 +45,17 @@ import com.example.humsafar.data.HeritageRepository
 import com.example.humsafar.geofence.GeofencePermissionHandler
 import com.example.humsafar.geofence.GeofenceTransitionReceiver
 import com.example.humsafar.location.HumsafarLocationManager
+import com.example.humsafar.models.AmenityResponse
 import com.example.humsafar.models.HeritageSite
+import com.example.humsafar.network.HumsafarClient
+import com.example.humsafar.network.WeatherService
 import com.example.humsafar.ui.components.*
 import com.example.humsafar.ui.theme.*
 import com.example.humsafar.utils.haversineDistance
 import com.google.accompanist.permissions.*
-import com.example.humsafar.network.WeatherService
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.*
 import org.maplibre.android.MapLibre
+import org.maplibre.android.annotations.IconFactory
 import org.maplibre.android.annotations.Marker
 import org.maplibre.android.annotations.MarkerOptions
 import org.maplibre.android.camera.CameraUpdateFactory
@@ -63,6 +68,58 @@ private val MAP_STYLE
 
 private val QrTealBright = Color(0xFF2DD4BF)
 private val QrTealMid    = Color(0xFF14B8A6)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Emoji bitmap marker helper
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Renders an emoji string onto a transparent Bitmap so MapLibre can use it
+ * as a marker icon. Size is in dp converted to px.
+ */
+private fun createEmojiMarkerIcon(
+    context: android.content.Context,
+    emoji: String,
+    sizeDp: Int = 40
+): org.maplibre.android.annotations.Icon {
+    val density  = context.resources.displayMetrics.density
+    val sizePx   = (sizeDp * density).toInt()
+    val bitmap   = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+    val canvas   = Canvas(bitmap)
+
+    // White circle background for contrast
+    val bgPaint  = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.WHITE
+        style = Paint.Style.FILL
+    }
+    val radius   = sizePx / 2f - 2
+    canvas.drawCircle(sizePx / 2f, sizePx / 2f, radius, bgPaint)
+
+    // Thin border
+    val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color       = android.graphics.Color.argb(80, 0, 0, 0)
+        style       = Paint.Style.STROKE
+        strokeWidth = 2f
+    }
+    canvas.drawCircle(sizePx / 2f, sizePx / 2f, radius, borderPaint)
+
+    // Emoji text centred in circle
+    val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textSize  = sizePx * 0.52f
+        typeface  = Typeface.DEFAULT
+        textAlign = Paint.Align.CENTER
+    }
+    // Vertically centre: baseline = centre + half ascent
+    val metrics  = textPaint.fontMetrics
+    val baseline = sizePx / 2f - (metrics.ascent + metrics.descent) / 2f
+    canvas.drawText(emoji, sizePx / 2f, baseline, textPaint)
+
+    return IconFactory.getInstance(context).fromBitmap(bitmap)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Main screen entry
+// ─────────────────────────────────────────────────────────────────────────────
 
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
@@ -95,9 +152,7 @@ private fun PermissionGate(state: PermissionState) {
     Box(Modifier.fillMaxSize()) {
         AnimatedOrbBackground(Modifier.fillMaxSize())
         Column(
-            Modifier
-                .align(Alignment.Center)
-                .padding(32.dp),
+            Modifier.align(Alignment.Center).padding(32.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text("📍", fontSize = 48.sp)
@@ -114,6 +169,10 @@ private fun PermissionGate(state: PermissionState) {
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// MapContent
+// ─────────────────────────────────────────────────────────────────────────────
+
 @Composable
 fun MapContent(
     onNavigateToVoice:    (String, String) -> Unit = { _, _ -> },
@@ -125,7 +184,6 @@ fun MapContent(
     val context        = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
-    // ── State ──────────────────────────────────────────────────────────────
     var showExitDialog  by remember { mutableStateOf(false) }
     var userLat         by remember { mutableStateOf<Double?>(null) }
     var userLng         by remember { mutableStateOf<Double?>(null) }
@@ -138,14 +196,14 @@ fun MapContent(
     val mapView         = remember { MapLibre.getInstance(context); MapView(context) }
     val locationManager = remember { HumsafarLocationManager(context) }
 
-    // ── Back handler — intercept system back to show exit dialog ───────────
-    BackHandler {
-        showExitDialog = true
-    }
+    // Coroutine scope for amenity fetching (lives as long as the composable)
+    val amenityScope = remember { CoroutineScope(SupervisorJob() + Dispatchers.Main) }
+
+    BackHandler { showExitDialog = true }
 
     GeofencePermissionHandler()
 
-    // ── Geofence broadcast receiver ────────────────────────────────────────
+    // ── Geofence broadcast ─────────────────────────────────────────────────
     DisposableEffect(context) {
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(ctx: android.content.Context, intent: Intent) {
@@ -185,7 +243,7 @@ fun MapContent(
         }
     }
 
-    // ── Lifecycle observer for MapView ─────────────────────────────────────
+    // ── Lifecycle observer ─────────────────────────────────────────────────
     DisposableEffect(lifecycleOwner) {
         val obs = LifecycleEventObserver { _, e ->
             when (e) {
@@ -193,23 +251,33 @@ fun MapContent(
                 Lifecycle.Event.ON_RESUME  -> mapView.onResume()
                 Lifecycle.Event.ON_PAUSE   -> mapView.onPause()
                 Lifecycle.Event.ON_STOP    -> mapView.onStop()
-                Lifecycle.Event.ON_DESTROY -> { locationManager.stopUpdates(); mapView.onDestroy() }
+                Lifecycle.Event.ON_DESTROY -> {
+                    locationManager.stopUpdates()
+                    amenityScope.cancel()
+                    mapView.onDestroy()
+                }
                 else -> Unit
             }
         }
         lifecycleOwner.lifecycle.addObserver(obs)
         mapView.onCreate(Bundle())
-        onDispose { lifecycleOwner.lifecycle.removeObserver(obs); locationManager.stopUpdates() }
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(obs)
+            locationManager.stopUpdates()
+            amenityScope.cancel()
+        }
     }
 
     // ── Root UI ────────────────────────────────────────────────────────────
     Box(Modifier.fillMaxSize()) {
 
-        // Map
+        // ── Map ────────────────────────────────────────────────────────────
         AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize()) { mv ->
             mv.getMapAsync { map ->
                 mapLibreMap = map
                 map.setStyle(MAP_STYLE) {
+
+                    // 1. Heritage site markers (same as before)
                     HeritageRepository.sites.forEach { site ->
                         map.addMarker(
                             MarkerOptions()
@@ -218,11 +286,48 @@ fun MapContent(
                                 .snippet(site.id)
                         )
                     }
-                    map.setOnMarkerClickListener { marker ->
-                        val site = HeritageRepository.sites.find { it.id == marker.snippet }
-                        if (site != null) tappedSite = site
-                        true
+
+                    // 2. Amenity markers — fetch for each site in background
+                    amenityScope.launch {
+                        HeritageRepository.sites.forEach { site ->
+                            val siteIdInt = site.id.toIntOrNull() ?: return@forEach
+                            try {
+                                val resp = withContext(Dispatchers.IO) {
+                                    HumsafarClient.api.getSiteAmenities(siteIdInt)
+                                }
+                                if (resp.isSuccessful) {
+                                    resp.body()?.forEach { amenity ->
+                                        val emoji = if (amenity.type == "washroom") "🚻" else "🛍️"
+                                        val icon  = createEmojiMarkerIcon(context, emoji, sizeDp = 44)
+                                        val snippet = buildAmenitySnippet(amenity)
+                                        map.addMarker(
+                                            MarkerOptions()
+                                                .position(LatLng(amenity.latitude, amenity.longitude))
+                                                .icon(icon)
+                                                .title(amenity.name)
+                                                .snippet(snippet)
+                                        )
+                                    }
+                                }
+                            } catch (_: Exception) {
+                                // Fail silently — amenity markers are non-critical
+                            }
+                        }
                     }
+
+                    // 3. Marker tap listener
+                    map.setOnMarkerClickListener { marker ->
+                        // Only show bottom sheet for heritage site markers
+                        // (amenity markers have a different snippet format)
+                        val site = HeritageRepository.sites.find { it.id == marker.snippet }
+                        if (site != null) {
+                            tappedSite = site
+                        }
+                        // Return true to consume the click either way
+                        // (amenity markers show the default MapLibre info window)
+                        site != null
+                    }
+
                     userLat?.let { lat -> userLng?.let { lng ->
                         map.moveCamera(CameraUpdateFactory.newLatLngZoom(LatLng(lat, lng), 14.0))
                     }}
@@ -230,7 +335,7 @@ fun MapContent(
             }
         }
 
-        // Top bar
+        // ── Top bar ────────────────────────────────────────────────────────
         Column(
             modifier = Modifier
                 .align(Alignment.TopCenter)
@@ -258,10 +363,7 @@ fun MapContent(
                             label = "d"
                         )
                         Box(
-                            Modifier
-                                .size(8.dp)
-                                .scale(dotPulse)
-                                .clip(CircleShape)
+                            Modifier.size(8.dp).scale(dotPulse).clip(CircleShape)
                                 .background(if (insideSite != null) Color(0xFF4ADE80) else AccentYellow)
                         )
                         Spacer(Modifier.width(9.dp))
@@ -273,9 +375,7 @@ fun MapContent(
                 }
                 Spacer(Modifier.width(10.dp))
                 Box(
-                    modifier = Modifier
-                        .size(46.dp)
-                        .clip(CircleShape)
+                    modifier = Modifier.size(46.dp).clip(CircleShape)
                         .background(Brush.linearGradient(listOf(Color(0xCC050D1A), Color(0xBB0A1628))))
                         .border(0.7.dp, GlassBorderBright, CircleShape)
                         .clickable { onNavigateToProfile() },
@@ -297,17 +397,30 @@ fun MapContent(
             }
         }
 
-        // Bottom panel
+        // ── Map legend — top right ─────────────────────────────────────────
+        AmenityLegend(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .statusBarsPadding()
+                .padding(top = 70.dp, end = 16.dp)
+        )
+
+        // ── Bottom panel ───────────────────────────────────────────────────
         BottomGlassPanel(
             insideSite           = insideSite,
             sortedSites          = sortedSites,
             context              = context,
             onNavigateToDetail   = onNavigateToDetail,
             onNavigateToSiteInfo = onNavigateToSiteInfo,
+            onRefresh            = {
+                val lat = userLat ?: 28.6
+                val lng = userLng ?: 77.2
+                HeritageRepository.refresh(lat, lng)
+            },
             modifier             = Modifier.align(Alignment.BottomCenter)
         )
 
-        // Map marker bottom sheet
+        // ── Heritage site marker bottom sheet ──────────────────────────────
         tappedSite?.let { site ->
             SiteMarkerBottomSheet(
                 site      = site,
@@ -319,7 +432,7 @@ fun MapContent(
             )
         }
 
-        // Exit confirmation dialog
+        // ── Exit dialog ────────────────────────────────────────────────────
         if (showExitDialog) {
             androidx.compose.ui.window.Dialog(onDismissRequest = { showExitDialog = false }) {
                 Box(
@@ -343,32 +456,19 @@ fun MapContent(
                         )
                         Spacer(Modifier.height(24.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            // Stay button
                             Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(RoundedCornerShape(14.dp))
-                                    .background(GlassWhite15)
-                                    .border(0.7.dp, GlassBorder, RoundedCornerShape(14.dp))
-                                    .clickable { showExitDialog = false }
-                                    .padding(vertical = 14.dp),
+                                modifier = Modifier.weight(1f).clip(RoundedCornerShape(14.dp))
+                                    .background(GlassWhite15).border(0.7.dp, GlassBorder, RoundedCornerShape(14.dp))
+                                    .clickable { showExitDialog = false }.padding(vertical = 14.dp),
                                 contentAlignment = Alignment.Center
-                            ) {
-                                Text("Stay", color = TextSecondary, fontSize = 15.sp)
-                            }
-                            // Exit button
+                            ) { Text("Stay", color = TextSecondary, fontSize = 15.sp) }
                             Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(RoundedCornerShape(14.dp))
-                                    .background(Color(0x15FF5252))
-                                    .border(0.7.dp, Color(0x55FF5252), RoundedCornerShape(14.dp))
+                                modifier = Modifier.weight(1f).clip(RoundedCornerShape(14.dp))
+                                    .background(Color(0x15FF5252)).border(0.7.dp, Color(0x55FF5252), RoundedCornerShape(14.dp))
                                     .clickable { (context as? android.app.Activity)?.finishAffinity() }
                                     .padding(vertical = 14.dp),
                                 contentAlignment = Alignment.Center
-                            ) {
-                                Text("Exit", color = Color(0xFFFF6B6B), fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                            }
+                            ) { Text("Exit", color = Color(0xFFFF6B6B), fontSize = 15.sp, fontWeight = FontWeight.SemiBold) }
                         }
                     }
                 }
@@ -376,6 +476,49 @@ fun MapContent(
         }
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Amenity legend — small pill in top-right corner
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun AmenityLegend(modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xDD050D1A))
+            .border(0.5.dp, GlassBorder, RoundedCornerShape(12.dp))
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("🚻", fontSize = 13.sp)
+            Spacer(Modifier.width(5.dp))
+            Text("Washroom", color = TextSecondary, fontSize = 10.sp)
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("🛍️", fontSize = 13.sp)
+            Spacer(Modifier.width(5.dp))
+            Text("Shop", color = TextSecondary, fontSize = 10.sp)
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helper: build info-window snippet for amenity markers
+// ─────────────────────────────────────────────────────────────────────────────
+
+private fun buildAmenitySnippet(amenity: AmenityResponse): String {
+    val parts = mutableListOf<String>()
+    amenity.priceInfo?.let { parts.add(it) }
+    amenity.timing?.let { parts.add(it) }
+    if (parts.isEmpty()) parts.add(amenity.type.replaceFirstChar { it.uppercase() })
+    return parts.joinToString(" · ")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// QR Scan button (unchanged)
+// ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
 private fun QrScanButton(onClick: () -> Unit) {
@@ -385,54 +528,46 @@ private fun QrScanButton(onClick: () -> Unit) {
     val pulse    by inf.animateFloat(0.97f, 1.03f, infiniteRepeatable(tween(900, easing = EaseInOutSine), RepeatMode.Reverse), label = "ps")
 
     Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .scale(pulse)
+        modifier = Modifier.fillMaxWidth().scale(pulse)
             .clip(RoundedCornerShape(20.dp))
             .background(Brush.linearGradient(listOf(Color(0xFF1A1000), Color(0xFF2A1F00), Color(0xFF1A1400))))
             .border(
                 1.5.dp,
-                Brush.linearGradient(
-                    colorStops = arrayOf(
-                        (shimmer + 0.0f).rem(1f) to Color(0xFFFFD54F).copy(alpha = edgeGlow),
-                        (shimmer + 0.3f).rem(1f) to Color(0xFFFFC107).copy(alpha = edgeGlow * 0.6f),
-                        (shimmer + 0.6f).rem(1f) to Color(0xFFFFD54F).copy(alpha = edgeGlow)
-                    )
-                ),
+                Brush.linearGradient(colorStops = arrayOf(
+                    (shimmer + 0.0f).rem(1f) to Color(0xFFFFD54F).copy(alpha = edgeGlow),
+                    (shimmer + 0.3f).rem(1f) to Color(0xFFFFC107).copy(alpha = edgeGlow * 0.6f),
+                    (shimmer + 0.6f).rem(1f) to Color(0xFFFFD54F).copy(alpha = edgeGlow)
+                )),
                 RoundedCornerShape(20.dp)
             )
-            .clickable { onClick() }
-            .padding(horizontal = 18.dp, vertical = 14.dp)
+            .clickable { onClick() }.padding(horizontal = 18.dp, vertical = 14.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
+                modifier = Modifier.size(40.dp).clip(CircleShape)
                     .background(Brush.radialGradient(listOf(AccentYellow.copy(0.3f), Color(0xFFFFC107).copy(0.1f))))
                     .border(0.8.dp, AccentYellow.copy(0.6f), CircleShape),
                 contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Default.QrCodeScanner, null, tint = AccentYellow, modifier = Modifier.size(20.dp))
-            }
+            ) { Icon(Icons.Default.QrCodeScanner, null, tint = AccentYellow, modifier = Modifier.size(20.dp)) }
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 Text("Scan Node QR", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                 Text("Unlock the AI guide for this spot", color = AccentYellow.copy(alpha = 0.7f), fontSize = 11.sp)
             }
             Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(50))
+                modifier = Modifier.clip(RoundedCornerShape(50))
                     .background(AccentYellow.copy(alpha = 0.18f))
                     .border(0.5.dp, AccentYellow.copy(0.4f), RoundedCornerShape(50))
                     .padding(horizontal = 10.dp, vertical = 5.dp),
                 contentAlignment = Alignment.Center
-            ) {
-                Text("›", color = AccentYellow, fontSize = 18.sp, fontWeight = FontWeight.Light)
-            }
+            ) { Text("›", color = AccentYellow, fontSize = 18.sp, fontWeight = FontWeight.Light) }
         }
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Bottom glass panel (unchanged from original)
+// ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
 private fun BottomGlassPanel(
@@ -441,14 +576,16 @@ private fun BottomGlassPanel(
     context:              android.content.Context,
     onNavigateToDetail:   (String, String) -> Unit,
     onNavigateToSiteInfo: (Int, String) -> Unit = { _, _ -> },
+    onRefresh:            () -> Unit = {},
     modifier:             Modifier = Modifier
 ) {
-    var showNearby by remember { mutableStateOf(false) }
+    var showNearby  by remember { mutableStateOf(false) }
+    var isRefreshing by remember { mutableStateOf(false) }
+    val scope        = rememberCoroutineScope()
     LaunchedEffect(insideSite) { showNearby = false }
 
     Column(
-        modifier = modifier
-            .fillMaxWidth()
+        modifier = modifier.fillMaxWidth()
             .clip(RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp))
             .background(Brush.verticalGradient(listOf(Color(0xDD050D1A), Color(0xF5050D1A))))
             .border(
@@ -457,14 +594,11 @@ private fun BottomGlassPanel(
                 RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
             )
     ) {
-        // Drag handle
         Box(
-            Modifier
-                .align(Alignment.CenterHorizontally)
+            Modifier.align(Alignment.CenterHorizontally)
                 .padding(top = 12.dp, bottom = 8.dp)
                 .size(width = 36.dp, height = 4.dp)
-                .clip(RoundedCornerShape(50))
-                .background(GlassWhite30)
+                .clip(RoundedCornerShape(50)).background(GlassWhite30)
         )
 
         Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 32.dp)) {
@@ -472,7 +606,7 @@ private fun BottomGlassPanel(
                 Row(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment     = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(Modifier.weight(1f)) {
                         SectionLabel("You are here")
@@ -480,22 +614,17 @@ private fun BottomGlassPanel(
                         Text(insideSite.name, color = TextPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                     }
                     Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(50))
-                            .background(GlassWhite15)
+                        modifier = Modifier.clip(RoundedCornerShape(50)).background(GlassWhite15)
                             .border(0.5.dp, GlassBorder, RoundedCornerShape(50))
                     ) {
                         Row {
                             listOf("Site" to false, "Nearby" to true).forEach { (label, target) ->
                                 Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(50))
+                                    modifier = Modifier.clip(RoundedCornerShape(50))
                                         .background(if (showNearby == target) GlassWhite30 else Color.Transparent)
                                         .clickable { showNearby = target }
                                         .padding(horizontal = 14.dp, vertical = 8.dp)
-                                ) {
-                                    Text(label, color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                                }
+                                ) { Text(label, color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium) }
                             }
                         }
                     }
@@ -505,53 +634,37 @@ private fun BottomGlassPanel(
                     if (!nearby) {
                         Column {
                             Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(20.dp))
+                                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp))
                                     .background(Brush.linearGradient(listOf(Color(0xFFFFD54F), Color(0xFFFFC107))))
                                     .clickable { onNavigateToDetail(insideSite.name, insideSite.id) }
                                     .padding(vertical = 22.dp),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("🏛️", fontSize = 24.sp)
-                                    Spacer(Modifier.width(12.dp))
+                                    Text("🏛️", fontSize = 24.sp); Spacer(Modifier.width(12.dp))
                                     Column {
-                                        Text(
-                                            "Explore ${insideSite.name}",
-                                            color = DeepNavy, fontSize = 17.sp, fontWeight = FontWeight.Black
-                                        )
-                                        Text(
-                                            "History • AI Guide • Voice • Video",
-                                            color = Color(0x99050D1A), fontSize = 12.sp
-                                        )
+                                        Text("Explore ${insideSite.name}", color = DeepNavy, fontSize = 17.sp, fontWeight = FontWeight.Black)
+                                        Text("History • AI Guide • Voice • Video", color = Color(0x99050D1A), fontSize = 12.sp)
                                     }
                                 }
                             }
                             Spacer(Modifier.height(10.dp))
                             Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(16.dp))
-                                    .background(GlassWhite15)
-                                    .border(0.7.dp, GlassBorder, RoundedCornerShape(16.dp))
+                                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+                                    .background(GlassWhite15).border(0.7.dp, GlassBorder, RoundedCornerShape(16.dp))
                                     .clickable {
                                         context.startActivity(
-                                            Intent(
-                                                Intent.ACTION_VIEW,
-                                                Uri.parse("geo:${insideSite.latitude},${insideSite.longitude}?q=${insideSite.latitude},${insideSite.longitude}(${insideSite.name})")
-                                            )
+                                            Intent(Intent.ACTION_VIEW, Uri.parse(
+                                                "geo:${insideSite.latitude},${insideSite.longitude}?q=${insideSite.latitude},${insideSite.longitude}(${insideSite.name})"
+                                            ))
                                         )
-                                    }
-                                    .padding(vertical = 16.dp),
+                                    }.padding(vertical = 16.dp),
                                 contentAlignment = Alignment.Center
-                            ) {
-                                Text("Open in Google Maps", color = TextSecondary, fontSize = 15.sp, fontWeight = FontWeight.Medium)
-                            }
+                            ) { Text("Open in Google Maps", color = TextSecondary, fontSize = 15.sp, fontWeight = FontWeight.Medium) }
                         }
                     } else {
                         LazyColumn(
-                            modifier            = Modifier.heightIn(max = 220.dp),
+                            modifier = Modifier.heightIn(max = 220.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             items(sortedSites.filter { (s, _) -> s.id != insideSite.id }) { (site, dist) ->
@@ -561,12 +674,50 @@ private fun BottomGlassPanel(
                     }
                 }
             } else {
-                Text("Nearby Heritage Sites", color = TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    if (sortedSites.isEmpty()) "Acquiring GPS signal…" else "Sorted by distance",
-                    color = TextTertiary, fontSize = 13.sp
-                )
+                // ── Header row with refresh button ────────────────────────
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text("Nearby Heritage Sites", color = TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            if (sortedSites.isEmpty()) "Acquiring GPS signal…" else "Sorted by distance",
+                            color = TextTertiary, fontSize = 13.sp
+                        )
+                    }
+
+                    // Refresh button
+                    val spinAngle by rememberInfiniteTransition(label = "refresh").animateFloat(
+                        0f, 360f,
+                        infiniteRepeatable(tween(800, easing = LinearEasing)),
+                        label = "spin"
+                    )
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(GlassWhite15)
+                            .border(0.7.dp, GlassBorder, CircleShape)
+                            .clickable(enabled = !isRefreshing) {
+                                isRefreshing = true
+                                onRefresh()
+                                scope.launch {
+                                    kotlinx.coroutines.delay(1500)
+                                    isRefreshing = false
+                                }
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            "↻",
+                            color    = if (isRefreshing) AccentYellow else TextSecondary,
+                            fontSize = 20.sp,
+                            modifier = if (isRefreshing) Modifier.rotate(spinAngle) else Modifier
+                        )
+                    }
+                }
                 Spacer(Modifier.height(16.dp))
                 if (sortedSites.isEmpty()) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -579,7 +730,7 @@ private fun BottomGlassPanel(
                     }
                 } else {
                     LazyColumn(
-                        modifier            = Modifier.heightIn(max = 240.dp),
+                        modifier = Modifier.heightIn(max = 240.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         items(sortedSites) { (site, dist) ->
@@ -591,6 +742,10 @@ private fun BottomGlassPanel(
         }
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Site marker bottom sheet (unchanged)
+// ─────────────────────────────────────────────────────────────────────────────
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -604,7 +759,7 @@ private fun SiteMarkerBottomSheet(
 
     LaunchedEffect(site) {
         weatherLoading = true
-        weather = withContext(Dispatchers.IO) {
+        weather = kotlinx.coroutines.withContext(Dispatchers.IO) {
             WeatherService.fetchWeather(site.latitude, site.longitude)
         }
         weatherLoading = false
@@ -618,10 +773,7 @@ private fun SiteMarkerBottomSheet(
         contentColor     = TextPrimary
     ) {
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 32.dp)
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 32.dp)
         ) {
             Text(site.name, color = TextPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(12.dp))
@@ -640,27 +792,15 @@ private fun SiteMarkerBottomSheet(
             }
             Spacer(Modifier.height(20.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                // Close button
                 Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(GlassWhite15)
-                        .border(0.5.dp, GlassBorder, RoundedCornerShape(12.dp))
-                        .clickable(onClick = onDismiss)
-                        .padding(vertical = 14.dp),
+                    modifier = Modifier.weight(1f).clip(RoundedCornerShape(12.dp))
+                        .background(GlassWhite15).border(0.5.dp, GlassBorder, RoundedCornerShape(12.dp))
+                        .clickable(onClick = onDismiss).padding(vertical = 14.dp),
                     contentAlignment = Alignment.Center
-                ) {
-                    Text("Close", color = TextSecondary, fontSize = 15.sp)
-                }
-                // Info button
+                ) { Text("Close", color = TextSecondary, fontSize = 15.sp) }
                 Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(AccentYellow)
-                        .clickable(onClick = onInfo)
-                        .padding(vertical = 14.dp),
+                    modifier = Modifier.weight(1f).clip(RoundedCornerShape(12.dp))
+                        .background(AccentYellow).clickable(onClick = onInfo).padding(vertical = 14.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -673,6 +813,10 @@ private fun SiteMarkerBottomSheet(
         }
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Site distance row (unchanged)
+// ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
 private fun SiteDistanceRow(
@@ -694,12 +838,9 @@ private fun SiteDistanceRow(
                 )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                // Info button
                 Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(GlassWhite15)
-                        .border(0.5.dp, GlassBorder, RoundedCornerShape(12.dp))
+                    modifier = Modifier.clip(RoundedCornerShape(12.dp))
+                        .background(GlassWhite15).border(0.5.dp, GlassBorder, RoundedCornerShape(12.dp))
                         .clickable { onNavigateToSiteInfo(site.id.toIntOrNull() ?: 0, site.name) }
                         .padding(horizontal = 12.dp, vertical = 8.dp),
                     contentAlignment = Alignment.Center
@@ -710,21 +851,15 @@ private fun SiteDistanceRow(
                         Text("Info", color = AccentYellow, fontSize = 13.sp, fontWeight = FontWeight.Medium)
                     }
                 }
-                // Maps button
                 Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(GlassWhite15)
-                        .border(0.5.dp, GlassBorder, RoundedCornerShape(12.dp))
+                    modifier = Modifier.clip(RoundedCornerShape(12.dp))
+                        .background(GlassWhite15).border(0.5.dp, GlassBorder, RoundedCornerShape(12.dp))
                         .clickable {
                             context.startActivity(
                                 Intent(Intent.ACTION_VIEW, Uri.parse("geo:${site.latitude},${site.longitude}"))
                             )
-                        }
-                        .padding(horizontal = 14.dp, vertical = 8.dp)
-                ) {
-                    Text("Maps", color = AccentYellow, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                }
+                        }.padding(horizontal = 14.dp, vertical = 8.dp)
+                ) { Text("Maps", color = AccentYellow, fontSize = 13.sp, fontWeight = FontWeight.Medium) }
             }
         }
     }

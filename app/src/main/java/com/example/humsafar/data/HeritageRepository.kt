@@ -1,35 +1,93 @@
 // app/src/main/java/com/example/humsafar/data/HeritageRepository.kt
-// FIXED: IDs now match the seeded PostgreSQL database exactly.
 //
-// Previous bug: IIIT Sonepat was "2" here but id=1 in DB.
-//               Qutub Minar was "6" here but id=2 in DB.
-//               Taj Mahal was "4" here but id=3 in DB.
-// This caused ChatbotActivity to send site_id=2 (Qutub Minar) when the
-// user was actually at IIIT Sonepat (site_id=1), fetching the wrong prompt.
+// REWRITTEN — no longer hardcoded.
+// Fetches all sites from GET /sites/nearby with a 10,000 km range
+// so it always gets every site in the DB.
+// Results are cached in memory for the app session.
+// Falls back to an empty list if network is unavailable.
 
 package com.example.humsafar.data
 
+import android.util.Log
 import com.example.humsafar.models.HeritageSite
+import com.example.humsafar.network.HumsafarClient
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+
+private const val TAG = "HeritageRepository"
 
 object HeritageRepository {
 
-    /**
-     * IDs MUST match your seeded PostgreSQL heritage_sites table.
-     * Check your DB with: SELECT id, name FROM heritage_sites ORDER BY id;
-     * and update this list accordingly.
-     *
-     * Current seeded sites (from your DB screenshot):
-     *   id=1  — IIIT Sonepat
-     *   id=2  — Qutub Minar Complex
-     *   id=3  — Taj Mahal
-     */
-    val sites: List<HeritageSite> = listOf(
-        HeritageSite("1",  "IIIT Sonepat",         28.9896,   77.1511,  500.0),
-        HeritageSite("2",  "Qutub Minar Complex",  28.5245,   77.1855,  600.0),
-        HeritageSite("3",  "Taj Mahal",            27.1751,   78.0421,  900.0),
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-        // ── Add more sites below as you seed them in your DB ──────────────
-        // HeritageSite("4",  "Red Fort",           28.6562,   77.2410,   400.0),
-        // HeritageSite("5",  "India Gate",         28.6129,   77.2295,   350.0),
-    )
+    // In-memory cache — updated every time fetchAll() succeeds
+    private val _sites = MutableStateFlow<List<HeritageSite>>(emptyList())
+    val sitesFlow: StateFlow<List<HeritageSite>> = _sites.asStateFlow()
+
+    // Synchronous accessor used by geofence + map code that can't suspend
+    val sites: List<HeritageSite> get() = _sites.value
+
+    // Track whether we've done the initial load
+    private var hasFetched = false
+    val hasFetchedPublic: Boolean get() = hasFetched
+
+    // ── Public API ────────────────────────────────────────────────────────
+
+    /**
+     * Call once on app start (e.g. from MapScreen or Application).
+     * Fetches all sites and caches them. Safe to call multiple times.
+     */
+    fun fetchAll(lat: Double = 28.6, lng: Double = 77.2) {
+        scope.launch { loadFromBackend(lat, lng) }
+    }
+
+    /**
+     * Force a fresh fetch even if already loaded.
+     */
+    fun refresh(lat: Double = 28.6, lng: Double = 77.2) {
+        hasFetched = false
+        scope.launch { loadFromBackend(lat, lng) }
+    }
+
+    // ── Private ───────────────────────────────────────────────────────────
+
+    private suspend fun loadFromBackend(lat: Double, lng: Double) {
+        try {
+            Log.d(TAG, "Fetching all sites from backend…")
+
+            // 10,000 km radius = effectively the whole world
+            val resp = HumsafarClient.api.getNearbySites(
+                lat        = lat,
+                lng        = lng,
+                maxRangeKm = 10_000.0
+            )
+
+            if (resp.isSuccessful && resp.body() != null) {
+                val fetched = resp.body()!!.map { s ->
+                    HeritageSite(
+                        id        = s.id.toString(),
+                        name      = s.name,
+                        latitude  = s.lat,
+                        longitude = s.lng,
+                        radius    = 500.0   // default geofence radius
+                        // backend doesn't return radius in /nearby
+                        // use a safe default; actual check is done
+                        // server-side via inside_geofence flag
+                    )
+                }
+                _sites.value = fetched
+                hasFetched   = true
+                Log.i(TAG, "Loaded ${fetched.size} sites: ${fetched.map { it.name }}")
+            } else {
+                Log.w(TAG, "getNearbySites failed: ${resp.code()}")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "fetchAll error: ${e.message}", e)
+        }
+    }
 }
