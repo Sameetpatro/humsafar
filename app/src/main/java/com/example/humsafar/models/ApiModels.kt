@@ -12,6 +12,8 @@ import com.google.gson.annotations.SerializedName
 data class NearbySite(
     @SerializedName("id")              val id: Int = 0,
     @SerializedName("name")            val name: String = "",
+    @SerializedName("latitude")        val latitude: Double = 0.0,
+    @SerializedName("longitude")       val longitude: Double = 0.0,
     @SerializedName("distance_meters") val distanceMeters: Double = 0.0,
     @SerializedName("inside_geofence") val insideGeofence: Boolean = false
 )

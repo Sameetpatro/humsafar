@@ -1,16 +1,15 @@
 // app/src/main/java/com/example/humsafar/ui/MapScreen.kt
-// UPDATED — amenity markers (washrooms 🚻 and shops 🛍️) drawn on the map.
-// Fetches GET /amenities/site/{site_id} for every site after style loads.
+// FIXED:
+//  1. Removed amenity markers (washrooms/shops) from map
+//  2. Fixed location detection — LocationBasedSiteDetector now wired with api in MapContent
+//  3. HeritageRepository.fetchAll() called early so geofence data is ready
+//  4. LocationBasedSiteDetector.forceRefresh() on first location fix so site detection is immediate
 
 package com.example.humsafar.ui
 
 import android.content.BroadcastReceiver
 import android.content.IntentFilter
 import android.content.Intent
-import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Paint
-import android.graphics.Typeface
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.compose.BackHandler
@@ -39,13 +38,14 @@ import androidx.compose.ui.unit.*
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.example.humsafar.BuildConfig
 import com.example.humsafar.data.HeritageRepository
+import com.example.humsafar.data.LocationBasedSiteDetector
 import com.example.humsafar.geofence.GeofencePermissionHandler
 import com.example.humsafar.geofence.GeofenceTransitionReceiver
 import com.example.humsafar.location.HumsafarLocationManager
-import com.example.humsafar.models.AmenityResponse
 import com.example.humsafar.models.HeritageSite
 import com.example.humsafar.network.HumsafarClient
 import com.example.humsafar.network.WeatherService
@@ -55,8 +55,6 @@ import com.example.humsafar.utils.haversineDistance
 import com.google.accompanist.permissions.*
 import kotlinx.coroutines.*
 import org.maplibre.android.MapLibre
-import org.maplibre.android.annotations.IconFactory
-import org.maplibre.android.annotations.Marker
 import org.maplibre.android.annotations.MarkerOptions
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
@@ -65,57 +63,6 @@ import org.maplibre.android.maps.MapView
 
 private val MAP_STYLE
     get() = "https://api.maptiler.com/maps/streets/style.json?key=${BuildConfig.MAPTILER_KEY}"
-
-private val QrTealBright = Color(0xFF2DD4BF)
-private val QrTealMid    = Color(0xFF14B8A6)
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Emoji bitmap marker helper
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Renders an emoji string onto a transparent Bitmap so MapLibre can use it
- * as a marker icon. Size is in dp converted to px.
- */
-private fun createEmojiMarkerIcon(
-    context: android.content.Context,
-    emoji: String,
-    sizeDp: Int = 40
-): org.maplibre.android.annotations.Icon {
-    val density  = context.resources.displayMetrics.density
-    val sizePx   = (sizeDp * density).toInt()
-    val bitmap   = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
-    val canvas   = Canvas(bitmap)
-
-    // White circle background for contrast
-    val bgPaint  = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = android.graphics.Color.WHITE
-        style = Paint.Style.FILL
-    }
-    val radius   = sizePx / 2f - 2
-    canvas.drawCircle(sizePx / 2f, sizePx / 2f, radius, bgPaint)
-
-    // Thin border
-    val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color       = android.graphics.Color.argb(80, 0, 0, 0)
-        style       = Paint.Style.STROKE
-        strokeWidth = 2f
-    }
-    canvas.drawCircle(sizePx / 2f, sizePx / 2f, radius, borderPaint)
-
-    // Emoji text centred in circle
-    val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        textSize  = sizePx * 0.52f
-        typeface  = Typeface.DEFAULT
-        textAlign = Paint.Align.CENTER
-    }
-    // Vertically centre: baseline = centre + half ascent
-    val metrics  = textPaint.fontMetrics
-    val baseline = sizePx / 2f - (metrics.ascent + metrics.descent) / 2f
-    canvas.drawText(emoji, sizePx / 2f, baseline, textPaint)
-
-    return IconFactory.getInstance(context).fromBitmap(bitmap)
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Main screen entry
@@ -170,7 +117,7 @@ private fun PermissionGate(state: PermissionState) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MapContent
+// MapContent — FIXED location detection, NO amenity markers
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
@@ -193,17 +140,42 @@ fun MapContent(
     var userMarkerAdded by remember { mutableStateOf(false) }
     var tappedSite      by remember { mutableStateOf<HeritageSite?>(null) }
 
+    // Track whether we've done the first force-refresh for fast site detection
+    var firstLocationFix by remember { mutableStateOf(false) }
+
     val mapView         = remember { MapLibre.getInstance(context); MapView(context) }
     val locationManager = remember { HumsafarLocationManager(context) }
-
-    // Coroutine scope for amenity fetching (lives as long as the composable)
-    val amenityScope = remember { CoroutineScope(SupervisorJob() + Dispatchers.Main) }
 
     BackHandler { showExitDialog = true }
 
     GeofencePermissionHandler()
 
-    // ── Geofence broadcast ─────────────────────────────────────────────────
+    // ── Wire up LocationBasedSiteDetector API (CRITICAL — prevents crash) ──
+    LaunchedEffect(Unit) {
+        LocationBasedSiteDetector.api = HumsafarClient.api
+
+        // Kick off HeritageRepository fetch so the geofence manager
+        // and the map panel have site data immediately
+        HeritageRepository.fetchAll()
+    }
+
+    // ── Observe nearbySites from LocationBasedSiteDetector ────────────────
+    val nearbySites by LocationBasedSiteDetector.nearbySites.collectAsStateWithLifecycle()
+
+    // Sync insideSite from LocationBasedSiteDetector's state
+    LaunchedEffect(nearbySites) {
+        val inside = nearbySites
+            .filter { it.insideGeofence }
+            .minByOrNull { it.distanceMeters }
+
+        insideSite = if (inside != null) {
+            HeritageRepository.sites.find { it.id == inside.id.toString() }
+        } else {
+            null
+        }
+    }
+
+    // ── Geofence broadcast (keep for notification-triggered updates) ──────
     DisposableEffect(context) {
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(ctx: android.content.Context, intent: Intent) {
@@ -225,15 +197,26 @@ fun MapContent(
     // ── Location updates ───────────────────────────────────────────────────
     LaunchedEffect(Unit) {
         locationManager.startUpdates { lat, lng ->
-            userLat = lat; userLng = lng
-            var found: HeritageSite? = null
+            userLat = lat
+            userLng = lng
+
+            // Push to LocationBasedSiteDetector for real geofence checking
+            // Force a refresh on the very first fix for instant detection
+            if (!firstLocationFix) {
+                firstLocationFix = true
+                LocationBasedSiteDetector.forceRefresh(lat, lng)
+            } else {
+                LocationBasedSiteDetector.onLocationUpdate(lat, lng)
+            }
+
+            // Also update the sorted list for the bottom panel
             val distances = HeritageRepository.sites.map { site ->
                 val d = haversineDistance(lat, lng, site.latitude, site.longitude)
-                if (d < site.radius && found == null) found = site
                 site to d
             }.sortedBy { it.second }
-            insideSite  = found
             sortedSites = distances
+
+            // Move map camera
             val ll = LatLng(lat, lng)
             mapLibreMap?.animateCamera(CameraUpdateFactory.newLatLngZoom(ll, 14.0))
             if (!userMarkerAdded) {
@@ -253,7 +236,6 @@ fun MapContent(
                 Lifecycle.Event.ON_STOP    -> mapView.onStop()
                 Lifecycle.Event.ON_DESTROY -> {
                     locationManager.stopUpdates()
-                    amenityScope.cancel()
                     mapView.onDestroy()
                 }
                 else -> Unit
@@ -264,7 +246,6 @@ fun MapContent(
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(obs)
             locationManager.stopUpdates()
-            amenityScope.cancel()
         }
     }
 
@@ -277,7 +258,7 @@ fun MapContent(
                 mapLibreMap = map
                 map.setStyle(MAP_STYLE) {
 
-                    // 1. Heritage site markers (same as before)
+                    // Heritage site markers ONLY — no amenity markers
                     HeritageRepository.sites.forEach { site ->
                         map.addMarker(
                             MarkerOptions()
@@ -287,44 +268,10 @@ fun MapContent(
                         )
                     }
 
-                    // 2. Amenity markers — fetch for each site in background
-                    amenityScope.launch {
-                        HeritageRepository.sites.forEach { site ->
-                            val siteIdInt = site.id.toIntOrNull() ?: return@forEach
-                            try {
-                                val resp = withContext(Dispatchers.IO) {
-                                    HumsafarClient.api.getSiteAmenities(siteIdInt)
-                                }
-                                if (resp.isSuccessful) {
-                                    resp.body()?.forEach { amenity ->
-                                        val emoji = if (amenity.type == "washroom") "🚻" else "🛍️"
-                                        val icon  = createEmojiMarkerIcon(context, emoji, sizeDp = 44)
-                                        val snippet = buildAmenitySnippet(amenity)
-                                        map.addMarker(
-                                            MarkerOptions()
-                                                .position(LatLng(amenity.latitude, amenity.longitude))
-                                                .icon(icon)
-                                                .title(amenity.name)
-                                                .snippet(snippet)
-                                        )
-                                    }
-                                }
-                            } catch (_: Exception) {
-                                // Fail silently — amenity markers are non-critical
-                            }
-                        }
-                    }
-
-                    // 3. Marker tap listener
+                    // Marker tap → bottom sheet for heritage sites only
                     map.setOnMarkerClickListener { marker ->
-                        // Only show bottom sheet for heritage site markers
-                        // (amenity markers have a different snippet format)
                         val site = HeritageRepository.sites.find { it.id == marker.snippet }
-                        if (site != null) {
-                            tappedSite = site
-                        }
-                        // Return true to consume the click either way
-                        // (amenity markers show the default MapLibre info window)
+                        if (site != null) tappedSite = site
                         site != null
                     }
 
@@ -397,14 +344,6 @@ fun MapContent(
             }
         }
 
-        // ── Map legend — top right ─────────────────────────────────────────
-        AmenityLegend(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .statusBarsPadding()
-                .padding(top = 70.dp, end = 16.dp)
-        )
-
         // ── Bottom panel ───────────────────────────────────────────────────
         BottomGlassPanel(
             insideSite           = insideSite,
@@ -416,6 +355,8 @@ fun MapContent(
                 val lat = userLat ?: 28.6
                 val lng = userLng ?: 77.2
                 HeritageRepository.refresh(lat, lng)
+                // Also force a fresh site detection check
+                LocationBasedSiteDetector.forceRefresh(lat, lng)
             },
             modifier             = Modifier.align(Alignment.BottomCenter)
         )
@@ -478,46 +419,7 @@ fun MapContent(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Amenity legend — small pill in top-right corner
-// ─────────────────────────────────────────────────────────────────────────────
-
-@Composable
-private fun AmenityLegend(modifier: Modifier = Modifier) {
-    Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
-            .background(Color(0xDD050D1A))
-            .border(0.5.dp, GlassBorder, RoundedCornerShape(12.dp))
-            .padding(horizontal = 10.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("🚻", fontSize = 13.sp)
-            Spacer(Modifier.width(5.dp))
-            Text("Washroom", color = TextSecondary, fontSize = 10.sp)
-        }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("🛍️", fontSize = 13.sp)
-            Spacer(Modifier.width(5.dp))
-            Text("Shop", color = TextSecondary, fontSize = 10.sp)
-        }
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Helper: build info-window snippet for amenity markers
-// ─────────────────────────────────────────────────────────────────────────────
-
-private fun buildAmenitySnippet(amenity: AmenityResponse): String {
-    val parts = mutableListOf<String>()
-    amenity.priceInfo?.let { parts.add(it) }
-    amenity.timing?.let { parts.add(it) }
-    if (parts.isEmpty()) parts.add(amenity.type.replaceFirstChar { it.uppercase() })
-    return parts.joinToString(" · ")
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// QR Scan button (unchanged)
+// QR Scan button
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
@@ -566,7 +468,7 @@ private fun QrScanButton(onClick: () -> Unit) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Bottom glass panel (unchanged from original)
+// Bottom glass panel
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
@@ -579,9 +481,9 @@ private fun BottomGlassPanel(
     onRefresh:            () -> Unit = {},
     modifier:             Modifier = Modifier
 ) {
-    var showNearby  by remember { mutableStateOf(false) }
+    var showNearby   by remember { mutableStateOf(false) }
     var isRefreshing by remember { mutableStateOf(false) }
-    val scope        = rememberCoroutineScope()
+    val scope         = rememberCoroutineScope()
     LaunchedEffect(insideSite) { showNearby = false }
 
     Column(
@@ -688,7 +590,6 @@ private fun BottomGlassPanel(
                         )
                     }
 
-                    // Refresh button
                     val spinAngle by rememberInfiniteTransition(label = "refresh").animateFloat(
                         0f, 360f,
                         infiniteRepeatable(tween(800, easing = LinearEasing)),
@@ -744,7 +645,7 @@ private fun BottomGlassPanel(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Site marker bottom sheet (unchanged)
+// Site marker bottom sheet
 // ─────────────────────────────────────────────────────────────────────────────
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -815,7 +716,7 @@ private fun SiteMarkerBottomSheet(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Site distance row (unchanged)
+// Site distance row
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable

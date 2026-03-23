@@ -72,8 +72,8 @@ object HeritageRepository {
                     HeritageSite(
                         id        = s.id.toString(),
                         name      = s.name,
-                        latitude  = s.lat,
-                        longitude = s.lng,
+                        latitude  = s.latitude,
+                        longitude = s.longitude,
                         radius    = 500.0   // default geofence radius
                         // backend doesn't return radius in /nearby
                         // use a safe default; actual check is done
