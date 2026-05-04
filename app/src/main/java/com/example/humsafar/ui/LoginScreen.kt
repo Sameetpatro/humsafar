@@ -46,24 +46,59 @@ fun LoginScreen(
     LaunchedEffect(Unit) { visible = true }
 
     // ── Google Sign-In launcher ───────────────────────────────────────────────
+    // FIX: Use getGoogleSignInIntent (which signs out stale session first) instead
+    // of getGoogleSignInClient().signInIntent — avoids silent reuse of cached account.
     val googleLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
-            val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+        // FIX: Check resultCode FIRST and surface cancellation clearly
+        if (result.resultCode != Activity.RESULT_OK) {
+            // User cancelled or back-pressed — don't show an error, just stop loading
+            isLoading = false
+            return@rememberLauncherForActivityResult
+        }
+
+        val data = result.data
+        if (data == null) {
+            errorMessage = "Google sign-in returned no data. Please try again."
+            isLoading = false
+            return@rememberLauncherForActivityResult
+        }
+
+        scope.launch {
+            isLoading = true
+            errorMessage = ""
             try {
+                val task = GoogleSignIn.getSignedInAccountFromIntent(data)
+                // FIX: getResult throws ApiException — catch it properly
                 val account = task.getResult(ApiException::class.java)
-                val idToken = account?.idToken ?: return@rememberLauncherForActivityResult
-                scope.launch {
-                    isLoading = true
-                    errorMessage = ""
-                    AuthManager.signInWithGoogle(idToken)
-                        .onSuccess { onLoginSuccess() }
-                        .onFailure { errorMessage = it.message ?: "Google sign-in failed" }
+                val idToken = account?.idToken
+
+                if (idToken == null) {
+                    errorMessage = "Google sign-in failed: no ID token received.\n" +
+                            "Check that SHA-1 fingerprint is added in Firebase console."
                     isLoading = false
+                    return@launch
                 }
+
+                AuthManager.signInWithGoogle(idToken)
+                    .onSuccess { onLoginSuccess() }
+                    .onFailure { e ->
+                        errorMessage = "Google sign-in failed: ${e.message}"
+                    }
             } catch (e: ApiException) {
-                errorMessage = "Google sign-in failed: ${e.message}"
+                // FIX: Map common ApiException status codes to human-readable messages
+                errorMessage = when (e.statusCode) {
+                    10   -> "Developer error: check SHA-1 fingerprint in Firebase console and that the OAuth client ID matches."
+                    12501 -> "Sign-in cancelled."
+                    12502 -> "Sign-in is currently in progress. Please wait."
+                    7    -> "Network error. Check your connection."
+                    else -> "Google sign-in error (code ${e.statusCode}): ${e.message}"
+                }
+            } catch (e: Exception) {
+                errorMessage = "Unexpected error: ${e.message}"
+            } finally {
+                isLoading = false
             }
         }
     }
@@ -148,7 +183,6 @@ fun LoginScreen(
 
                         Spacer(Modifier.height(8.dp))
 
-                        // Forgot Password + Email Link
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
@@ -195,7 +229,6 @@ fun LoginScreen(
                             )
                         }
 
-                        // Success message for email link
                         if (emailLinkSent) {
                             Spacer(Modifier.height(8.dp))
                             Text(
@@ -207,7 +240,6 @@ fun LoginScreen(
                             )
                         }
 
-                        // Error message
                         if (errorMessage.isNotBlank()) {
                             Spacer(Modifier.height(8.dp))
                             Text(
@@ -221,7 +253,6 @@ fun LoginScreen(
 
                         Spacer(Modifier.height(20.dp))
 
-                        // Sign In button
                         if (isLoading) {
                             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                                 CircularProgressIndicator(color = AccentYellow, modifier = Modifier.size(32.dp))
@@ -251,7 +282,6 @@ fun LoginScreen(
 
                 Spacer(Modifier.height(20.dp))
 
-                // ── Divider ───────────────────────────────────────────────
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                     Box(Modifier.weight(1f).height(0.5.dp).background(GlassBorder))
                     Text("  or  ", color = TextTertiary, fontSize = 13.sp)
@@ -260,21 +290,27 @@ fun LoginScreen(
 
                 Spacer(Modifier.height(20.dp))
 
-                // ── Google + Guest row ────────────────────────────────────
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // Google Sign-In
+                    // ── FIX: Use getGoogleSignInIntent which resets stale session first ──
                     Box(
                         modifier = Modifier
                             .weight(1f)
                             .clip(RoundedCornerShape(16.dp))
                             .background(GlassWhite15)
                             .border(0.7.dp, GlassBorder, RoundedCornerShape(16.dp))
-                            .clickable {
-                                val client = AuthManager.getGoogleSignInClient(context)
-                                googleLauncher.launch(client.signInIntent)
+                            .clickable(enabled = !isLoading) {
+                                errorMessage = ""
+                                isLoading = true
+                                try {
+                                    val intent = AuthManager.getGoogleSignInIntent(context)
+                                    googleLauncher.launch(intent)
+                                } catch (e: Exception) {
+                                    errorMessage = "Could not start Google Sign-In: ${e.message}"
+                                    isLoading = false
+                                }
                             }
                             .padding(vertical = 16.dp),
                         contentAlignment = Alignment.Center
@@ -282,19 +318,19 @@ fun LoginScreen(
                         Text("G  Google", color = TextSecondary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                     }
 
-                    // Guest (anonymous)
                     Box(
                         modifier = Modifier
                             .weight(1f)
                             .clip(RoundedCornerShape(16.dp))
                             .background(GlassWhite15)
                             .border(0.7.dp, GlassBorder, RoundedCornerShape(16.dp))
-                            .clickable {
+                            .clickable(enabled = !isLoading) {
                                 scope.launch {
                                     isLoading = true
+                                    errorMessage = ""
                                     AuthManager.signInAnonymously()
                                         .onSuccess { onBypassClick() }
-                                        .onFailure { errorMessage = "Guest login failed" }
+                                        .onFailure { errorMessage = "Guest login failed: ${it.message}" }
                                     isLoading = false
                                 }
                             }

@@ -3,6 +3,7 @@ package com.example.humsafar.auth
 import android.content.Context
 import android.util.Log
 import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInClient
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.firebase.auth.ActionCodeSettings
 import com.google.firebase.auth.FirebaseAuth
@@ -28,6 +29,9 @@ object AuthManager {
 
     val isLoggedIn: Boolean
         get() = auth.currentUser != null
+
+    // Cached Google Sign-In client — recreated only when context changes
+    private var googleSignInClient: GoogleSignInClient? = null
 
     init {
         auth.addAuthStateListener { firebaseAuth ->
@@ -87,22 +91,19 @@ object AuthManager {
     }
 
     // ── Email Link (Passwordless) Login ───────────────────────────────────────
-    // IMPORTANT: Replace 'dharoharsetu' with YOUR Firebase Project ID
     suspend fun sendSignInLinkToEmail(email: String, context: Context): Result<Unit> = runCatching {
         val actionCodeSettings = ActionCodeSettings.newBuilder()
-            // ⚠️ CHANGE 'dharoharsetu' to YOUR Firebase Project ID
             .setUrl("https://dharoharsetu.firebaseapp.com/__/auth/action")
             .setHandleCodeInApp(true)
             .setAndroidPackageName(
                 context.packageName,
-                true,  // Install app if not available
-                null   // Minimum version
+                true,
+                null
             )
             .build()
 
         auth.sendSignInLinkToEmail(email, actionCodeSettings).await()
 
-        // Save email locally for later retrieval
         context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
             .edit()
             .putString("pending_email_link_email", email)
@@ -139,17 +140,47 @@ object AuthManager {
     }
 
     // ── Sign Out ──────────────────────────────────────────────────────────────
-    fun signOut() {
+    fun signOut(context: Context? = null) {
         auth.signOut()
+        // Also sign out from Google so next login shows account picker
+        context?.let {
+            googleSignInClient?.signOut()
+            googleSignInClient = null
+        }
         Log.i(TAG, "Signed out")
     }
 
+    // Overload for callers that don't have context
+    fun signOut() {
+        auth.signOut()
+        googleSignInClient = null
+        Log.i(TAG, "Signed out (no Google client reset)")
+    }
+
     // ── Google Sign-In Client ─────────────────────────────────────────────────
-    fun getGoogleSignInClient(context: Context) = GoogleSignIn.getClient(
-        context,
-        GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-            .requestIdToken("865150467468-p0in0ue0agavb8196s27sdnq5sq9rhdi.apps.googleusercontent.com")
-            .requestEmail()
-            .build()
-    )
+    // FIX: Sign out the previous Google session before returning the intent,
+    // so the account chooser always appears (avoids silent stale-token reuse).
+    fun getGoogleSignInIntent(context: Context) =
+        buildGoogleClient(context).also { client ->
+            // Sign out silently so the picker always shows fresh
+            client.signOut()
+        }.signInIntent
+
+    // Helper kept for backward compat — returns the client
+    fun getGoogleSignInClient(context: Context): GoogleSignInClient =
+        buildGoogleClient(context)
+
+    private fun buildGoogleClient(context: Context): GoogleSignInClient {
+        // Reuse cached client for the same context to avoid multiple GSI initializations
+        return googleSignInClient ?: GoogleSignIn.getClient(
+            context.applicationContext,
+            GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                // ⚠️ Replace this with your actual Web client ID from Firebase console
+                // Firebase Console → Project Settings → Your Apps → Web API key
+                // OR Google Cloud Console → APIs → Credentials → OAuth 2.0 Client IDs → Web client
+                .requestIdToken("865150467468-p0in0ue0agavb8196s27sdnq5sq9rhdi.apps.googleusercontent.com")
+                .requestEmail()
+                .build()
+        ).also { googleSignInClient = it }
+    }
 }
