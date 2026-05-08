@@ -91,7 +91,13 @@ class QrScanViewModel : ViewModel() {
             // Backend now accepts any node QR for /trips/start, so we go through
             // the same flow as a king node — this guarantees a real server-side
             // trip_id, which is required for /trips/end and /reviews/submit.
-            _uiState.value = QrUiState.Validating
+            //
+            // IMPORTANT: do NOT set state to `Validating` here. `Validating` shows
+            // the camera preview, which would re-mount the AndroidView and call
+            // bindToLifecycle() a second time on the same LifecycleOwner →
+            // CameraX throws "No supported surface combination is found".
+            // Use a dedicated `StartingTrip` state that hides the camera.
+            _uiState.value = QrUiState.StartingTrip
             startTrip(result, site)
         }
     }
@@ -157,6 +163,9 @@ sealed class QrUiState {
     data object Scanning         : QrUiState()
     data object Validating       : QrUiState()
     data object FetchingLocation : QrUiState()
+    /** Tour-start handshake with /trips/start. Does NOT show the camera (camera
+     *  is unbound at this point) so the AndroidView never remounts. */
+    data object StartingTrip     : QrUiState()
 
     /** Normal node scanned but no active trip — ask user */
     data class AskStartTrip(

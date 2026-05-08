@@ -5,17 +5,32 @@ package com.example.humsafar.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.util.Log
 import com.example.humsafar.models.TripSnapshot
+import com.example.humsafar.network.HumsafarClient
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 object TripManager {
+
+    private const val TAG = "TripManager"
 
     private lateinit var prefs: SharedPreferences
 
     private val _state = MutableStateFlow(TripSnapshot())
     val state: StateFlow<TripSnapshot> = _state.asStateFlow()
+
+    // Process-lifetime scope. Used for fire-and-forget API calls (e.g.
+    // /trips/end) that must survive ViewModel destruction caused by
+    // navigation popUpTo. Tied to a SupervisorJob so one failed call
+    // never tears down sibling jobs.
+    private val appScope: CoroutineScope =
+        CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     // NEW — reads Firebase UID at call time (not at init time)
     val USER_ID: String get() = com.example.humsafar.auth.AuthManager.uid
@@ -76,6 +91,48 @@ object TripManager {
     fun isActive(): Boolean = _state.value.isTripActive
 
     fun current(): TripSnapshot = _state.value
+
+    /**
+     * Fire-and-forget call to POST /trips/end. Runs on [appScope] so the
+     * request finishes even after the user navigates away from
+     * NodeDetailScreen (which previously cancelled the in-flight HTTP call
+     * via viewModelScope, leaving user_visit_history empty).
+     *
+     * Safe to call when there is no active server-side trip — it no-ops if
+     * tripId is 0.
+     */
+    fun endTripOnServer(
+        visitedNodeIds: List<Int> = _state.value.visitedNodeIds,
+        lastLat:        Double    = _state.value.lastLat,
+        lastLng:        Double    = _state.value.lastLng,
+    ) {
+        val trip = _state.value
+        if (trip.tripId == 0) {
+            Log.w(TAG, "endTripOnServer skipped: no server trip_id (was the trip started locally?)")
+            return
+        }
+        val tripId = trip.tripId
+        appScope.launch {
+            try {
+                val visitedNodes = visitedNodeIds.joinToString(",")
+                val lat = lastLat.takeIf { it != 0.0 }
+                val lng = lastLng.takeIf { it != 0.0 }
+                val resp = HumsafarClient.api.endTrip(
+                    tripId       = tripId,
+                    visitedNodes = visitedNodes,
+                    entryLat     = lat,
+                    entryLng     = lng
+                )
+                if (!resp.isSuccessful) {
+                    Log.w(TAG, "POST /trips/end returned ${resp.code()} for trip_id=$tripId")
+                } else {
+                    Log.i(TAG, "Trip $tripId ended successfully on server")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "POST /trips/end failed for trip_id=$tripId", e)
+            }
+        }
+    }
 
     fun clear() {
         write(TripSnapshot())

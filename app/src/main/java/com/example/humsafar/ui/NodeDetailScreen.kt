@@ -344,7 +344,13 @@ fun NodeDetailScreen(
                                 val visitedCount = tripState.visitedNodeIds.size
                                 val totalCount   = allNodes.size
                                 val sName        = tripState.siteName
-                                viewModel.endTrip(tripState.visitedNodeIds, tripState.lastLat, tripState.lastLng)
+                                // Process-scoped — survives the popUpTo("home")
+                                // navigation that destroys this NodeDetailViewModel.
+                                TripManager.endTripOnServer(
+                                    visitedNodeIds = tripState.visitedNodeIds,
+                                    lastLat        = tripState.lastLat,
+                                    lastLng        = tripState.lastLng
+                                )
                                 onNavigateToReview?.invoke(tripId, tripSiteId, sName, visitedCount, totalCount)
                             },
                             modifier = Modifier

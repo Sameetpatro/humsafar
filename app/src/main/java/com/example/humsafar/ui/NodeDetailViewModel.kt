@@ -53,21 +53,28 @@ class NodeDetailViewModel : ViewModel() {
         }
     }
 
-    /** Ends trip via API (user_visit_history inserted). Does NOT clear TripManager — clear when leaving TripCompletionScreen. */
+    /**
+     * Ends trip via API (user_visit_history inserted).
+     *
+     * Implementation moved to [TripManager.endTripOnServer] which uses a
+     * process-scoped CoroutineScope. The previous viewModelScope.launch
+     * was being cancelled when the surrounding NavBackStackEntry was
+     * destroyed by `popUpTo("home")` during navigation to ReviewScreen,
+     * which is why visit history was showing up empty.
+     *
+     * Kept here as a thin shim for any legacy caller; new code should
+     * call TripManager.endTripOnServer(...) directly.
+     */
     fun endTrip(
         visitedNodeIds: List<Int>,
         lastLat: Double,
         lastLng: Double
-    ) = viewModelScope.launch {
-        val trip = TripManager.current()
-        if (trip.tripId != 0) {
-            try {
-                val visitedNodes = visitedNodeIds.joinToString(",")
-                val lat = if (lastLat != 0.0) lastLat else null
-                val lng = if (lastLng != 0.0) lastLng else null
-                HumsafarClient.api.endTrip(trip.tripId, visitedNodes, lat, lng)
-            } catch (_: Exception) { }
-        }
+    ) {
+        TripManager.endTripOnServer(
+            visitedNodeIds = visitedNodeIds,
+            lastLat        = lastLat,
+            lastLng        = lastLng
+        )
     }
 }
 

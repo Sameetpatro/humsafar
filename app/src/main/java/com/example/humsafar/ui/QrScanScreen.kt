@@ -57,6 +57,7 @@ fun QrScanScreen(
     onBack:      () -> Unit,
     viewModel:   QrScanViewModel = viewModel()
 ) {
+    val context        = LocalContext.current
     val uiState        by viewModel.uiState.collectAsState()
     val camPerm        = rememberPermissionState(Manifest.permission.CAMERA)
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -64,6 +65,20 @@ fun QrScanScreen(
     var cameraControl  by remember { mutableStateOf<CameraControl?>(null) }
 
     LaunchedEffect(Unit) { camPerm.launchPermissionRequest() }
+
+    // Always release CameraX use cases when the scanner screen leaves the
+    // composition — otherwise the next visit (or any state-driven remount of
+    // the camera AndroidView) tries to attach a second Preview/ImageAnalysis
+    // pair to the same LifecycleOwner and CameraX throws "No supported
+    // surface combination is found".
+    DisposableEffect(Unit) {
+        onDispose {
+            try {
+                ProcessCameraProvider.getInstance(context).get().unbindAll()
+            } catch (_: Exception) { /* best effort */ }
+            cameraControl = null
+        }
+    }
 
     LaunchedEffect(uiState) {
         if (uiState is QrUiState.Success) {
@@ -89,6 +104,14 @@ fun QrScanScreen(
                     val future = ProcessCameraProvider.getInstance(ctx)
                     future.addListener({
                         val provider = future.get()
+
+                        // Release any prior bindings tied to this LifecycleOwner.
+                        // Without this, re-mounting the AndroidView (e.g. after
+                        // popping back from a popup state) attempts to attach a
+                        // second Preview + ImageAnalysis pair to the same camera
+                        // and CameraX throws "No supported surface combination".
+                        try { provider.unbindAll() } catch (_: Exception) { }
+
                         val preview  = Preview.Builder().build()
                             .also { it.setSurfaceProvider(previewView.surfaceProvider) }
                         val scanner  = BarcodeScanning.getClient()
@@ -110,12 +133,16 @@ fun QrScanScreen(
                                     }
                                 }
                             }
-                        val cam = provider.bindToLifecycle(
-                            lifecycleOwner,
-                            CameraSelector.DEFAULT_BACK_CAMERA,
-                            preview, analysis
-                        )
-                        cameraControl = cam.cameraControl
+                        try {
+                            val cam = provider.bindToLifecycle(
+                                lifecycleOwner,
+                                CameraSelector.DEFAULT_BACK_CAMERA,
+                                preview, analysis
+                            )
+                            cameraControl = cam.cameraControl
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Camera bindToLifecycle failed", e)
+                        }
                     }, ContextCompat.getMainExecutor(ctx))
                     previewView
                 },
@@ -166,6 +193,8 @@ fun QrScanScreen(
                         },
                         onTrouble = { }
                     )
+
+                is QrUiState.StartingTrip -> StartingTripContent()
 
                 is QrUiState.Error ->
                     ErrorContent(message = s.message, onRetry = { viewModel.resetScanner() })
@@ -420,6 +449,32 @@ private fun ColumnScope.ErrorContent(message: String, onRetry: () -> Unit) {
     ) {
         Text("Try Again", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
     }
+    Spacer(Modifier.weight(1f))
+}
+
+@Composable
+private fun ColumnScope.StartingTripContent() {
+    Spacer(Modifier.weight(1f))
+    val spin by rememberInfiniteTransition(label = "starting").animateFloat(
+        0f, 360f,
+        infiniteRepeatable(tween(1000, easing = LinearEasing)),
+        label = "sp"
+    )
+    Box(
+        modifier = Modifier.size(96.dp).clip(CircleShape)
+            .background(Brush.radialGradient(listOf(Color(0x33FFD54F), Color(0x1122C55E))))
+            .border(1.5.dp, AccentYellow, CircleShape),
+        contentAlignment = Alignment.Center
+    ) {
+        Text("◌", color = AccentYellow, fontSize = 44.sp, modifier = Modifier.rotate(spin))
+    }
+    Spacer(Modifier.height(20.dp))
+    Text("Starting your tour…", color = TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+    Spacer(Modifier.height(8.dp))
+    Text(
+        "Syncing with the heritage server",
+        color = TextTertiary, fontSize = 13.sp
+    )
     Spacer(Modifier.weight(1f))
 }
 
