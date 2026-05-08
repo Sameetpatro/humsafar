@@ -227,6 +227,8 @@ private fun StartTripPopup(
     onStartTrip: () -> Unit,
     onDismiss:   () -> Unit
 ) {
+    val tokens = LocalAppColors.current
+    val accent = LocalAccent.current
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -238,16 +240,20 @@ private fun StartTripPopup(
             modifier = Modifier
                 .padding(horizontal = 32.dp)
                 .clip(RoundedCornerShape(28.dp))
-                .background(Brush.verticalGradient(listOf(Color(0xFF0D1F3C), Color(0xFF071428))))
-                .border(1.dp, GlassBorderBright, RoundedCornerShape(28.dp))
+                .background(
+                    Brush.verticalGradient(
+                        listOf(tokens.surface, tokens.surfaceMuted)
+                    )
+                )
+                .border(1.dp, tokens.borderStrong, RoundedCornerShape(28.dp))
                 .padding(28.dp)
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Box(
                     modifier = Modifier
                         .size(72.dp).clip(CircleShape)
-                        .background(Color(0x22FFD54F))
-                        .border(1.dp, Color(0x55FFD54F), CircleShape),
+                        .background(accent.primary.copy(alpha = 0.14f))
+                        .border(1.dp, accent.primary.copy(alpha = 0.35f), CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     Text("🗺️", fontSize = 32.sp)
@@ -270,14 +276,14 @@ private fun StartTripPopup(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth().clip(RoundedCornerShape(16.dp))
-                        .background(Brush.linearGradient(listOf(Color(0xFFFFD54F), Color(0xFFFFC107))))
+                        .background(Brush.linearGradient(listOf(accent.primary, accent.dark)))
                         .clickable { onStartTrip() }.padding(vertical = 16.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("🚀", fontSize = 16.sp)
                         Spacer(Modifier.width(8.dp))
-                        Text("Yes, Start Tour", color = Color(0xFF050D1A), fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                        Text("Yes, Start Tour", color = accent.onAccent, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                     }
                 }
                 Spacer(Modifier.height(10.dp))
@@ -305,6 +311,7 @@ private fun ColumnScope.ScanningViewContent(
     onFlashToggle: () -> Unit,
     onTrouble:     () -> Unit
 ) {
+    val accent = LocalAccent.current
     val infiniteTransition = rememberInfiniteTransition(label = "scan")
     val scanLineY by infiniteTransition.animateFloat(
         0f, 1f,
@@ -412,15 +419,15 @@ private fun ColumnScope.ScanningViewContent(
         Column(modifier = Modifier.align(Alignment.CenterStart), horizontalAlignment = Alignment.CenterHorizontally) {
             Box(
                 modifier = Modifier.size(54.dp).clip(CircleShape)
-                    .background(if (flashEnabled) Color(0x33FFD54F) else Color(0x33FFFFFF))
-                    .border(1.dp, if (flashEnabled) Color(0x88FFD54F) else Color(0x44FFFFFF), CircleShape)
+                    .background(if (flashEnabled) accent.primary.copy(alpha = 0.2f) else Color(0x33FFFFFF))
+                    .border(1.dp, if (flashEnabled) accent.primary.copy(alpha = 0.55f) else Color(0x44FFFFFF), CircleShape)
                     .clickable { onFlashToggle() },
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     if (flashEnabled) Icons.Default.FlashlightOn else Icons.Default.FlashlightOff,
                     null,
-                    tint = if (flashEnabled) Color(0xFFFFD54F) else Color(0xCCFFFFFF),
+                    tint = if (flashEnabled) LocalAccent.current.primary else Color(0xCCFFFFFF),
                     modifier = Modifier.size(24.dp)
                 )
             }
@@ -454,6 +461,7 @@ private fun ColumnScope.ErrorContent(message: String, onRetry: () -> Unit) {
 
 @Composable
 private fun ColumnScope.StartingTripContent() {
+    val accent = LocalAccent.current
     Spacer(Modifier.weight(1f))
     val spin by rememberInfiniteTransition(label = "starting").animateFloat(
         0f, 360f,
@@ -462,11 +470,15 @@ private fun ColumnScope.StartingTripContent() {
     )
     Box(
         modifier = Modifier.size(96.dp).clip(CircleShape)
-            .background(Brush.radialGradient(listOf(Color(0x33FFD54F), Color(0x1122C55E))))
-            .border(1.5.dp, AccentYellow, CircleShape),
+            .background(
+                Brush.radialGradient(
+                    listOf(accent.primary.copy(alpha = 0.2f), accent.tint.copy(alpha = 0.05f))
+                )
+            )
+            .border(1.5.dp, accent.primary, CircleShape),
         contentAlignment = Alignment.Center
     ) {
-        Text("◌", color = AccentYellow, fontSize = 44.sp, modifier = Modifier.rotate(spin))
+        Text("◌", color = accent.primary, fontSize = 44.sp, modifier = Modifier.rotate(spin))
     }
     Spacer(Modifier.height(20.dp))
     Text("Starting your tour…", color = TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)

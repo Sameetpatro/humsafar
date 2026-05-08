@@ -438,12 +438,12 @@ private fun AmenityRowCard(
     onClick: () -> Unit
 ) {
     val isShop    = amenity.type == "shop"
-    val accent    = if (isShop) AccentYellow else Color(0xFF64B5F6)
+    val accent    = if (isShop) LocalAccent.current.primary else Color(0xFF64B5F6)
     val bgGrad    = if (isShop)
         listOf(Color(0xFF1A1200), Color(0xFF100C00))
     else
         listOf(Color(0xFF001428), Color(0xFF000E1E))
-    val borderClr = if (isShop) Color(0x44FFD54F) else Color(0x442196F3)
+    val borderClr = if (isShop) LocalAccent.current.primary.copy(alpha = 0.27f) else Color(0x442196F3)
 
     Box(
         modifier = Modifier
@@ -492,7 +492,7 @@ private fun AmenityRowCard(
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
                         .background(accent.copy(alpha = 0.12f))
-                        .border(0.5.dp, accent.copy(0.3f), RoundedCornerShape(8.dp))
+                        .border(0.5.dp, accent.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
                         .padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
                     Text(price, color = accent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
@@ -518,6 +518,8 @@ private fun NodeHearPageCard(
     onSpeak:   () -> Unit,
     onStop:    () -> Unit
 ) {
+    val accent = LocalAccent.current
+    val tokens = LocalAppColors.current
     val inf  = rememberInfiniteTransition(label = "hearNode")
     val glow by inf.animateFloat(
         0.35f, 0.65f,
@@ -530,10 +532,14 @@ private fun NodeHearPageCard(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .background(Brush.linearGradient(listOf(Color(0xFF1A0050), Color(0xFF0D0030))))
+            .background(
+                Brush.linearGradient(
+                    listOf(accent.tint.copy(alpha = if (isActive) 0.95f else 0.75f), tokens.surface)
+                )
+            )
             .border(
                 1.dp,
-                Color(0xFF9B30FF).copy(alpha = if (isActive) glow else 0.4f),
+                accent.primary.copy(alpha = if (isActive) glow else 0.35f),
                 RoundedCornerShape(16.dp)
             )
             .clickable { if (isActive) onStop() else onSpeak() }
@@ -544,8 +550,8 @@ private fun NodeHearPageCard(
                 modifier = Modifier
                     .size(44.dp)
                     .clip(CircleShape)
-                    .background(Color(0xFF9B30FF).copy(alpha = if (isActive) glow * 0.5f else 0.2f))
-                    .border(1.dp, Color(0xFF9B30FF).copy(if (isActive) glow else 0.4f), CircleShape),
+                    .background(accent.primary.copy(alpha = if (isActive) glow * 0.35f else 0.14f))
+                    .border(1.dp, accent.primary.copy(alpha = if (isActive) glow else 0.35f), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 Text(if (isActive) "⏹️" else "🎧", fontSize = 18.sp)
@@ -554,21 +560,21 @@ private fun NodeHearPageCard(
             Column(Modifier.weight(1f)) {
                 Text(
                     if (isActive) "Stop Narration" else "Hear This Node",
-                    color      = TextPrimary,
+                    color      = tokens.textPrimary,
                     fontSize   = 14.sp,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
                     if (isActive) "Tap to stop listening"
                     else "Listen to full node narration",
-                    color    = Color(0xFF9B30FF).copy(alpha = 0.8f),
+                    color    = accent.dark.copy(alpha = 0.85f),
                     fontSize = 11.sp
                 )
             }
             Icon(
                 if (isActive) Icons.Default.Stop else Icons.Default.VolumeUp,
                 contentDescription = null,
-                tint     = Color(0xFF9B30FF).copy(alpha = 0.7f),
+                tint     = accent.primary.copy(alpha = 0.75f),
                 modifier = Modifier.size(20.dp)
             )
         }
@@ -587,6 +593,8 @@ private fun NodeTtsControlBar(
     onStop:             () -> Unit,
     modifier:           Modifier = Modifier
 ) {
+    val accent = LocalAccent.current
+    val tokens = LocalAppColors.current
     val inf   = rememberInfiniteTransition(label = "nodeTts")
     val pulse by inf.animateFloat(
         0.6f, 1f,
@@ -600,10 +608,14 @@ private fun NodeTtsControlBar(
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(50))
-            .background(Brush.linearGradient(listOf(Color(0xEE1A0050), Color(0xEE0D0030))))
+            .background(
+                Brush.linearGradient(
+                    listOf(tokens.surface.copy(alpha = 0.98f), accent.tint.copy(alpha = 0.55f))
+                )
+            )
             .border(
                 1.dp,
-                Color(0xFF9B30FF).copy(alpha = if (isSpeaking) pulse else 0.4f),
+                accent.primary.copy(alpha = if (isSpeaking) pulse else 0.35f),
                 RoundedCornerShape(50)
             )
             .padding(horizontal = 20.dp, vertical = 12.dp)
@@ -617,8 +629,8 @@ private fun NodeTtsControlBar(
                     .size(32.dp)
                     .clip(CircleShape)
                     .background(
-                        Color(0xFF9B30FF).copy(
-                            alpha = if (isSpeaking) pulse * 0.4f else 0.15f
+                        accent.primary.copy(
+                            alpha = if (isSpeaking) pulse * 0.22f else 0.12f
                         )
                     ),
                 contentAlignment = Alignment.Center
@@ -626,7 +638,7 @@ private fun NodeTtsControlBar(
                 Icon(
                     Icons.Default.VolumeUp,
                     contentDescription = null,
-                    tint     = Color(0xFF9B30FF),
+                    tint     = accent.primary,
                     modifier = Modifier.size(16.dp)
                 )
             }
@@ -638,14 +650,14 @@ private fun NodeTtsControlBar(
                         NodeTtsStatus.PAUSED   -> "Paused"
                         NodeTtsStatus.IDLE     -> ""
                     },
-                    color      = Color(0xCCFFFFFF),
+                    color      = tokens.textPrimary,
                     fontSize   = 13.sp,
                     fontWeight = FontWeight.Medium
                 )
                 if (activeSectionLabel.isNotBlank()) {
                     Text(
                         activeSectionLabel,
-                        color    = Color(0xFF9B30FF).copy(alpha = 0.8f),
+                        color    = accent.dark.copy(alpha = 0.8f),
                         fontSize = 11.sp
                     )
                 }
@@ -657,15 +669,15 @@ private fun NodeTtsControlBar(
                 modifier = Modifier
                     .size(38.dp)
                     .clip(CircleShape)
-                    .background(Color(0x339B30FF))
-                    .border(0.7.dp, Color(0xFF9B30FF).copy(0.5f), CircleShape)
+                    .background(accent.primary.copy(alpha = 0.12f))
+                    .border(0.7.dp, accent.primary.copy(alpha = 0.35f), CircleShape)
                     .clickable { onTogglePause() },
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     if (isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
                     contentDescription = if (isPaused) "Resume" else "Pause",
-                    tint     = Color(0xFF9B30FF),
+                    tint     = accent.primary,
                     modifier = Modifier.size(18.dp)
                 )
             }
@@ -675,7 +687,7 @@ private fun NodeTtsControlBar(
                     .size(38.dp)
                     .clip(CircleShape)
                     .background(Color(0x33FF5252))
-                    .border(0.7.dp, Color(0xFFFF5252).copy(0.5f), CircleShape)
+                    .border(0.7.dp, Color(0xFFFF5252).copy(alpha = 0.5f), CircleShape)
                     .clickable { onStop() },
                 contentAlignment = Alignment.Center
             ) {
@@ -705,6 +717,8 @@ private fun NodeInfoCard(
     onStop:             () -> Unit,
     onTogglePause:      () -> Unit
 ) {
+    val accent = LocalAccent.current
+    val tokens = LocalAppColors.current
     val isThisActive = activeSectionLabel == sectionLabel && ttsStatus != NodeTtsStatus.IDLE
     val isSpeaking   = isThisActive && ttsStatus == NodeTtsStatus.SPEAKING
     val isPaused     = isThisActive && ttsStatus == NodeTtsStatus.PAUSED
@@ -723,7 +737,7 @@ private fun NodeInfoCard(
         ) {
             Text(
                 title,
-                color      = if (isThisActive) AccentYellow else TextPrimary,
+                color      = if (isThisActive) accent.dark else TextPrimary,
                 fontSize   = 15.sp,
                 fontWeight = FontWeight.Bold,
                 modifier   = Modifier.weight(1f)
@@ -738,15 +752,15 @@ private fun NodeInfoCard(
                         modifier = Modifier
                             .size(30.dp)
                             .clip(CircleShape)
-                            .background(Color(0x339B30FF))
-                            .border(0.7.dp, Color(0xFF9B30FF).copy(0.5f), CircleShape)
+                            .background(accent.primary.copy(alpha = 0.18f))
+                            .border(0.7.dp, accent.primary.copy(alpha = 0.45f), CircleShape)
                             .clickable { onTogglePause() },
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             if (isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
                             contentDescription = if (isPaused) "Resume" else "Pause",
-                            tint     = Color(0xFF9B30FF),
+                            tint     = accent.primary,
                             modifier = Modifier.size(14.dp)
                         )
                     }
@@ -755,7 +769,7 @@ private fun NodeInfoCard(
                             .size(30.dp)
                             .clip(CircleShape)
                             .background(Color(0x33FF5252))
-                            .border(0.7.dp, Color(0xFFFF5252).copy(0.5f), CircleShape)
+                            .border(0.7.dp, Color(0xFFFF5252).copy(alpha = 0.5f), CircleShape)
                             .clickable { onStop() },
                         contentAlignment = Alignment.Center
                     ) {
@@ -771,15 +785,15 @@ private fun NodeInfoCard(
                         modifier = Modifier
                             .size(32.dp)
                             .clip(CircleShape)
-                            .background(Color(0x221A0050))
-                            .border(0.7.dp, Color(0xFF9B30FF).copy(alpha = 0.4f), CircleShape)
+                            .background(accent.tint.copy(alpha = 0.55f))
+                            .border(0.7.dp, accent.primary.copy(alpha = 0.35f), CircleShape)
                             .clickable { onSpeak() },
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             Icons.Default.VolumeUp,
                             contentDescription = "Listen to $title",
-                            tint     = Color(0xFF9B30FF),
+                            tint     = accent.primary,
                             modifier = Modifier.size(16.dp)
                         )
                     }
@@ -795,13 +809,15 @@ private fun NodeInfoCard(
                 .clip(RoundedCornerShape(14.dp))
                 .background(
                     if (isThisActive)
-                        Brush.linearGradient(listOf(Color(0x221A0050), Color(0x110D0030)))
+                        Brush.linearGradient(
+                            listOf(accent.tint.copy(alpha = 0.75f), tokens.surfaceMuted)
+                        )
                     else
                         Brush.linearGradient(listOf(GlassWhite10, GlassWhite10))
                 )
                 .border(
                     if (isThisActive) 1.dp else 0.7.dp,
-                    if (isThisActive) Color(0xFF9B30FF).copy(alpha = if (isSpeaking) glow else 0.4f)
+                    if (isThisActive) accent.primary.copy(alpha = if (isSpeaking) glow else 0.35f)
                     else GlassBorder,
                     RoundedCornerShape(14.dp)
                 )
@@ -831,8 +847,6 @@ private fun NodeActionsGrid(
             icon           = "🎬",
             title          = "Watch Video",
             subtitle       = "Visual tour",
-            gradientColors = listOf(Color(0xFF002A4D), Color(0xFF001830)),
-            borderColor    = Color(0xFF2196F3),
             modifier       = Modifier.weight(1f),
             onClick        = {
                 if (!node.videoUrl.isNullOrBlank()) {
@@ -850,8 +864,6 @@ private fun NodeActionsGrid(
             icon           = "📷",
             title          = "Scan Next QR",
             subtitle       = "Continue journey",
-            gradientColors = listOf(Color(0xFF0D2825), Color(0xFF091F1E)),
-            borderColor    = Color(0xFF2DD4BF),
             modifier       = Modifier.weight(1f),
             onClick        = { onQr(siteId.toLong()) }
         )
@@ -921,7 +933,7 @@ fun NodeImageGallery(
                                 .size(if (i == currentIndex) 8.dp else 5.dp)
                                 .clip(CircleShape)
                                 .background(
-                                    if (i == currentIndex) AccentYellow else Color(0x66FFFFFF)
+                                    if (i == currentIndex) LocalAccent.current.primary else Color(0x66FFFFFF)
                                 )
                         )
                     }
@@ -980,7 +992,7 @@ fun NodeImageGallery(
                         .clip(RoundedCornerShape(8.dp))
                         .border(
                             if (selected) 2.dp else 0.dp,
-                            if (selected) AccentYellow else Color.Transparent,
+                            if (selected) LocalAccent.current.primary else Color.Transparent,
                             RoundedCornerShape(8.dp)
                         )
                         .alpha(if (selected) 1f else 0.5f)
@@ -1001,6 +1013,8 @@ fun WatchVideoBar(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val accent = LocalAccent.current
+    val tokens = LocalAppColors.current
     val inf     = rememberInfiniteTransition(label = "vb")
     val pulse   by inf.animateFloat(0.94f, 1.06f, infiniteRepeatable(tween(1000, easing = EaseInOutSine), RepeatMode.Reverse), "vp")
     val glow    by inf.animateFloat(0.5f,  1f,    infiniteRepeatable(tween(1400, easing = EaseInOutSine), RepeatMode.Reverse), "vg")
@@ -1008,7 +1022,11 @@ fun WatchVideoBar(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xF5050D1A))))
+            .background(
+                Brush.verticalGradient(
+                    listOf(Color.Transparent, tokens.bgWarm.copy(alpha = 0.92f))
+                )
+            )
             .navigationBarsPadding()
             .padding(horizontal = 18.dp, vertical = 10.dp)
     ) {
@@ -1016,14 +1034,20 @@ fun WatchVideoBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(18.dp))
-                .background(Brush.linearGradient(listOf(Color(0xFF120038), Color(0xFF06001E), Color(0xFF1A0050))))
+                .background(
+                    Brush.linearGradient(
+                        listOf(accent.tint.copy(alpha = 0.85f), tokens.surface, tokens.surfaceMuted)
+                    )
+                )
                 .border(
                     1.5.dp,
-                    Brush.linearGradient(listOf(
-                        Color(0xFF9B30FF).copy(alpha = glow),
-                        Color(0xFF5B5FFF).copy(alpha = glow * 0.6f),
-                        Color(0xFF9B30FF).copy(alpha = 0.2f)
-                    )),
+                    Brush.linearGradient(
+                        listOf(
+                            accent.primary.copy(alpha = glow),
+                            accent.dark.copy(alpha = glow * 0.55f),
+                            accent.primary.copy(alpha = 0.22f)
+                        )
+                    ),
                     RoundedCornerShape(18.dp)
                 )
                 .clickable { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(videoUrl))) }
@@ -1032,17 +1056,17 @@ fun WatchVideoBar(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     Modifier.size(42.dp).scale(pulse).clip(CircleShape)
-                        .background(Brush.linearGradient(listOf(Color(0xFF9B30FF), Color(0xFF5B5FFF)))),
+                        .background(Brush.linearGradient(listOf(accent.primary, accent.dark))),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Default.PlayArrow, null, tint = Color.White, modifier = Modifier.size(22.dp))
+                    Icon(Icons.Default.PlayArrow, null, tint = accent.onAccent, modifier = Modifier.size(22.dp))
                 }
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(label, color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                    Text("Tap to open video", color = Color(0xFF9B87CC), fontSize = 11.sp)
+                    Text(label, color = tokens.textPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                    Text("Tap to open video", color = accent.dark.copy(alpha = 0.72f), fontSize = 11.sp)
                 }
-                Text("▶", color = Color(0xFF9B30FF).copy(alpha = glow), fontSize = 18.sp)
+                Text("▶", color = accent.primary.copy(alpha = glow), fontSize = 18.sp)
             }
         }
     }
@@ -1057,11 +1081,11 @@ private fun NodeActionCard(
     icon:           String,
     title:          String,
     subtitle:       String,
-    gradientColors: List<Color>,
-    borderColor:    Color,
     modifier:       Modifier = Modifier,
     onClick:        () -> Unit
 ) {
+    val accent = LocalAccent.current
+    val tokens = LocalAppColors.current
     val inf      = rememberInfiniteTransition(label = "ac")
     val glowAlpha by inf.animateFloat(
         0.3f, 0.6f,
@@ -1072,15 +1096,19 @@ private fun NodeActionCard(
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(16.dp))
-            .background(Brush.linearGradient(gradientColors))
-            .border(1.dp, borderColor.copy(alpha = glowAlpha), RoundedCornerShape(16.dp))
+            .background(
+                Brush.linearGradient(
+                    listOf(accent.tint.copy(alpha = 0.75f), tokens.surface, tokens.surfaceMuted)
+                )
+            )
+            .border(1.dp, accent.primary.copy(alpha = glowAlpha), RoundedCornerShape(16.dp))
             .clickable { onClick() }
             .padding(16.dp)
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(icon,     fontSize = 26.sp)
-            Text(title,    color = TextPrimary,  fontSize = 13.sp, fontWeight = FontWeight.Bold)
-            Text(subtitle, color = TextTertiary, fontSize = 11.sp)
+            Text(title,    color = tokens.textPrimary,  fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            Text(subtitle, color = tokens.textTertiary, fontSize = 11.sp)
         }
     }
 }
@@ -1100,12 +1128,16 @@ private fun FloatingAskShreeButton(
         Box(
             modifier = Modifier
                 .scale(pulse).size(68.dp).clip(CircleShape)
-                .background(Brush.radialGradient(listOf(AccentYellow.copy(alpha = glowAlpha * 0.4f), Color.Transparent)))
+                .background(Brush.radialGradient(listOf(LocalAccent.current.primary.copy(alpha = glowAlpha * 0.4f), Color.Transparent)))
         )
         Box(
             modifier = Modifier
                 .size(60.dp).clip(CircleShape)
-                .background(Brush.linearGradient(listOf(Color(0xFFFFD54F), Color(0xFFFFC107))))
+                .background(
+                    Brush.linearGradient(
+                        listOf(LocalAccent.current.primary, LocalAccent.current.dark)
+                    )
+                )
                 .border(2.dp, Brush.linearGradient(listOf(Color(0x66FFFFFF), Color(0x22FFFFFF))), CircleShape)
                 .clickable {
                     context.startActivity(
@@ -1119,8 +1151,8 @@ private fun FloatingAskShreeButton(
             contentAlignment = Alignment.Center
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(Icons.AutoMirrored.Filled.Chat, null, tint = DeepNavy, modifier = Modifier.size(22.dp))
-                Text("Ask", color = DeepNavy, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Icon(Icons.AutoMirrored.Filled.Chat, null, tint = LocalAccent.current.onAccent, modifier = Modifier.size(22.dp))
+                Text("Ask", color = LocalAccent.current.onAccent, fontSize = 9.sp, fontWeight = FontWeight.Bold)
             }
         }
     }
@@ -1135,9 +1167,11 @@ private fun TripProgressSection(
     Column {
         Text("🗺️ Trip Progress", color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
-        nodes.sortedBy { it.sequenceOrder }.forEach { n ->
+        val ordered = remember(nodes) { nodes.sortedBy { it.sequenceOrder } }
+        ordered.forEachIndexed { i, n ->
             val visited   = n.id in visitedIds
             val isCurrent = n.id == currentId
+            val stopLabel = (i + 1).toString()
             Row(
                 Modifier.fillMaxWidth().padding(vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -1145,7 +1179,7 @@ private fun TripProgressSection(
                 Box(
                     Modifier.size(26.dp).clip(CircleShape).background(
                         when {
-                            isCurrent -> AccentYellow
+                            isCurrent -> LocalAccent.current.primary
                             visited   -> Color(0xFF4ADE80)
                             else      -> GlassWhite15
                         }
@@ -1153,7 +1187,7 @@ private fun TripProgressSection(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        if (visited || isCurrent) "✓" else "${n.sequenceOrder}",
+                        if (visited || isCurrent) "✓" else stopLabel,
                         color      = if (visited || isCurrent) Color.Black else TextTertiary,
                         fontSize   = 10.sp,
                         fontWeight = FontWeight.Bold
@@ -1162,7 +1196,7 @@ private fun TripProgressSection(
                 Spacer(Modifier.width(10.dp))
                 Text(
                     n.name,
-                    color    = when { isCurrent -> AccentYellow; visited -> TextTertiary; else -> TextPrimary },
+                    color    = when { isCurrent -> LocalAccent.current.primary; visited -> TextTertiary; else -> TextPrimary },
                     fontSize = 13.sp
                 )
             }

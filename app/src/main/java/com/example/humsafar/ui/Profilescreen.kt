@@ -154,12 +154,17 @@ fun ProfileScreen(
 
 @Composable
 private fun ProfileHeader(onBack: () -> Unit) {
+    val tokens = LocalAppColors.current
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Brush.verticalGradient(listOf(Color(0xF0050D1A), Color(0xBB050D1A))))
+            .background(
+                Brush.verticalGradient(
+                    listOf(tokens.surface.copy(alpha = 0.97f), tokens.surfaceMuted.copy(alpha = 0.92f))
+                )
+            )
             .drawBehind {
-                drawLine(GlassBorder, Offset(0f, size.height), Offset(size.width, size.height), 0.5.dp.toPx())
+                drawLine(tokens.divider, Offset(0f, size.height), Offset(size.width, size.height), 0.5.dp.toPx())
             }
             .statusBarsPadding()
             .padding(horizontal = 20.dp)
@@ -215,14 +220,14 @@ private fun ProfileAvatar(
                     .size(104.dp).clip(CircleShape)
                     .background(
                         Brush.radialGradient(
-                            listOf(Color(0xFFFFD54F).copy(alpha = glow * 0.35f), Color.Transparent)
+                            listOf(LocalAccent.current.primary.copy(alpha = glow * 0.35f), Color.Transparent)
                         )
                     )
             )
             Box(
                 modifier = Modifier
                     .size(90.dp).clip(CircleShape)
-                    .background(Brush.linearGradient(listOf(Color(0xFFFFD54F), Color(0xFFFFC107))))
+                    .background(Brush.linearGradient(listOf(LocalAccent.current.primary, LocalAccent.current.dark)))
                     .border(2.dp, GlassBorderBright, CircleShape),
                 contentAlignment = Alignment.Center
             ) {
@@ -246,17 +251,19 @@ private fun ProfileAvatar(
         Box(
             modifier = Modifier
                 .clip(RoundedCornerShape(50))
-                .background(if (isAnonymous) Color(0x22FFFFFF) else Color(0x22FFD54F))
+                .background(
+                    if (isAnonymous) Color(0x22FFFFFF) else LocalAccent.current.primary.copy(alpha = 0.13f)
+                )
                 .border(
                     0.7.dp,
-                    if (isAnonymous) Color(0x44FFFFFF) else Color(0x44FFD54F),
+                    if (isAnonymous) Color(0x44FFFFFF) else LocalAccent.current.primary.copy(alpha = 0.27f),
                     RoundedCornerShape(50)
                 )
                 .padding(horizontal = 14.dp, vertical = 5.dp)
         ) {
             Text(
                 if (isAnonymous) "🗺️  Guest Explorer" else "🗺️  Heritage Enthusiast",
-                color      = if (isAnonymous) TextSecondary else AccentYellow,
+                color      = if (isAnonymous) TextSecondary else LocalAccent.current.primary,
                 fontSize   = 12.sp,
                 fontWeight = FontWeight.Medium
             )
@@ -358,7 +365,7 @@ private fun JourneyCard(
                         color = TextTertiary, fontSize = 12.sp
                     )
                 }
-                Icon(Icons.Default.ChevronRight, null, tint = AccentYellow, modifier = Modifier.size(18.dp))
+                Icon(Icons.Default.ChevronRight, null, tint = LocalAccent.current.primary, modifier = Modifier.size(18.dp))
             }
             ProfileDivider()
             Row(
@@ -404,16 +411,16 @@ private fun LanguageCard() {
                 Text("🇬🇧", fontSize = 20.sp)
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("English", color = AccentYellow, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                    Text("English", color = LocalAccent.current.primary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                     Text("en-IN  •  Active", color = TextTertiary, fontSize = 12.sp)
                 }
                 Box(
                     modifier = Modifier
                         .size(24.dp).clip(CircleShape)
-                        .background(Brush.linearGradient(listOf(Color(0xFFFFD54F), Color(0xFFFFC107)))),
+                        .background(Brush.linearGradient(listOf(LocalAccent.current.primary, LocalAccent.current.dark))),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Default.Check, null, tint = DeepNavy, modifier = Modifier.size(14.dp))
+                    Icon(Icons.Default.Check, null, tint = LocalAccent.current.onAccent, modifier = Modifier.size(14.dp))
                 }
             }
             ProfileDivider()
@@ -470,7 +477,7 @@ private fun AppSettingsCard() {
                             .width(44.dp).height(26.dp)
                             .clip(RoundedCornerShape(50))
                             .background(
-                                Brush.horizontalGradient(listOf(Color(0xFFFFD54F), Color(0xFFFFC107)))
+                                Brush.horizontalGradient(listOf(LocalAccent.current.primary, LocalAccent.current.dark))
                             ),
                         contentAlignment = Alignment.CenterEnd
                     ) {
@@ -513,7 +520,7 @@ private fun AboutCard(
                 }
                 Icon(
                     Icons.Default.ChevronRight, null,
-                    tint     = AccentYellow,
+                    tint     = LocalAccent.current.primary,
                     modifier = Modifier.size(18.dp).rotate(if (expanded) 90f else 0f)
                 )
             }
@@ -559,9 +566,10 @@ private fun AboutCard(
 @Composable
 private fun AboutOverlay(onClose: () -> Unit) {
     val scroll = rememberScrollState()
+    val tokens = LocalAppColors.current
 
     Box(Modifier.fillMaxSize()) {
-        Box(Modifier.fillMaxSize().background(Color(0xF2050D1A)))
+        Box(Modifier.fillMaxSize().background(tokens.bgWarm.copy(alpha = 0.98f)))
         AnimatedOrbBackground(Modifier.fillMaxSize().alpha(0.5f))
 
         Column(Modifier.fillMaxSize().verticalScroll(scroll)) {
@@ -570,9 +578,13 @@ private fun AboutOverlay(onClose: () -> Unit) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Brush.verticalGradient(listOf(Color(0xF0050D1A), Color(0xBB050D1A))))
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(tokens.surface.copy(alpha = 0.97f), tokens.surfaceMuted.copy(alpha = 0.92f))
+                        )
+                    )
                     .drawBehind {
-                        drawLine(GlassBorder, Offset(0f, size.height), Offset(size.width, size.height), 0.5.dp.toPx())
+                        drawLine(tokens.divider, Offset(0f, size.height), Offset(size.width, size.height), 0.5.dp.toPx())
                     }
                     .statusBarsPadding()
                     .padding(horizontal = 20.dp)
@@ -609,7 +621,7 @@ private fun AboutOverlay(onClose: () -> Unit) {
                         Box(
                             modifier = Modifier
                                 .size(80.dp).clip(RoundedCornerShape(28.dp))
-                                .background(Brush.linearGradient(listOf(Color(0xFFFFD54F), Color(0xFFFFC107))))
+                                .background(Brush.linearGradient(listOf(LocalAccent.current.primary, LocalAccent.current.dark)))
                                 .border(1.dp, GlassBorderBright, RoundedCornerShape(28.dp)),
                             contentAlignment = Alignment.Center
                         ) {
@@ -632,11 +644,11 @@ private fun AboutOverlay(onClose: () -> Unit) {
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(50))
-                                .background(Color(0x22FFD54F))
-                                .border(0.7.dp, Color(0x44FFD54F), RoundedCornerShape(50))
+                                .background(LocalAccent.current.primary.copy(alpha = 0.13f))
+                                .border(0.7.dp, LocalAccent.current.primary.copy(alpha = 0.27f), RoundedCornerShape(50))
                                 .padding(horizontal = 14.dp, vertical = 5.dp)
                         ) {
-                            Text("v1.0  •  Prototype", color = AccentYellow, fontSize = 12.sp)
+                            Text("v1.0  •  Prototype", color = LocalAccent.current.primary, fontSize = 12.sp)
                         }
                     }
                 }
@@ -678,7 +690,7 @@ private fun AboutOverlay(onClose: () -> Unit) {
                                     .height(0.5.dp).background(GlassBorder)
                             )
                             Column {
-                                Text(name, color = AccentYellow, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                Text(name, color = LocalAccent.current.primary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                                 Spacer(Modifier.height(2.dp))
                                 Text(desc, color = TextTertiary, fontSize = 12.sp)
                             }

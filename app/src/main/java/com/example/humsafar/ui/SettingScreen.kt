@@ -50,13 +50,21 @@ fun SettingsScreen(onBack: () -> Unit) {
             ) {
 
                 // ── Header ────────────────────────────────────────────────
+                val tokens = LocalAppColors.current
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(Brush.verticalGradient(listOf(Color(0xF0050D1A), Color(0xBB050D1A))))
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(
+                                    tokens.surface.copy(alpha = 0.95f),
+                                    tokens.surface.copy(alpha = 0.7f)
+                                )
+                            )
+                        )
                         .drawWithContent {
                             drawContent()
-                            drawLine(GlassBorder, Offset(0f, size.height), Offset(size.width, size.height), 0.5.dp.toPx())
+                            drawLine(tokens.border, Offset(0f, size.height), Offset(size.width, size.height), 0.5.dp.toPx())
                         }
                         .statusBarsPadding()
                         .padding(horizontal = 20.dp)
@@ -66,15 +74,15 @@ fun SettingsScreen(onBack: () -> Unit) {
                         Box(
                             modifier = Modifier
                                 .size(40.dp).clip(CircleShape)
-                                .background(GlassWhite15)
-                                .border(0.5.dp, GlassBorder, CircleShape)
+                                .background(tokens.surfaceMuted)
+                                .border(0.7.dp, tokens.border, CircleShape)
                                 .clickable { onBack() },
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = TextPrimary, modifier = Modifier.size(18.dp))
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = tokens.textPrimary, modifier = Modifier.size(18.dp))
                         }
                         Spacer(Modifier.width(16.dp))
-                        Text("Settings", color = TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                        Text("Settings", color = tokens.textPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                     }
                 }
 
@@ -130,16 +138,18 @@ private fun LanguageOptionCard(
     isSelected: Boolean,
     onClick:    () -> Unit
 ) {
+    val accent = LocalAccent.current
+    val tokens = LocalAppColors.current
     val borderBrush = if (isSelected)
-        Brush.linearGradient(listOf(Color(0xFFFFD54F), Color(0xFFFFC107)))
+        Brush.linearGradient(listOf(accent.primary, accent.dark))
     else
-        Brush.linearGradient(listOf(GlassBorder, GlassBorder))
+        Brush.linearGradient(listOf(tokens.border, tokens.border))
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .background(if (isSelected) Color(0x22FFD54F) else GlassWhite10)
+            .background(if (isSelected) accent.tint else tokens.surface)
             .border(if (isSelected) 1.5.dp else 0.7.dp, borderBrush, RoundedCornerShape(16.dp))
             .clickable { onClick() }
             .padding(horizontal = 20.dp, vertical = 16.dp)
@@ -152,21 +162,21 @@ private fun LanguageOptionCard(
             Column {
                 Text(
                     language.displayName,
-                    color      = if (isSelected) AccentYellow else TextPrimary,
+                    color      = if (isSelected) accent.dark else tokens.textPrimary,
                     fontSize   = 16.sp,
                     fontWeight = FontWeight.SemiBold
                 )
-                Text(language.bcp47Code, color = TextTertiary, fontSize = 12.sp)
+                Text(language.bcp47Code, color = tokens.textTertiary, fontSize = 12.sp)
             }
 
             if (isSelected) {
                 Box(
                     modifier = Modifier
                         .size(28.dp).clip(CircleShape)
-                        .background(Brush.linearGradient(listOf(Color(0xFFFFD54F), Color(0xFFFFC107)))),
+                        .background(Brush.linearGradient(listOf(accent.primary, accent.dark))),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Default.Check, null, tint = DeepNavy, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Default.Check, null, tint = accent.onAccent, modifier = Modifier.size(16.dp))
                 }
             }
         }

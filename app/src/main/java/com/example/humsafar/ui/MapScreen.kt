@@ -10,7 +10,10 @@ package com.example.humsafar.ui
 import android.content.BroadcastReceiver
 import android.content.IntentFilter
 import android.content.Intent
+import android.graphics.RenderEffect
+import android.graphics.Shader
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
@@ -26,9 +29,11 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material3.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.*
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -41,6 +46,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.example.humsafar.BuildConfig
+import com.example.humsafar.auth.AuthManager
 import com.example.humsafar.data.HeritageRepository
 import com.example.humsafar.data.LocationBasedSiteDetector
 import com.example.humsafar.geofence.GeofencePermissionHandler
@@ -130,6 +136,11 @@ fun MapContent(
 ) {
     val context        = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val accent         = LocalAccent.current
+    val tokens         = LocalAppColors.current
+    val currentAuthUser by AuthManager.currentUser.collectAsStateWithLifecycle()
+    var welcomeDismissed by rememberSaveable { mutableStateOf(false) }
+    val showWelcome      = currentAuthUser != null && !welcomeDismissed
 
     var showExitDialog   by remember { mutableStateOf(false) }
     var userLat          by remember { mutableStateOf<Double?>(null) }
@@ -211,6 +222,23 @@ fun MapContent(
         }
     }
 
+    DisposableEffect(showWelcome) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (showWelcome) {
+                mapView.setRenderEffect(
+                    RenderEffect.createBlurEffect(28f, 28f, Shader.TileMode.CLAMP)
+                )
+            } else {
+                mapView.setRenderEffect(null)
+            }
+        }
+        onDispose {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                mapView.setRenderEffect(null)
+            }
+        }
+    }
+
     // ── UI ────────────────────────────────────────────────────────────────
     Box(Modifier.fillMaxSize()) {
 
@@ -244,101 +272,103 @@ fun MapContent(
             }
         }
 
-        // Top status bar
-        Column(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .statusBarsPadding()
-                .padding(top = 12.dp, start = 16.dp, end = 16.dp)
-                .fillMaxWidth()
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+        if (!showWelcome) {
+            // Top status bar
+            Column(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .statusBarsPadding()
+                    .padding(top = 12.dp, start = 16.dp, end = 16.dp)
+                    .fillMaxWidth()
             ) {
-                // Status pill
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(50))
-                        .background(Brush.linearGradient(listOf(Color(0xCC050D1A), Color(0xBB0A1628))))
-                        .border(0.7.dp, GlassBorder, RoundedCornerShape(50))
-                        .padding(horizontal = 16.dp, vertical = 11.dp)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        val dotPulse by rememberInfiniteTransition(label = "dp").animateFloat(
-                            0.4f, 1f,
-                            infiniteRepeatable(tween(900, easing = EaseInOut), RepeatMode.Reverse),
-                            label = "d"
-                        )
-                        Box(
-                            Modifier.size(8.dp).scale(dotPulse).clip(CircleShape)
-                                .background(
-                                    when {
-                                        insideSite != null -> Color(0xFF4ADE80)   // green = inside
-                                        nearbySites.isEmpty() -> AccentYellow     // yellow = scanning
-                                        else -> Color(0xFF60A5FA)                 // blue = nearby found but outside
-                                    }
-                                )
-                        )
-                        Spacer(Modifier.width(9.dp))
-                        Text(
-                            text = when {
-                                insideSite != null  -> "You are at ${insideSite.name}"
-                                nearbySites.isEmpty() -> if (userLat == null) "Acquiring GPS…" else "Fetching sites…"
-                                else                -> "Nearby sites found"
-                            },
-                            color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Medium
-                        )
+                    // Status pill
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(50))
+                            .background(tokens.surface)
+                            .border(0.7.dp, tokens.border, RoundedCornerShape(50))
+                            .padding(horizontal = 16.dp, vertical = 11.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            val dotPulse by rememberInfiniteTransition(label = "dp").animateFloat(
+                                0.4f, 1f,
+                                infiniteRepeatable(tween(900, easing = EaseInOut), RepeatMode.Reverse),
+                                label = "d"
+                            )
+                            Box(
+                                Modifier.size(8.dp).scale(dotPulse).clip(CircleShape)
+                                    .background(
+                                        when {
+                                            insideSite != null -> Color(0xFF4ADE80)   // green = inside
+                                            nearbySites.isEmpty() -> accent.primary     // accent = scanning
+                                            else -> Color(0xFF60A5FA)                 // blue = nearby found but outside
+                                        }
+                                    )
+                            )
+                            Spacer(Modifier.width(9.dp))
+                            Text(
+                                text = when {
+                                    insideSite != null  -> "You are at ${insideSite.name}"
+                                    nearbySites.isEmpty() -> if (userLat == null) "Acquiring GPS…" else "Fetching sites…"
+                                    else                -> "Nearby sites found"
+                                },
+                                color = tokens.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.width(10.dp))
+
+                    // Profile button
+                    Box(
+                        modifier = Modifier.size(46.dp).clip(CircleShape)
+                            .background(tokens.surfaceMuted)
+                            .border(0.7.dp, tokens.borderStrong, CircleShape)
+                            .clickable { onNavigateToProfile() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.Person, null, tint = accent.primary, modifier = Modifier.size(22.dp))
                     }
                 }
 
-                Spacer(Modifier.width(10.dp))
-
-                // Profile button
-                Box(
-                    modifier = Modifier.size(46.dp).clip(CircleShape)
-                        .background(Brush.linearGradient(listOf(Color(0xCC050D1A), Color(0xBB0A1628))))
-                        .border(0.7.dp, GlassBorderBright, CircleShape)
-                        .clickable { onNavigateToProfile() },
-                    contentAlignment = Alignment.Center
+                // QR scan button — only when inside a site
+                AnimatedVisibility(
+                    visible = insideSite != null,
+                    enter   = fadeIn(tween(280)) + slideInVertically(tween(280, easing = EaseOutCubic)) { -it },
+                    exit    = fadeOut(tween(200)) + slideOutVertically(tween(200)) { -it }
                 ) {
-                    Icon(Icons.Default.Person, null, tint = AccentYellow, modifier = Modifier.size(22.dp))
+                    Spacer(Modifier.height(10.dp))
+                    QrScanButton(onClick = {
+                        insideSite?.id?.toIntOrNull()?.let { onNavigateToQrScan(it) }
+                    })
                 }
             }
 
-            // QR scan button — only when inside a site
-            AnimatedVisibility(
-                visible = insideSite != null,
-                enter   = fadeIn(tween(280)) + slideInVertically(tween(280, easing = EaseOutCubic)) { -it },
-                exit    = fadeOut(tween(200)) + slideOutVertically(tween(200)) { -it }
-            ) {
-                Spacer(Modifier.height(10.dp))
-                QrScanButton(onClick = {
-                    insideSite?.id?.toIntOrNull()?.let { onNavigateToQrScan(it) }
-                })
-            }
+            // Bottom panel:
+            //   • insideSite != null → show "You are at X" with Explore + Maps buttons
+            //   • insideSite == null → show sorted nearby sites list
+            BottomGlassPanel(
+                insideSite           = insideSite,
+                sortedSites          = sortedSites,
+                context              = context,
+                onNavigateToDetail   = onNavigateToDetail,
+                onNavigateToSiteInfo = onNavigateToSiteInfo,
+                onRefresh            = {
+                    userLat?.let { lat ->
+                        userLng?.let { lng ->
+                            LocationBasedSiteDetector.forceRefresh(lat, lng)
+                        }
+                    }
+                },
+                modifier = Modifier.align(Alignment.BottomCenter)
+            )
         }
-
-        // Bottom panel:
-        //   • insideSite != null → show "You are at X" with Explore + Maps buttons
-        //   • insideSite == null → show sorted nearby sites list
-        BottomGlassPanel(
-            insideSite           = insideSite,
-            sortedSites          = sortedSites,
-            context              = context,
-            onNavigateToDetail   = onNavigateToDetail,
-            onNavigateToSiteInfo = onNavigateToSiteInfo,
-            onRefresh            = {
-                userLat?.let { lat ->
-                    userLng?.let { lng ->
-                        LocationBasedSiteDetector.forceRefresh(lat, lng)
-                    }
-                }
-            },
-            modifier = Modifier.align(Alignment.BottomCenter)
-        )
 
         // Tapped marker bottom sheet
         tappedSite?.let { site ->
@@ -358,8 +388,8 @@ fun MapContent(
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(24.dp))
-                        .background(Brush.verticalGradient(listOf(Color(0xFF0D1F3C), Color(0xFF071428))))
-                        .border(1.dp, GlassBorderBright, RoundedCornerShape(24.dp))
+                        .background(tokens.surface)
+                        .border(1.dp, tokens.border, RoundedCornerShape(24.dp))
                         .padding(28.dp)
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -388,6 +418,17 @@ fun MapContent(
                 }
             }
         }
+
+        if (showWelcome) {
+            val first = currentAuthUser!!.displayName?.trim()?.substringBefore(" ")?.takeIf { it.isNotEmpty() }
+                ?: currentAuthUser!!.email?.substringBefore("@")?.takeIf { it.isNotEmpty() }
+                ?: "Explorer"
+            WelcomeOverlay(
+                firstName = first,
+                onDismiss = { welcomeDismissed = true },
+                mapBlurred = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+            )
+        }
     }
 }
 
@@ -397,6 +438,8 @@ fun MapContent(
 
 @Composable
 private fun QrScanButton(onClick: () -> Unit) {
+    val accent = LocalAccent.current
+    val tokens = LocalAppColors.current
     val inf      = rememberInfiniteTransition(label = "qb")
     val shimmer  by inf.animateFloat(0f, 1f, infiniteRepeatable(tween(2400, easing = LinearEasing), RepeatMode.Restart), label = "sh")
     val edgeGlow by inf.animateFloat(0.5f, 1f, infiniteRepeatable(tween(1200, easing = EaseInOutSine), RepeatMode.Reverse), label = "eg")
@@ -405,13 +448,17 @@ private fun QrScanButton(onClick: () -> Unit) {
     Box(
         modifier = Modifier.fillMaxWidth().scale(pulse)
             .clip(RoundedCornerShape(20.dp))
-            .background(Brush.linearGradient(listOf(Color(0xFF1A1000), Color(0xFF2A1F00), Color(0xFF1A1400))))
+            .background(
+                Brush.linearGradient(
+                    listOf(accent.dark.copy(alpha = 0.12f), accent.tint, tokens.surfaceMuted)
+                )
+            )
             .border(
                 1.5.dp,
                 Brush.linearGradient(colorStops = arrayOf(
-                    (shimmer + 0.0f).rem(1f) to Color(0xFFFFD54F).copy(alpha = edgeGlow),
-                    (shimmer + 0.3f).rem(1f) to Color(0xFFFFC107).copy(alpha = edgeGlow * 0.6f),
-                    (shimmer + 0.6f).rem(1f) to Color(0xFFFFD54F).copy(alpha = edgeGlow)
+                    (shimmer + 0.0f).rem(1f) to accent.primary.copy(alpha = edgeGlow),
+                    (shimmer + 0.3f).rem(1f) to accent.dark.copy(alpha = edgeGlow * 0.6f),
+                    (shimmer + 0.6f).rem(1f) to accent.primary.copy(alpha = edgeGlow)
                 )),
                 RoundedCornerShape(20.dp)
             )
@@ -420,22 +467,22 @@ private fun QrScanButton(onClick: () -> Unit) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             Box(
                 modifier = Modifier.size(40.dp).clip(CircleShape)
-                    .background(Brush.radialGradient(listOf(AccentYellow.copy(0.3f), Color(0xFFFFC107).copy(0.1f))))
-                    .border(0.8.dp, AccentYellow.copy(0.6f), CircleShape),
+                    .background(Brush.radialGradient(listOf(accent.primary.copy(0.3f), accent.tint.copy(0.35f))))
+                    .border(0.8.dp, accent.primary.copy(0.6f), CircleShape),
                 contentAlignment = Alignment.Center
-            ) { Icon(Icons.Default.QrCodeScanner, null, tint = AccentYellow, modifier = Modifier.size(20.dp)) }
+            ) { Icon(Icons.Default.QrCodeScanner, null, tint = accent.primary, modifier = Modifier.size(20.dp)) }
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
-                Text("Scan Node QR", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                Text("Unlock the AI guide for this spot", color = AccentYellow.copy(alpha = 0.7f), fontSize = 11.sp)
+                Text("Scan Node QR", color = tokens.textPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                Text("Unlock the AI guide for this spot", color = accent.primary.copy(alpha = 0.75f), fontSize = 11.sp)
             }
             Box(
                 modifier = Modifier.clip(RoundedCornerShape(50))
-                    .background(AccentYellow.copy(alpha = 0.18f))
-                    .border(0.5.dp, AccentYellow.copy(0.4f), RoundedCornerShape(50))
+                    .background(accent.primary.copy(alpha = 0.18f))
+                    .border(0.5.dp, accent.primary.copy(0.4f), RoundedCornerShape(50))
                     .padding(horizontal = 10.dp, vertical = 5.dp),
                 contentAlignment = Alignment.Center
-            ) { Text("›", color = AccentYellow, fontSize = 18.sp, fontWeight = FontWeight.Light) }
+            ) { Text("›", color = accent.primary, fontSize = 18.sp, fontWeight = FontWeight.Light) }
         }
     }
 }
@@ -454,6 +501,8 @@ private fun BottomGlassPanel(
     onRefresh:            () -> Unit = {},
     modifier:             Modifier = Modifier
 ) {
+    val accent = LocalAccent.current
+    val tokens = LocalAppColors.current
     var showNearby   by remember { mutableStateOf(false) }
     var isRefreshing by remember { mutableStateOf(false) }
     val scope         = rememberCoroutineScope()
@@ -462,10 +511,14 @@ private fun BottomGlassPanel(
     Column(
         modifier = modifier.fillMaxWidth()
             .clip(RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp))
-            .background(Brush.verticalGradient(listOf(Color(0xDD050D1A), Color(0xF5050D1A))))
+            .background(
+                Brush.verticalGradient(
+                    listOf(tokens.surface.copy(alpha = 0.97f), tokens.surfaceMuted.copy(alpha = 0.99f))
+                )
+            )
             .border(
                 0.7.dp,
-                Brush.verticalGradient(listOf(GlassBorderBright, Color.Transparent)),
+                Brush.verticalGradient(listOf(tokens.border, Color.Transparent)),
                 RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
             )
     ) {
@@ -473,7 +526,7 @@ private fun BottomGlassPanel(
             Modifier.align(Alignment.CenterHorizontally)
                 .padding(top = 12.dp, bottom = 8.dp)
                 .size(width = 36.dp, height = 4.dp)
-                .clip(RoundedCornerShape(50)).background(GlassWhite30)
+                .clip(RoundedCornerShape(50)).background(tokens.divider)
         )
 
         Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 32.dp)) {
@@ -486,20 +539,20 @@ private fun BottomGlassPanel(
                     Column(Modifier.weight(1f)) {
                         SectionLabel("You are here")
                         Spacer(Modifier.height(4.dp))
-                        Text(insideSite.name, color = TextPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                        Text(insideSite.name, color = tokens.textPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                     }
                     Box(
-                        modifier = Modifier.clip(RoundedCornerShape(50)).background(GlassWhite15)
-                            .border(0.5.dp, GlassBorder, RoundedCornerShape(50))
+                        modifier = Modifier.clip(RoundedCornerShape(50)).background(tokens.surfaceMuted)
+                            .border(0.5.dp, tokens.border, RoundedCornerShape(50))
                     ) {
                         Row {
                             listOf("Site" to false, "Nearby" to true).forEach { (label, target) ->
                                 Box(
                                     modifier = Modifier.clip(RoundedCornerShape(50))
-                                        .background(if (showNearby == target) GlassWhite30 else Color.Transparent)
+                                        .background(if (showNearby == target) tokens.surface else Color.Transparent)
                                         .clickable { showNearby = target }
                                         .padding(horizontal = 14.dp, vertical = 8.dp)
-                                ) { Text(label, color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium) }
+                                ) { Text(label, color = tokens.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium) }
                             }
                         }
                     }
@@ -510,7 +563,7 @@ private fun BottomGlassPanel(
                         Column {
                             Box(
                                 modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp))
-                                    .background(Brush.linearGradient(listOf(Color(0xFFFFD54F), Color(0xFFFFC107))))
+                                    .background(Brush.linearGradient(listOf(accent.primary, accent.dark)))
                                     .clickable { onNavigateToDetail(insideSite.name, insideSite.id) }
                                     .padding(vertical = 22.dp),
                                 contentAlignment = Alignment.Center
@@ -518,15 +571,15 @@ private fun BottomGlassPanel(
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text("🏛️", fontSize = 24.sp); Spacer(Modifier.width(12.dp))
                                     Column {
-                                        Text("Explore ${insideSite.name}", color = DeepNavy, fontSize = 17.sp, fontWeight = FontWeight.Black)
-                                        Text("History • AI Guide • Voice • Video", color = Color(0x99050D1A), fontSize = 12.sp)
+                                        Text("Explore ${insideSite.name}", color = accent.onAccent, fontSize = 17.sp, fontWeight = FontWeight.Black)
+                                        Text("History • AI Guide • Voice • Video", color = accent.onAccent.copy(alpha = 0.85f), fontSize = 12.sp)
                                     }
                                 }
                             }
                             Spacer(Modifier.height(10.dp))
                             Box(
                                 modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
-                                    .background(GlassWhite15).border(0.7.dp, GlassBorder, RoundedCornerShape(16.dp))
+                                    .background(tokens.surfaceMuted).border(0.7.dp, tokens.border, RoundedCornerShape(16.dp))
                                     .clickable {
                                         context.startActivity(
                                             Intent(Intent.ACTION_VIEW, Uri.parse(
@@ -535,7 +588,7 @@ private fun BottomGlassPanel(
                                         )
                                     }.padding(vertical = 16.dp),
                                 contentAlignment = Alignment.Center
-                            ) { Text("Open in Google Maps", color = TextSecondary, fontSize = 15.sp, fontWeight = FontWeight.Medium) }
+                            ) { Text("Open in Google Maps", color = tokens.textSecondary, fontSize = 15.sp, fontWeight = FontWeight.Medium) }
                         }
                     } else {
                         LazyColumn(
@@ -556,10 +609,10 @@ private fun BottomGlassPanel(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column {
-                        Text("Nearby Heritage Sites", color = TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                        Text("Nearby Heritage Sites", color = tokens.textPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                         Text(
                             if (sortedSites.isEmpty()) "Acquiring GPS signal…" else "Sorted by distance",
-                            color = TextTertiary, fontSize = 13.sp
+                            color = tokens.textTertiary, fontSize = 13.sp
                         )
                     }
 
@@ -572,8 +625,8 @@ private fun BottomGlassPanel(
                         modifier = Modifier
                             .size(40.dp)
                             .clip(CircleShape)
-                            .background(GlassWhite15)
-                            .border(0.7.dp, GlassBorder, CircleShape)
+                            .background(tokens.surfaceMuted)
+                            .border(0.7.dp, tokens.border, CircleShape)
                             .clickable(enabled = !isRefreshing) {
                                 isRefreshing = true
                                 onRefresh()
@@ -586,7 +639,7 @@ private fun BottomGlassPanel(
                     ) {
                         Text(
                             "↻",
-                            color    = if (isRefreshing) AccentYellow else TextSecondary,
+                            color    = if (isRefreshing) accent.primary else tokens.textSecondary,
                             fontSize = 20.sp,
                             modifier = if (isRefreshing) Modifier.rotate(spinAngle) else Modifier
                         )
@@ -598,9 +651,9 @@ private fun BottomGlassPanel(
                         val spin by rememberInfiniteTransition(label = "sp").animateFloat(
                             0f, 360f, infiniteRepeatable(tween(1200, easing = LinearEasing)), label = "r"
                         )
-                        Text("◌", color = AccentYellow, fontSize = 20.sp, modifier = Modifier.rotate(spin))
+                        Text("◌", color = accent.primary, fontSize = 20.sp, modifier = Modifier.rotate(spin))
                         Spacer(Modifier.width(12.dp))
-                        Text("Searching for your location…", color = TextSecondary, fontSize = 14.sp)
+                        Text("Searching for your location…", color = tokens.textSecondary, fontSize = 14.sp)
                     }
                 } else {
                     LazyColumn(
@@ -628,6 +681,8 @@ private fun SiteMarkerBottomSheet(
     onDismiss: () -> Unit,
     onInfo:    () -> Unit
 ) {
+    val accent = LocalAccent.current
+    val tokens = LocalAppColors.current
     var weather        by remember { mutableStateOf<WeatherService.WeatherResult?>(null) }
     var weatherLoading by remember { mutableStateOf(true) }
 
@@ -643,44 +698,45 @@ private fun SiteMarkerBottomSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState       = sheetState,
-        containerColor   = Color(0xFF050D1A),
-        contentColor     = TextPrimary
+        containerColor   = tokens.surface,
+        contentColor     = tokens.textPrimary
     ) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 32.dp)
         ) {
-            Text(site.name, color = TextPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            Text(site.name, color = tokens.textPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(12.dp))
             if (weatherLoading) {
                 Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = AccentYellow, modifier = Modifier.size(24.dp))
+                    CircularProgressIndicator(color = accent.primary, modifier = Modifier.size(24.dp))
                 }
             } else if (weather != null) {
                 val w = weather!!
-                Text("${w.tempC.toInt()}°C • ${w.description}", color = TextSecondary, fontSize = 14.sp)
+                Text("${w.tempC.toInt()}°C • ${w.description}", color = tokens.textSecondary, fontSize = 14.sp)
                 val suggestions = WeatherService.weatherSuggestions(w.tempC, w.weatherCode)
                 if (suggestions.isNotEmpty()) {
                     Spacer(Modifier.height(8.dp))
-                    Text(suggestions.joinToString(" • "), color = AccentYellow, fontSize = 12.sp)
+                    Text(suggestions.joinToString(" • "), color = accent.primary, fontSize = 12.sp)
                 }
             }
             Spacer(Modifier.height(20.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Box(
                     modifier = Modifier.weight(1f).clip(RoundedCornerShape(12.dp))
-                        .background(GlassWhite15).border(0.5.dp, GlassBorder, RoundedCornerShape(12.dp))
+                        .background(tokens.surfaceMuted).border(0.5.dp, tokens.border, RoundedCornerShape(12.dp))
                         .clickable(onClick = onDismiss).padding(vertical = 14.dp),
                     contentAlignment = Alignment.Center
-                ) { Text("Close", color = TextSecondary, fontSize = 15.sp) }
+                ) { Text("Close", color = tokens.textSecondary, fontSize = 15.sp) }
                 Box(
                     modifier = Modifier.weight(1f).clip(RoundedCornerShape(12.dp))
-                        .background(AccentYellow).clickable(onClick = onInfo).padding(vertical = 14.dp),
+                        .background(Brush.linearGradient(listOf(accent.primary, accent.dark)))
+                        .clickable(onClick = onInfo).padding(vertical = 14.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Info, null, tint = DeepNavy, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Default.Info, null, tint = accent.onAccent, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("Info", color = DeepNavy, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                        Text("Info", color = accent.onAccent, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
@@ -699,42 +755,181 @@ private fun SiteDistanceRow(
     context:              android.content.Context,
     onNavigateToSiteInfo: (Int, String) -> Unit
 ) {
-    GlassCard(Modifier.fillMaxWidth(), cornerRadius = 16.dp, tint = GlassWhite10) {
+    val accent = LocalAccent.current
+    val tokens = LocalAppColors.current
+    GlassCard(Modifier.fillMaxWidth(), cornerRadius = 16.dp, tint = tokens.surfaceMuted) {
         Row(
             Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(Modifier.weight(1f)) {
-                Text(site.name, color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                Text(site.name, color = tokens.textPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                 Text(
                     if (dist >= 1000) "${"%.1f".format(dist / 1000)} km away" else "${dist.toInt()} m away",
-                    color = TextTertiary, fontSize = 12.sp
+                    color = tokens.textTertiary, fontSize = 12.sp
                 )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Box(
                     modifier = Modifier.clip(RoundedCornerShape(12.dp))
-                        .background(GlassWhite15).border(0.5.dp, GlassBorder, RoundedCornerShape(12.dp))
+                        .background(tokens.surface).border(0.5.dp, tokens.border, RoundedCornerShape(12.dp))
                         .clickable { onNavigateToSiteInfo(site.id.toIntOrNull() ?: 0, site.name) }
                         .padding(horizontal = 12.dp, vertical = 8.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Info, null, tint = AccentYellow, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.Info, null, tint = accent.primary, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(4.dp))
-                        Text("Info", color = AccentYellow, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                        Text("Info", color = accent.primary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
                     }
                 }
                 Box(
                     modifier = Modifier.clip(RoundedCornerShape(12.dp))
-                        .background(GlassWhite15).border(0.5.dp, GlassBorder, RoundedCornerShape(12.dp))
+                        .background(tokens.surface).border(0.5.dp, tokens.border, RoundedCornerShape(12.dp))
                         .clickable {
                             context.startActivity(
                                 Intent(Intent.ACTION_VIEW, Uri.parse("geo:${site.latitude},${site.longitude}"))
                             )
                         }.padding(horizontal = 14.dp, vertical = 8.dp)
-                ) { Text("Maps", color = AccentYellow, fontSize = 13.sp, fontWeight = FontWeight.Medium) }
+                ) { Text("Maps", color = accent.primary, fontSize = 13.sp, fontWeight = FontWeight.Medium) }
             }
+        }
+    }
+}
+
+@Composable
+private fun WelcomeOverlay(firstName: String, onDismiss: () -> Unit, mapBlurred: Boolean) {
+    val accent = LocalAccent.current
+    val tokens = LocalAppColors.current
+    val sweep = remember { Animatable(0f) }
+
+    LaunchedEffect(Unit) {
+        sweep.animateTo(1f, tween(1400, easing = EaseOutCubic))
+    }
+    LaunchedEffect(Unit) {
+        delay(4000)
+        onDismiss()
+    }
+
+    val backdropBrush = remember(accent, tokens, mapBlurred) {
+        if (mapBlurred) {
+            Brush.verticalGradient(
+                colors = listOf(
+                    accent.primary.copy(alpha = 0.20f),
+                    accent.tint.copy(alpha = 0.28f),
+                    tokens.surface.copy(alpha = 0.42f)
+                )
+            )
+        } else {
+            Brush.verticalGradient(
+                colors = listOf(
+                    accent.primary.copy(alpha = 0.26f),
+                    accent.tint.copy(alpha = 0.38f),
+                    tokens.scrim.copy(alpha = 0.72f)
+                )
+            )
+        }
+    }
+
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(backdropBrush)
+    ) {
+        Canvas(Modifier.fillMaxSize()) {
+            val c = Offset(size.width / 2f, size.height * 0.42f)
+            val maxR = size.maxDimension * 0.55f * sweep.value
+            if (maxR > 1f) {
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            accent.primary.copy(alpha = 0.38f * sweep.value),
+                            accent.tint.copy(alpha = 0.15f * sweep.value),
+                            Color.Transparent
+                        ),
+                        center = c,
+                        radius = maxR
+                    ),
+                    radius = maxR,
+                    center = c
+                )
+            }
+        }
+
+        Column(
+            Modifier
+                .align(Alignment.Center)
+                .padding(horizontal = 28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                val prefix = "Welcome, "
+                prefix.forEachIndexed { i, ch ->
+                    key("wp$i") {
+                        val a = remember { Animatable(0f) }
+                        LaunchedEffect(Unit) {
+                            delay(i * 40L)
+                            a.animateTo(1f, tween(320))
+                        }
+                        Text(
+                            ch.toString(),
+                            modifier = Modifier.graphicsLayer { alpha = a.value },
+                            color = tokens.textPrimary,
+                            fontSize = 26.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+                firstName.forEachIndexed { i, ch ->
+                    key("nm$i") {
+                        val a = remember { Animatable(0f) }
+                        LaunchedEffect(Unit) {
+                            delay(220 + i * 55L)
+                            a.animateTo(1f, tween(360, easing = EaseOutCubic))
+                        }
+                        Text(
+                            ch.toString(),
+                            modifier = Modifier.graphicsLayer { alpha = a.value },
+                            color = accent.primary,
+                            fontSize = 26.sp,
+                            fontWeight = FontWeight.Black
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(14.dp))
+
+            val tag = "Your trip starts now"
+            Row(horizontalArrangement = Arrangement.Center) {
+                tag.forEachIndexed { i, ch ->
+                    key("tg$i") {
+                        val a = remember { Animatable(0f) }
+                        LaunchedEffect(Unit) {
+                            delay(380 + i * 28L)
+                            a.animateTo(1f, tween(280))
+                        }
+                        Text(
+                            if (ch == ' ') "\u00A0" else ch.toString(),
+                            modifier = Modifier.graphicsLayer { alpha = a.value },
+                            color = tokens.textSecondary,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(32.dp))
+
+            GlassPrimaryButton(
+                text = "Begin exploring",
+                onClick = onDismiss,
+                modifier = Modifier.fillMaxWidth(0.88f)
+            )
         }
     }
 }

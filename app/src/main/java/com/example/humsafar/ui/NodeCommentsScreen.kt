@@ -127,13 +127,18 @@ private fun CommentsHeader(
     onBack:    () -> Unit,
     isLoading: Boolean
 ) {
+    val tokens = LocalAppColors.current
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Brush.verticalGradient(listOf(Color(0xF0050D1A), Color(0xBB050D1A))))
+            .background(
+                Brush.verticalGradient(
+                    listOf(tokens.surface.copy(alpha = 0.95f), tokens.surface.copy(alpha = 0.7f))
+                )
+            )
             .drawBehind {
                 drawLine(
-                    GlassBorder,
+                    tokens.border,
                     Offset(0f, size.height),
                     Offset(size.width, size.height),
                     0.5.dp.toPx()
@@ -297,15 +302,16 @@ private fun CommentRow(
                     fontSize = 11.sp
                 )
                 if (comment.isOwn) {
+                    val ownAccent = LocalAccent.current
                     Spacer(Modifier.width(6.dp))
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(6.dp))
-                            .background(Color(0x22FFD54F))
-                            .border(0.5.dp, Color(0x55FFD54F), RoundedCornerShape(6.dp))
+                            .background(ownAccent.tint)
+                            .border(0.5.dp, ownAccent.primary.copy(alpha = 0.4f), RoundedCornerShape(6.dp))
                             .padding(horizontal = 5.dp, vertical = 1.dp)
                     ) {
-                        Text("you", color = AccentYellow, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                        Text("you", color = ownAccent.dark, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -406,8 +412,9 @@ private fun RepliesToggleRow(
 private fun Avatar(name: String?, url: String?) {
     val initial = (name?.trim()?.firstOrNull()?.uppercaseChar() ?: '?')
     val seed    = (name ?: "?").hashCode()
+    val accent  = LocalAccent.current
     val palette = listOf(
-        Color(0xFFFFD54F), Color(0xFF8AC7FF), Color(0xFF80CBC4),
+        accent.primary, Color(0xFF8AC7FF), Color(0xFF80CBC4),
         Color(0xFFFFAB91), Color(0xFFB39DDB), Color(0xFFAED581)
     )
     val color = palette[((seed % palette.size) + palette.size) % palette.size]
@@ -451,12 +458,18 @@ private fun Composer(
     onCancelReply: () -> Unit,
     onSend:        () -> Unit
 ) {
+    val accent = LocalAccent.current
+    val tokens = LocalAppColors.current
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Brush.verticalGradient(listOf(Color(0xCC050D1A), Color(0xFF050D1A))))
+            .background(
+                Brush.verticalGradient(
+                    listOf(tokens.surface.copy(alpha = 0.85f), tokens.surface)
+                )
+            )
             .drawBehind {
-                drawLine(GlassBorder, Offset(0f, 0f), Offset(size.width, 0f), 0.5.dp.toPx())
+                drawLine(tokens.border, Offset(0f, 0f), Offset(size.width, 0f), 0.5.dp.toPx())
             }
             .navigationBarsPadding()
             .padding(horizontal = 14.dp, vertical = 10.dp)
@@ -517,7 +530,7 @@ private fun Composer(
                         color    = TextPrimary,
                         fontSize = 14.sp
                     ),
-                    cursorBrush   = SolidColor(AccentYellow),
+                    cursorBrush   = SolidColor(accent.primary),
                     modifier      = Modifier.fillMaxWidth().heightIn(min = 24.dp, max = 120.dp),
                     decorationBox = { inner ->
                         if (draft.isEmpty()) {
@@ -538,13 +551,13 @@ private fun Composer(
                     .size(44.dp).clip(CircleShape)
                     .background(
                         if (canSend)
-                            Brush.linearGradient(listOf(Color(0xFFFFD54F), Color(0xFFFFC107)))
+                            Brush.linearGradient(listOf(accent.primary, accent.dark))
                         else
                             Brush.linearGradient(listOf(GlassWhite15, GlassWhite10))
                     )
                     .border(
                         0.7.dp,
-                        if (canSend) Color(0x66FFFFFF) else GlassBorder,
+                        if (canSend) Color(0x33000000) else GlassBorder,
                         CircleShape
                     )
                     .clickable(enabled = canSend) { onSend() },
@@ -552,14 +565,14 @@ private fun Composer(
             ) {
                 if (isPosting) {
                     CircularProgressIndicator(
-                        color       = DeepNavy,
+                        color       = accent.onAccent,
                         strokeWidth = 2.dp,
                         modifier    = Modifier.size(18.dp)
                     )
                 } else {
                     Icon(
                         Icons.AutoMirrored.Filled.Send, null,
-                        tint     = if (canSend) DeepNavy else TextTertiary,
+                        tint     = if (canSend) accent.onAccent else TextTertiary,
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -574,9 +587,10 @@ private fun Composer(
 
 @Composable
 private fun LoadingPanel() {
+    val accent = LocalAccent.current
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            CircularProgressIndicator(color = AccentYellow, modifier = Modifier.size(36.dp))
+            CircularProgressIndicator(color = accent.primary, modifier = Modifier.size(36.dp))
             Spacer(Modifier.height(14.dp))
             Text("Loading comments…", color = TextSecondary, fontSize = 13.sp)
         }

@@ -6,11 +6,17 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
 import com.example.humsafar.auth.AuthManager
 import com.example.humsafar.data.TripManager
 import com.example.humsafar.data.UserRepository
 import com.example.humsafar.navigation.AppNavigation
+import com.example.humsafar.prefs.AppPreferences
+import com.example.humsafar.ui.theme.Accent
 import com.example.humsafar.ui.theme.HumsafarTheme
 import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.launch
@@ -22,6 +28,15 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         TripManager.init(applicationContext)
         UserRepository.init(applicationContext)
+
+        val appPrefs = AppPreferences(applicationContext)
+
+        // Returning users (already signed in) shouldn't be force-marched through
+        // onboarding when they upgrade to this build. Treat an existing Firebase
+        // session as implicit consent that they've seen the app before.
+        if (AuthManager.currentUser.value != null && !appPrefs.onboardingComplete) {
+            appPrefs.onboardingComplete = true
+        }
 
         // Sync the currently-signed-in Firebase user with our backend so that
         // any subsequent call needing firebase_uid (trips, reviews, chat history)
@@ -38,12 +53,19 @@ class MainActivity : ComponentActivity() {
                 }
         }
 
-        // Handle email link if present
         handleEmailLinkIntent(intent)
 
         setContent {
-            HumsafarTheme {
-                AppNavigation()
+            var accent by remember { mutableStateOf<Accent>(appPrefs.getAccent()) }
+
+            HumsafarTheme(accent = accent) {
+                AppNavigation(
+                    appPrefs = appPrefs,
+                    onAccentChange = { picked ->
+                        appPrefs.setAccent(picked)
+                        accent = picked
+                    }
+                )
             }
         }
     }
@@ -62,17 +84,14 @@ class MainActivity : ComponentActivity() {
         if (AuthManager.isSignInWithEmailLink(link)) {
             Log.d("MainActivity", "Valid email link detected")
 
-            // Get the email from SharedPreferences
             val email = AuthManager.getPendingEmailLinkEmail(this)
 
             if (email != null) {
-                // Sign in with the link
                 lifecycleScope.launch {
                     AuthManager.signInWithEmailLink(email, link)
                         .onSuccess { user ->
                             Log.i("MainActivity", "Email link sign-in success: ${user.uid}")
                             AuthManager.clearPendingEmailLinkEmail(this@MainActivity)
-                            // Navigation will automatically update via AuthManager.currentUser flow
                         }
                         .onFailure { error ->
                             Log.e("MainActivity", "Email link sign-in failed", error)

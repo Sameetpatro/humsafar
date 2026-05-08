@@ -14,18 +14,51 @@ import androidx.navigation.compose.*
 import androidx.navigation.navArgument
 import com.example.humsafar.auth.AuthManager
 import com.example.humsafar.data.TripManager
+import com.example.humsafar.prefs.AppPreferences
 import com.example.humsafar.ui.*
+import com.example.humsafar.ui.theme.Accent
 import java.net.URLDecoder
 import java.net.URLEncoder
 
 @Composable
-fun AppNavigation() {
+fun AppNavigation(
+    appPrefs: AppPreferences,
+    onAccentChange: (Accent) -> Unit
+) {
     val navController = rememberNavController()
 
     val currentUser by AuthManager.currentUser.collectAsState()
-    val startDest = if (currentUser != null) "home" else "login"
+    val needsOnboarding = !appPrefs.onboardingComplete
+    val startDest = when {
+        needsOnboarding -> "splash"
+        currentUser != null -> "home"
+        else -> "login"
+    }
 
     NavHost(navController = navController, startDestination = startDest) {
+
+        composable("splash") {
+            SplashScreen(
+                onDone = {
+                    navController.navigate("onboarding") {
+                        popUpTo("splash") { inclusive = true }
+                    }
+                }
+            )
+        }
+
+        composable("onboarding") {
+            OnboardingScreen(
+                onAccentPicked = onAccentChange,
+                onFinish = {
+                    appPrefs.onboardingComplete = true
+                    val target = if (currentUser != null) "home" else "login"
+                    navController.navigate(target) {
+                        popUpTo("onboarding") { inclusive = true }
+                    }
+                }
+            )
+        }
 
         composable("login") {
             LoginScreen(

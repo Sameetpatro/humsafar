@@ -39,6 +39,7 @@ import com.example.humsafar.models.ChatMessage as UiChatMessage  // ← RENAMED 
 import com.example.humsafar.models.ChatHistoryItem as ApiChatMessage  // ← matches API schema
 import com.example.humsafar.models.ChatRequest
 import com.example.humsafar.network.HumsafarClient
+import com.example.humsafar.prefs.AppPreferences
 import com.example.humsafar.prefs.LanguagePreferences
 import com.example.humsafar.ui.components.AnimatedOrbBackground
 import com.example.humsafar.ui.theme.*
@@ -100,7 +101,8 @@ class ChatbotActivity : ComponentActivity() {
         }
 
         setContent {
-            HumsafarTheme {
+            val appPrefs = remember { AppPreferences(applicationContext) }
+            HumsafarTheme(accent = appPrefs.getAccent()) {
                 ChatbotScreen(
                     siteName = resolvedSiteName,
                     siteId   = resolvedSiteId.toString(),
@@ -189,6 +191,9 @@ fun ChatbotScreen(
     nodeId   : String?,
     onBack   : () -> Unit
 ) {
+    val accent = LocalAccent.current
+    val tokens = LocalAppColors.current
+
     val scope     = rememberCoroutineScope()
     val listState = rememberLazyListState()
     var inputText by remember { mutableStateOf("") }
@@ -248,10 +253,12 @@ fun ChatbotScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(
-                        Brush.verticalGradient(listOf(Color(0xF0050D1A), Color(0xBB050D1A)))
+                        Brush.verticalGradient(
+                            listOf(tokens.surface.copy(alpha = 0.97f), tokens.surfaceMuted.copy(alpha = 0.93f))
+                        )
                     )
                     .drawBehind {
-                        drawLine(GlassBorder, Offset(0f, size.height), Offset(size.width, size.height), 0.5.dp.toPx())
+                        drawLine(tokens.divider, Offset(0f, size.height), Offset(size.width, size.height), 0.5.dp.toPx())
                     }
                     .statusBarsPadding()
                     .padding(horizontal = 20.dp)
@@ -280,7 +287,7 @@ fun ChatbotScreen(
                             .size(40.dp)
                             .clip(CircleShape)
                             .background(
-                                Brush.linearGradient(listOf(Color(0xFFFFD54F), Color(0xFFFFC107)))
+                                Brush.linearGradient(listOf(accent.primary, accent.dark))
                             ),
                         contentAlignment = Alignment.Center
                     ) {
@@ -357,10 +364,12 @@ fun ChatbotScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(
-                        Brush.verticalGradient(listOf(Color(0x99050D1A), Color(0xF0050D1A)))
+                        Brush.verticalGradient(
+                            listOf(tokens.surfaceMuted.copy(alpha = 0.6f), tokens.surface.copy(alpha = 0.98f))
+                        )
                     )
                     .drawBehind {
-                        drawLine(GlassBorder, Offset(0f, 0f), Offset(size.width, 0f), 0.5.dp.toPx())
+                        drawLine(tokens.divider, Offset(0f, 0f), Offset(size.width, 0f), 0.5.dp.toPx())
                     }
                     .padding(horizontal = 16.dp, vertical = 12.dp)
                     .navigationBarsPadding()
@@ -427,7 +436,7 @@ fun ChatbotScreen(
                             .clip(CircleShape)
                             .background(
                                 if (canSend)
-                                    Brush.linearGradient(listOf(Color(0xFFFFD54F), Color(0xFFFFC107)))
+                                    Brush.linearGradient(listOf(accent.primary, accent.dark))
                                 else
                                     Brush.linearGradient(listOf(GlassWhite15, GlassWhite15))
                             )
@@ -446,7 +455,7 @@ fun ChatbotScreen(
                         Icon(
                             Icons.AutoMirrored.Filled.Send,
                             contentDescription = "Send",
-                            tint     = if (canSend) DeepNavy else TextTertiary,
+                            tint     = if (canSend) accent.onAccent else TextTertiary,
                             modifier = Modifier.size(20.dp)
                         )
                     }
@@ -462,6 +471,7 @@ fun ChatbotScreen(
 
 @Composable
 fun GlassChatBubble(message: UiChatMessage) {  // ← Use UiChatMessage
+    val accent = LocalAccent.current
     val isUser      = message.isUser
     val alignment   = if (isUser) Alignment.End else Alignment.Start
     val bubbleShape = RoundedCornerShape(
@@ -481,7 +491,7 @@ fun GlassChatBubble(message: UiChatMessage) {  // ← Use UiChatMessage
                 .clip(bubbleShape)
                 .background(
                     if (isUser)
-                        Brush.linearGradient(listOf(Color(0xFFFFD54F), Color(0xFFFFC107)))
+                        Brush.linearGradient(listOf(accent.primary, accent.dark))
                     else
                         Brush.linearGradient(listOf(GlassWhite20, GlassWhite15))
                 )
@@ -500,7 +510,7 @@ fun GlassChatBubble(message: UiChatMessage) {  // ← Use UiChatMessage
             } else {
                 Text(
                     text       = message.text,
-                    color      = if (isUser) DeepNavy else TextPrimary,
+                    color      = if (isUser) accent.onAccent else TextPrimary,
                     fontSize   = 15.sp,
                     lineHeight = 22.sp
                 )

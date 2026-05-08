@@ -36,6 +36,8 @@ fun SignUpScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val accent = LocalAccent.current
+    val tokens = LocalAppColors.current
 
     var name by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
@@ -91,12 +93,12 @@ fun SignUpScreen(
                     Box(
                         modifier = Modifier
                             .size(44.dp).clip(RoundedCornerShape(14.dp))
-                            .background(GlassWhite15)
-                            .border(0.7.dp, GlassBorder, RoundedCornerShape(14.dp))
+                            .background(tokens.surface)
+                            .border(0.8.dp, tokens.border, RoundedCornerShape(14.dp))
                             .clickable { onLoginClick() },
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = TextPrimary, modifier = Modifier.size(20.dp))
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = tokens.textPrimary, modifier = Modifier.size(20.dp))
                     }
                 }
 
@@ -105,13 +107,13 @@ fun SignUpScreen(
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Text(
                         text = "Create\nAccount",
-                        color = TextPrimary, fontSize = 40.sp,
+                        color = tokens.textPrimary, fontSize = 40.sp,
                         fontWeight = FontWeight.Black, letterSpacing = (-1.5).sp, lineHeight = 44.sp
                     )
                     Spacer(Modifier.height(8.dp))
                     Text(
                         text = "Join Dharohar Setu to explore India's heritage",
-                        color = TextSecondary, fontSize = 15.sp, fontWeight = FontWeight.Light
+                        color = tokens.textSecondary, fontSize = 15.sp, fontWeight = FontWeight.Light
                     )
                 }
 
@@ -166,7 +168,7 @@ fun SignUpScreen(
                             Spacer(Modifier.height(10.dp))
                             Text(
                                 errorMessage,
-                                color = Color(0xFFFF6B6B), fontSize = 13.sp,
+                                color = Color(0xFFC23B3B), fontSize = 13.sp,
                                 textAlign = TextAlign.Center,
                                 modifier = Modifier.fillMaxWidth()
                             )
@@ -176,7 +178,7 @@ fun SignUpScreen(
 
                         if (isLoading) {
                             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                                CircularProgressIndicator(color = AccentYellow, modifier = Modifier.size(32.dp))
+                                CircularProgressIndicator(color = accent.primary, modifier = Modifier.size(32.dp))
                             }
                         } else {
                             GlassPrimaryButton(
@@ -214,8 +216,8 @@ fun SignUpScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(16.dp))
-                                .background(GlassWhite10)
-                                .border(0.7.dp, GlassBorder, RoundedCornerShape(16.dp))
+                                .background(tokens.surface)
+                                .border(0.8.dp, tokens.border, RoundedCornerShape(16.dp))
                                 .clickable {
                                     val client = AuthManager.getGoogleSignInClient(context)
                                     googleLauncher.launch(client.signInIntent)
@@ -223,7 +225,7 @@ fun SignUpScreen(
                                 .padding(vertical = 16.dp),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text("Continue with Google", color = TextSecondary, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                            Text("Continue with Google", color = tokens.textSecondary, fontSize = 15.sp, fontWeight = FontWeight.Medium)
                         }
                     }
                 }
@@ -231,9 +233,9 @@ fun SignUpScreen(
                 Spacer(Modifier.height(28.dp))
 
                 Row {
-                    Text("Already have an account? ", color = TextTertiary, fontSize = 14.sp)
+                    Text("Already have an account? ", color = tokens.textTertiary, fontSize = 14.sp)
                     Text(
-                        "Sign in", color = AccentYellow, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                        "Sign in", color = accent.primary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.clickable { onLoginClick() }
                     )
                 }
@@ -242,7 +244,7 @@ fun SignUpScreen(
 
                 Text(
                     "Continue as Guest",
-                    color = TextTertiary, fontSize = 14.sp,
+                    color = tokens.textTertiary, fontSize = 14.sp,
                     modifier = Modifier.clickable { onBypassClick() }
                 )
 

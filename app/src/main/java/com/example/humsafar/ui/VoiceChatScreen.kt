@@ -114,12 +114,18 @@ private fun VoiceTopBar(
     onBack:    () -> Unit,
     onSettings: () -> Unit
 ) {
+    val accent = LocalAccent.current
+    val tokens = LocalAppColors.current
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Brush.verticalGradient(listOf(Color(0xF0050D1A), Color(0xBB050D1A))))
+            .background(
+                Brush.verticalGradient(
+                    listOf(tokens.surface.copy(alpha = 0.95f), tokens.surface.copy(alpha = 0.7f))
+                )
+            )
             .drawBehind {
-                drawLine(GlassBorder, Offset(0f, size.height), Offset(size.width, size.height), 0.5.dp.toPx())
+                drawLine(tokens.border, Offset(0f, size.height), Offset(size.width, size.height), 0.5.dp.toPx())
             }
             .statusBarsPadding()
             .padding(horizontal = 20.dp)
@@ -127,27 +133,26 @@ private fun VoiceTopBar(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             IconCircle(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = TextPrimary, modifier = Modifier.size(18.dp))
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = tokens.textPrimary, modifier = Modifier.size(18.dp))
             }
             Spacer(Modifier.width(14.dp))
             Box(
                 modifier = Modifier.size(40.dp).clip(CircleShape)
-                    .background(Brush.linearGradient(listOf(Color(0xFFFFD54F), Color(0xFFFFC107)))),
+                    .background(Brush.linearGradient(listOf(accent.primary, accent.dark))),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Default.Mic, null, tint = DeepNavy, modifier = Modifier.size(20.dp))
+                Icon(Icons.Default.Mic, null, tint = accent.onAccent, modifier = Modifier.size(20.dp))
             }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(siteName, color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text(siteName, color = tokens.textPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 Text(
-                    // Show node context vs site context in subtitle
                     if (nodeId.isNotBlank()) "Node Guide · Online" else "Heritage Guide · Online",
-                    color = TextTertiary, fontSize = 12.sp
+                    color = tokens.textTertiary, fontSize = 12.sp
                 )
             }
             IconCircle(onClick = onSettings) {
-                Icon(Icons.Default.Settings, null, tint = TextSecondary, modifier = Modifier.size(18.dp))
+                Icon(Icons.Default.Settings, null, tint = tokens.textSecondary, modifier = Modifier.size(18.dp))
             }
         }
     }
@@ -166,6 +171,7 @@ private fun IconCircle(onClick: () -> Unit, content: @Composable BoxScope.() -> 
 
 @Composable
 private fun EmptyHint(siteName: String) {
+    val accent = LocalAccent.current
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.fillMaxWidth().padding(top = 56.dp)
@@ -174,7 +180,7 @@ private fun EmptyHint(siteName: String) {
         Spacer(Modifier.height(20.dp))
         Text("Hold the mic to ask about", color = TextTertiary, fontSize = 14.sp, textAlign = TextAlign.Center)
         Spacer(Modifier.height(4.dp))
-        Text(siteName, color = AccentYellow, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
+        Text(siteName, color = accent.primary, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
         Spacer(Modifier.height(4.dp))
         Text("in English, Hindi, or Hinglish", color = TextTertiary, fontSize = 13.sp, textAlign = TextAlign.Center)
     }
@@ -182,9 +188,10 @@ private fun EmptyHint(siteName: String) {
 
 @Composable
 private fun VoiceMessageCard(response: VoiceChatResponse) {
+    val accent = LocalAccent.current
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            GlassCard(modifier = Modifier.widthIn(max = 280.dp), cornerRadius = 20.dp, tint = Color(0x2DFFD54F)) {
+            GlassCard(modifier = Modifier.widthIn(max = 280.dp), cornerRadius = 20.dp, tint = accent.tint) {
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
                     SectionLabel("You said")
                     Spacer(Modifier.height(4.dp))
@@ -235,6 +242,7 @@ private fun MicSection(
     onStopRecording:  () -> Unit,
     modifier:         Modifier = Modifier
 ) {
+    val accent = LocalAccent.current
     val isRecording  = uiState is VoiceUiState.Recording
     val isProcessing = uiState is VoiceUiState.Processing
 
@@ -270,7 +278,7 @@ private fun MicSection(
                     .background(when {
                         isRecording  -> Brush.linearGradient(listOf(Color(0xFFFF4444), Color(0xFFCC0000)))
                         isProcessing -> Brush.linearGradient(listOf(GlassWhite20, GlassWhite15))
-                        else         -> Brush.linearGradient(listOf(Color(0xFFFFD54F), Color(0xFFFFC107)))
+                        else         -> Brush.linearGradient(listOf(accent.primary, accent.dark))
                     })
                     .border(1.dp, if (isRecording) Color(0x55FFFFFF) else GlassBorder, CircleShape)
                     .clickable(enabled = !isProcessing) {

@@ -97,12 +97,18 @@ private fun HistoryHeader(
     refreshing: Boolean,
     count:      Int
 ) {
+    val accent = LocalAccent.current
+    val tokens = LocalAppColors.current
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Brush.verticalGradient(listOf(Color(0xF0050D1A), Color(0xBB050D1A))))
+            .background(
+                Brush.verticalGradient(
+                    listOf(tokens.surface.copy(alpha = 0.95f), tokens.surface.copy(alpha = 0.7f))
+                )
+            )
             .drawBehind {
-                drawLine(GlassBorder, Offset(0f, size.height), Offset(size.width, size.height), 0.5.dp.toPx())
+                drawLine(tokens.border, Offset(0f, size.height), Offset(size.width, size.height), 0.5.dp.toPx())
             }
             .statusBarsPadding()
             .padding(horizontal = 20.dp)
@@ -149,7 +155,7 @@ private fun HistoryHeader(
             ) {
                 Icon(
                     Icons.Default.Refresh, null,
-                    tint = if (refreshing) AccentYellow else TextSecondary,
+                    tint = if (refreshing) accent.primary else TextSecondary,
                     modifier = Modifier
                         .size(18.dp)
                         .then(if (refreshing) Modifier.rotate(spinAngle) else Modifier)
@@ -203,6 +209,7 @@ private fun HistoryRow(
     onToggle:       () -> Unit,
     onWriteReview:  () -> Unit
 ) {
+    val accent = LocalAccent.current
     GlassCard(modifier = Modifier.fillMaxWidth(), cornerRadius = 18.dp, tint = GlassWhite10) {
         Column {
             // Header row
@@ -219,9 +226,9 @@ private fun HistoryRow(
                         .size(48.dp).clip(RoundedCornerShape(14.dp))
                         .background(
                             if (item.reviewSubmitted)
-                                Brush.linearGradient(listOf(Color(0xFFFFD54F), Color(0xFFFFC107)))
+                                Brush.linearGradient(listOf(accent.primary, accent.dark))
                             else
-                                Brush.linearGradient(listOf(Color(0xFF1A2D52), Color(0xFF0E1C36)))
+                                Brush.linearGradient(listOf(LocalAppColors.current.surfaceMuted, LocalAppColors.current.bgWarmDeep))
                         )
                         .border(
                             0.7.dp,
@@ -357,10 +364,11 @@ private fun HistoryRow(
 
 @Composable
 private fun NodesBadge(visited: Int, total: Int, reviewed: Boolean) {
+    val accent = LocalAccent.current
     val (bg, fg, border) = when {
         total <= 0                -> Triple(GlassWhite10, TextTertiary, GlassBorder)
-        visited >= total          -> Triple(Color(0x224ADE80), Color(0xFFB6F5C9), Color(0x554ADE80))
-        else                      -> Triple(Color(0x222196F3), Color(0xFF8AC7FF), Color(0x552196F3))
+        visited >= total          -> Triple(Color(0x1F16A34A), Color(0xFF0E6B31), Color(0x4416A34A))
+        else                      -> Triple(Color(0x1F2563EB), Color(0xFF1640A8), Color(0x442563EB))
     }
     Box(
         modifier = Modifier
@@ -373,7 +381,7 @@ private fun NodesBadge(visited: Int, total: Int, reviewed: Boolean) {
             if (reviewed) {
                 Icon(
                     Icons.Default.Star, null,
-                    tint     = AccentYellow,
+                    tint     = accent.primary,
                     modifier = Modifier.size(11.dp)
                 )
                 Spacer(Modifier.width(4.dp))
@@ -403,9 +411,10 @@ private fun DetailStat(label: String, value: String) {
 
 @Composable
 private fun LoadingPanel() {
+    val accent = LocalAccent.current
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            CircularProgressIndicator(color = AccentYellow, modifier = Modifier.size(36.dp))
+            CircularProgressIndicator(color = accent.primary, modifier = Modifier.size(36.dp))
             Spacer(Modifier.height(14.dp))
             Text("Loading your journey…", color = TextSecondary, fontSize = 14.sp)
         }

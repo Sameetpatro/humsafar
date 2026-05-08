@@ -34,6 +34,8 @@ fun AmenityDetailScreen(
     onBack:    () -> Unit
 ) {
     val context = LocalContext.current
+    val accent = LocalAccent.current
+    val tokens = LocalAppColors.current
     var amenity  by remember { mutableStateOf<AmenityResponse?>(null) }
     var loading  by remember { mutableStateOf(true) }
     var error    by remember { mutableStateOf<String?>(null) }
@@ -65,7 +67,7 @@ fun AmenityDetailScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Brush.verticalGradient(listOf(Color(0xF0050D1A), Color(0xBB050D1A))))
+                    .background(Brush.verticalGradient(listOf(tokens.surface.copy(alpha = 0.95f), tokens.surface.copy(alpha = 0.7f))))
                     .statusBarsPadding()
                     .padding(horizontal = 20.dp)
                     .padding(top = 12.dp, bottom = 16.dp)
@@ -144,7 +146,7 @@ fun AmenityDetailScreen(
                                         .background(
                                             Brush.radialGradient(
                                                 listOf(
-                                                    if (a.type == "shop") Color(0xFFFFD54F).copy(glow * 0.3f)
+                                                    if (a.type == "shop") accent.primary.copy(glow * 0.3f)
                                                     else Color(0xFF2196F3).copy(glow * 0.3f),
                                                     Color.Transparent
                                                 )
@@ -157,7 +159,7 @@ fun AmenityDetailScreen(
                                             .size(80.dp).clip(CircleShape)
                                             .background(
                                                 if (a.type == "shop")
-                                                    Brush.linearGradient(listOf(Color(0xFFFFD54F), Color(0xFFFFC107)))
+                                                    Brush.linearGradient(listOf(accent.primary, accent.dark))
                                                 else
                                                     Brush.linearGradient(listOf(Color(0xFF2196F3), Color(0xFF1565C0)))
                                             )
@@ -180,18 +182,18 @@ fun AmenityDetailScreen(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(50))
                                         .background(
-                                            if (a.type == "shop") Color(0x22FFD54F) else Color(0x222196F3)
+                                            if (a.type == "shop") accent.primary.copy(alpha = 0.13f) else Color(0x222196F3)
                                         )
                                         .border(
                                             0.7.dp,
-                                            if (a.type == "shop") Color(0x55FFD54F) else Color(0x552196F3),
+                                            if (a.type == "shop") accent.primary.copy(alpha = 0.35f) else Color(0x552196F3),
                                             RoundedCornerShape(50)
                                         )
                                         .padding(horizontal = 16.dp, vertical = 6.dp)
                                 ) {
                                     Text(
                                         text = if (a.type == "shop") "🛍️  Shop" else "🚻  Washroom",
-                                        color = if (a.type == "shop") AccentYellow else Color(0xFF64B5F6),
+                                        color = if (a.type == "shop") accent.primary else Color(0xFF1565C0),
                                         fontSize = 13.sp, fontWeight = FontWeight.Medium
                                     )
                                 }
@@ -213,7 +215,7 @@ fun AmenityDetailScreen(
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Icon(
                                         Icons.Default.LocationOn, null,
-                                        tint = AccentYellow, modifier = Modifier.size(18.dp)
+                                        tint = accent.primary, modifier = Modifier.size(18.dp)
                                     )
                                     Spacer(Modifier.width(10.dp))
                                     Text(

@@ -27,6 +27,7 @@ fun TripInfoButton(
     onEndTripClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val accent = LocalAccent.current
     var showBottomSheet by remember { mutableStateOf(false) }
 
     val infiniteTransition = rememberInfiniteTransition(label = "trip_pulse")
@@ -58,7 +59,7 @@ fun TripInfoButton(
                 .background(
                     Brush.radialGradient(
                         listOf(
-                            AccentYellow.copy(alpha = glowAlpha * 0.3f),
+                            accent.primary.copy(alpha = glowAlpha * 0.3f),
                             Color.Transparent
                         )
                     )
@@ -71,13 +72,13 @@ fun TripInfoButton(
                 .clip(CircleShape)
                 .background(
                     Brush.linearGradient(
-                        listOf(Color(0xFFFFD54F), Color(0xFFFFC107))
+                        listOf(accent.primary, accent.dark)
                     )
                 )
                 .border(
                     2.dp,
                     Brush.linearGradient(
-                        listOf(Color(0x66FFFFFF), Color(0x22FFFFFF))
+                        listOf(Color(0x66FFFFFF), Color(0x22000000))
                     ),
                     CircleShape
                 )
@@ -87,7 +88,7 @@ fun TripInfoButton(
             Icon(
                 Icons.Default.Info,
                 contentDescription = "Trip Info",
-                tint = DeepNavy,
+                tint = accent.onAccent,
                 modifier = Modifier.size(26.dp)
             )
         }
@@ -98,13 +99,13 @@ fun TripInfoButton(
                 .offset(x = 4.dp, y = (-4).dp)
                 .size(22.dp)
                 .clip(CircleShape)
-                .background(Color(0xFF4ADE80))
-                .border(2.dp, DeepNavy, CircleShape),
+                .background(Color(0xFF16A34A))
+                .border(2.dp, Color.White, CircleShape),
             contentAlignment = Alignment.Center
         ) {
             Text(
                 "$visitedCount",
-                color = DeepNavy,
+                color = Color.White,
                 fontSize = 10.sp,
                 fontWeight = FontWeight.ExtraBold
             )
@@ -139,12 +140,14 @@ private fun TripInfoBottomSheet(
     onDirectionsClick: () -> Unit,
     onEndTripClick: () -> Unit
 ) {
+    val accent = LocalAccent.current
+    val tokens = LocalAppColors.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = Color(0xFF0A1628),
+        containerColor = tokens.surface,
         dragHandle = {
             Box(
                 modifier = Modifier
@@ -171,7 +174,7 @@ private fun TripInfoBottomSheet(
                         .size(48.dp)
                         .clip(CircleShape)
                         .background(
-                            Brush.linearGradient(listOf(AccentYellow, GoldGlow))
+                            Brush.linearGradient(listOf(accent.primary, accent.dark))
                         ),
                     contentAlignment = Alignment.Center
                 ) {
@@ -181,25 +184,25 @@ private fun TripInfoBottomSheet(
                 Column(Modifier.weight(1f)) {
                     Text(
                         "Active Trip",
-                        color = AccentYellow,
+                        color = accent.dark,
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
                         siteName,
-                        color = TextSecondary,
+                        color = tokens.textSecondary,
                         fontSize = 14.sp
                     )
                 }
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(50))
-                        .background(Color(0x224ADE80))
+                        .background(Color(0x1F16A34A))
                         .padding(horizontal = 12.dp, vertical = 6.dp)
                 ) {
                     Text(
                         "$visitedCount/$totalCount",
-                        color = Color(0xFF4ADE80),
+                        color = Color(0xFF0E6B31),
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold
                     )

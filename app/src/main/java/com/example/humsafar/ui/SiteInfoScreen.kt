@@ -72,6 +72,8 @@ fun SiteInfoScreen(
         loading = false
     }
 
+    val tokens = LocalAppColors.current
+
     Box(Modifier.fillMaxSize()) {
         AnimatedOrbBackground(Modifier.fillMaxSize())
 
@@ -81,9 +83,13 @@ fun SiteInfoScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Brush.verticalGradient(listOf(Color(0xF0050D1A), Color(0xBB050D1A))))
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(tokens.surface.copy(alpha = 0.97f), tokens.surfaceMuted.copy(alpha = 0.92f))
+                        )
+                    )
                     .drawBehind {
-                        drawLine(GlassBorder, Offset(0f, size.height), Offset(size.width, size.height), 0.5.dp.toPx())
+                        drawLine(tokens.divider, Offset(0f, size.height), Offset(size.width, size.height), 0.5.dp.toPx())
                     }
                     .statusBarsPadding()
                     .padding(horizontal = 20.dp)
@@ -208,6 +214,8 @@ private fun ExploreButton(
     siteId:    Int,
     onExplore: (String, String) -> Unit
 ) {
+    val accent = LocalAccent.current
+    val tokens = LocalAppColors.current
     val inf     = rememberInfiniteTransition(label = "explore")
     val shimmer by inf.animateFloat(
         0f, 1f,
@@ -224,14 +232,18 @@ private fun ExploreButton(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
-            .background(Brush.linearGradient(listOf(Color(0xFF1A1000), Color(0xFF2A1F00), Color(0xFF1A1400))))
+            .background(
+                Brush.linearGradient(
+                    listOf(accent.dark.copy(alpha = 0.10f), accent.tint, tokens.surfaceMuted)
+                )
+            )
             .border(
                 1.5.dp,
                 Brush.linearGradient(
                     colorStops = arrayOf(
-                        (shimmer + 0.0f).rem(1f) to AccentYellow.copy(alpha = glow),
-                        (shimmer + 0.4f).rem(1f) to Color(0xFFFFC107).copy(alpha = glow * 0.6f),
-                        (shimmer + 0.8f).rem(1f) to AccentYellow.copy(alpha = glow)
+                        (shimmer + 0.0f).rem(1f) to accent.primary.copy(alpha = glow),
+                        (shimmer + 0.4f).rem(1f) to accent.dark.copy(alpha = glow * 0.6f),
+                        (shimmer + 0.8f).rem(1f) to accent.primary.copy(alpha = glow)
                     )
                 ),
                 RoundedCornerShape(20.dp)
@@ -247,9 +259,9 @@ private fun ExploreButton(
                 modifier = Modifier
                     .size(50.dp).clip(CircleShape)
                     .background(
-                        Brush.radialGradient(listOf(AccentYellow.copy(0.3f), Color(0xFFFFC107).copy(0.1f)))
+                        Brush.radialGradient(listOf(accent.primary.copy(0.3f), accent.dark.copy(0.1f)))
                     )
-                    .border(1.dp, AccentYellow.copy(0.5f), CircleShape),
+                    .border(1.dp, accent.primary.copy(0.5f), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 Text("🏛️", fontSize = 22.sp)
@@ -258,24 +270,24 @@ private fun ExploreButton(
             Column(Modifier.weight(1f)) {
                 Text(
                     "Explore This Place",
-                    color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold
+                    color = tokens.textPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold
                 )
                 Text(
                     "History • AI Guide • Voice • Gallery",
-                    color = AccentYellow.copy(alpha = 0.75f), fontSize = 12.sp
+                    color = accent.primary.copy(alpha = 0.85f), fontSize = 12.sp
                 )
             }
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(50))
-                    .background(AccentYellow.copy(alpha = 0.18f))
-                    .border(0.5.dp, AccentYellow.copy(0.4f), RoundedCornerShape(50))
+                    .background(accent.primary.copy(alpha = 0.18f))
+                    .border(0.5.dp, accent.primary.copy(0.4f), RoundedCornerShape(50))
                     .padding(horizontal = 10.dp, vertical = 6.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     Icons.Default.ChevronRight, null,
-                    tint = AccentYellow, modifier = Modifier.size(18.dp)
+                    tint = accent.primary, modifier = Modifier.size(18.dp)
                 )
             }
         }
@@ -333,7 +345,7 @@ private fun SiteInfoWeatherCard(weather: WeatherService.WeatherResult) {
                     Spacer(Modifier.height(6.dp))
                     Text(
                         suggestions.joinToString(" · "),
-                        color = AccentYellow, fontSize = 12.sp
+                        color = LocalAccent.current.primary, fontSize = 12.sp
                     )
                 }
             }
@@ -353,7 +365,7 @@ private fun RatingRow(rating: Double) {
         Spacer(Modifier.width(6.dp))
         Text(
             "%.1f".format(rating),
-            color = AccentYellow, fontSize = 16.sp, fontWeight = FontWeight.Bold
+            color = LocalAccent.current.primary, fontSize = 16.sp, fontWeight = FontWeight.Bold
         )
         Spacer(Modifier.width(8.dp))
         Text("Community rating", color = TextTertiary, fontSize = 12.sp)

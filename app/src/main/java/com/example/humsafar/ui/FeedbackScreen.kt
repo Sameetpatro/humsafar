@@ -126,6 +126,8 @@ fun FeedbackScreen(
     onBack: () -> Unit,
     viewModel: FeedbackViewModel = viewModel()
 ) {
+    val accent = LocalAccent.current
+    val tokens = LocalAppColors.current
     val state         by viewModel.state.collectAsStateWithLifecycle()
     val activeSite    by ActiveSiteManager.activeSite.collectAsStateWithLifecycle()
     val firebaseUser  by AuthManager.currentUser.collectAsStateWithLifecycle()
@@ -146,7 +148,7 @@ fun FeedbackScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Brush.verticalGradient(listOf(Color(0xF0050D1A), Color(0xBB050D1A))))
+                    .background(Brush.verticalGradient(listOf(tokens.surface.copy(alpha = 0.95f), tokens.surface.copy(alpha = 0.7f))))
                     .statusBarsPadding()
                     .padding(horizontal = 20.dp)
                     .padding(top = 12.dp, bottom = 16.dp)
@@ -214,10 +216,10 @@ fun FeedbackScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(14.dp))
-                                .background(if (selected) Color(0x22FFD54F) else GlassWhite10)
+                                .background(if (selected) accent.tint else GlassWhite10)
                                 .border(
-                                    0.7.dp,
-                                    if (selected) AccentYellow else GlassBorder,
+                                    0.8.dp,
+                                    if (selected) accent.primary else GlassBorder,
                                     RoundedCornerShape(14.dp)
                                 )
                                 .clickable { category = id }
@@ -225,7 +227,7 @@ fun FeedbackScreen(
                         ) {
                             Text(
                                 label,
-                                color    = if (selected) AccentYellow else TextPrimary,
+                                color    = if (selected) accent.dark else TextPrimary,
                                 fontSize = 14.sp,
                                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium
                             )
@@ -307,13 +309,13 @@ fun FeedbackScreen(
                         Box(
                             modifier = Modifier
                                 .size(24.dp).clip(CircleShape)
-                                .background(if (anonymous) AccentYellow else GlassWhite15)
-                                .border(0.7.dp, if (anonymous) AccentYellow else GlassBorder, CircleShape),
+                                .background(if (anonymous) accent.primary else GlassWhite15)
+                                .border(0.7.dp, if (anonymous) accent.primary else GlassBorder, CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
                             if (anonymous) Icon(
                                 Icons.Default.CheckCircle, null,
-                                tint     = DeepNavy,
+                                tint     = accent.onAccent,
                                 modifier = Modifier.size(14.dp)
                             )
                         }
@@ -348,7 +350,7 @@ fun FeedbackScreen(
                 // ── Submit button ───────────────────────────────────────
                 if (state is FeedbackSubmitState.Submitting) {
                     Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = AccentYellow, modifier = Modifier.size(36.dp))
+                        CircularProgressIndicator(color = accent.primary, modifier = Modifier.size(36.dp))
                     }
                 } else {
                     GlassPrimaryButton(

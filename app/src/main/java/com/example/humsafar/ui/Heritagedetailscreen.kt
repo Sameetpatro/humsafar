@@ -85,7 +85,9 @@ import com.example.humsafar.network.SiteDetail
 import com.example.humsafar.network.SiteImage
 import com.example.humsafar.network.WeatherService
 import com.example.humsafar.ui.components.AnimatedOrbBackground
-import com.example.humsafar.ui.theme.AccentYellow
+import com.example.humsafar.ui.components.GlassCard
+import com.example.humsafar.ui.theme.LocalAccent
+import com.example.humsafar.ui.theme.LocalAppColors
 import com.example.humsafar.ui.theme.GlassBorder
 import com.example.humsafar.ui.theme.GlassWhite10
 import com.example.humsafar.ui.theme.TextPrimary
@@ -271,9 +273,7 @@ fun HeritageDetailScreen(
 
                             HeritageActionCard(
                                 icon = "📷", title = "Scan Node to Start Trip",
-                                subtitle = "Scan QR & explore nodes",
-                                gradientColors = listOf(Color(0xFF0D2825), Color(0xFF091F1E)),
-                                borderColor = Color(0xFF2DD4BF)
+                                subtitle = "Scan QR & explore nodes"
                             ) { onNavigateToQrScan(siteId) }
                             Spacer(Modifier.height(16.dp))
 
@@ -351,9 +351,7 @@ fun HeritageDetailScreen(
 
                             HeritageActionCard(
                                 icon = "💬", title = "Feedback",
-                                subtitle = "Share your experience",
-                                gradientColors = listOf(Color(0xFF0D2825), Color(0xFF091F1E)),
-                                borderColor = Color(0xFF2DD4BF)
+                                subtitle = "Share your experience"
                             ) { Toast.makeText(context, "Coming soon", Toast.LENGTH_SHORT).show() }
 
                             // Extra bottom padding so floating bar doesn't overlap last item
@@ -417,6 +415,8 @@ private fun HeritageHearPageCard(
     onSpeak:   () -> Unit,
     onStop:    () -> Unit
 ) {
+    val accent = LocalAccent.current
+    val tokens = LocalAppColors.current
     val inf   = rememberInfiniteTransition(label = "hearPage")
     val glow  by inf.animateFloat(
         0.35f, 0.65f,
@@ -429,23 +429,26 @@ private fun HeritageHearPageCard(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .background(Brush.linearGradient(listOf(Color(0xFF1A0050), Color(0xFF0D0030))))
+            .background(
+                Brush.linearGradient(
+                    listOf(accent.tint.copy(alpha = if (isActive) 0.95f else 0.75f), tokens.surface)
+                )
+            )
             .border(
                 1.dp,
-                Color(0xFF9B30FF).copy(alpha = if (isActive) glow else 0.4f),
+                accent.primary.copy(alpha = if (isActive) glow else 0.35f),
                 RoundedCornerShape(16.dp)
             )
             .clickable { if (isActive) onStop() else onSpeak() }
             .padding(16.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            // Animated mic/stop icon
             Box(
                 modifier = Modifier
                     .size(44.dp)
                     .clip(CircleShape)
-                    .background(Color(0xFF9B30FF).copy(alpha = if (isActive) glow * 0.5f else 0.2f))
-                    .border(1.dp, Color(0xFF9B30FF).copy(if (isActive) glow else 0.4f), CircleShape),
+                    .background(accent.primary.copy(alpha = if (isActive) glow * 0.35f else 0.14f))
+                    .border(1.dp, accent.primary.copy(alpha = if (isActive) glow else 0.35f), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 Text(if (isActive) "⏹️" else "🎧", fontSize = 18.sp)
@@ -454,20 +457,20 @@ private fun HeritageHearPageCard(
             Column(Modifier.weight(1f)) {
                 Text(
                     if (isActive) "Stop Narration" else "Hear This Page",
-                    color = TextPrimary,
+                    color = tokens.textPrimary,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
                     if (isActive) "Tap to stop listening" else "Listen to the full page narration",
-                    color = Color(0xFF9B30FF).copy(alpha = 0.8f),
+                    color = accent.dark.copy(alpha = 0.85f),
                     fontSize = 11.sp
                 )
             }
             Icon(
                 if (isActive) Icons.Default.Stop else Icons.Default.VolumeUp,
                 contentDescription = null,
-                tint = Color(0xFF9B30FF).copy(alpha = 0.7f),
+                tint = accent.primary.copy(alpha = 0.75f),
                 modifier = Modifier.size(20.dp)
             )
         }
@@ -486,6 +489,8 @@ private fun TtsControlBar(
     onStop:             () -> Unit,
     modifier:           Modifier = Modifier
 ) {
+    val accent = LocalAccent.current
+    val tokens = LocalAppColors.current
     val inf   = rememberInfiniteTransition(label = "tts")
     val pulse by inf.animateFloat(
         0.6f, 1f,
@@ -500,11 +505,13 @@ private fun TtsControlBar(
         modifier = modifier
             .clip(RoundedCornerShape(50))
             .background(
-                Brush.linearGradient(listOf(Color(0xEE1A0050), Color(0xEE0D0030)))
+                Brush.linearGradient(
+                    listOf(tokens.surface.copy(alpha = 0.98f), accent.tint.copy(alpha = 0.55f))
+                )
             )
             .border(
                 1.dp,
-                Color(0xFF9B30FF).copy(alpha = if (isSpeaking) pulse else 0.4f),
+                accent.primary.copy(alpha = if (isSpeaking) pulse else 0.35f),
                 RoundedCornerShape(50)
             )
             .padding(horizontal = 20.dp, vertical = 12.dp)
@@ -513,14 +520,13 @@ private fun TtsControlBar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // Animated speaker dot
             Box(
                 modifier = Modifier
                     .size(32.dp)
                     .clip(CircleShape)
                     .background(
-                        Color(0xFF9B30FF).copy(
-                            alpha = if (isSpeaking) pulse * 0.4f else 0.15f
+                        accent.primary.copy(
+                            alpha = if (isSpeaking) pulse * 0.22f else 0.12f
                         )
                     ),
                 contentAlignment = Alignment.Center
@@ -528,12 +534,11 @@ private fun TtsControlBar(
                 Icon(
                     Icons.Default.VolumeUp,
                     contentDescription = null,
-                    tint     = Color(0xFF9B30FF),
+                    tint     = accent.primary,
                     modifier = Modifier.size(16.dp)
                 )
             }
 
-            // Label
             Column {
                 Text(
                     text = when (ttsStatus) {
@@ -541,14 +546,14 @@ private fun TtsControlBar(
                         TtsStatus.PAUSED   -> "Paused"
                         TtsStatus.IDLE     -> ""
                     },
-                    color    = Color(0xCCFFFFFF),
+                    color    = tokens.textPrimary,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Medium
                 )
                 if (activeSectionLabel.isNotBlank()) {
                     Text(
                         activeSectionLabel,
-                        color    = Color(0xFF9B30FF).copy(alpha = 0.8f),
+                        color    = accent.dark.copy(alpha = 0.8f),
                         fontSize = 11.sp
                     )
                 }
@@ -556,31 +561,29 @@ private fun TtsControlBar(
 
             Spacer(Modifier.weight(1f))
 
-            // Pause / Resume button
             Box(
                 modifier = Modifier
                     .size(38.dp)
                     .clip(CircleShape)
-                    .background(Color(0x339B30FF))
-                    .border(0.7.dp, Color(0xFF9B30FF).copy(0.5f), CircleShape)
+                    .background(accent.primary.copy(alpha = 0.12f))
+                    .border(0.7.dp, accent.primary.copy(alpha = 0.35f), CircleShape)
                     .clickable { onTogglePause() },
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     if (isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
                     contentDescription = if (isPaused) "Resume" else "Pause",
-                    tint     = Color(0xFF9B30FF),
+                    tint     = accent.primary,
                     modifier = Modifier.size(18.dp)
                 )
             }
 
-            // Stop button
             Box(
                 modifier = Modifier
                     .size(38.dp)
                     .clip(CircleShape)
                     .background(Color(0x33FF5252))
-                    .border(0.7.dp, Color(0xFFFF5252).copy(0.5f), CircleShape)
+                    .border(0.7.dp, Color(0xFFFF5252).copy(alpha = 0.5f), CircleShape)
                     .clickable { onStop() },
                 contentAlignment = Alignment.Center
             ) {
@@ -610,7 +613,8 @@ private fun HeritageContentCard(
     onStop:             () -> Unit,
     onTogglePause:      () -> Unit
 ) {
-    // Is THIS section the active one?
+    val accent = LocalAccent.current
+    val tokens = LocalAppColors.current
     val isThisActive = activeSectionLabel == sectionLabel && ttsStatus != TtsStatus.IDLE
     val isSpeaking   = isThisActive && ttsStatus == TtsStatus.SPEAKING
     val isPaused     = isThisActive && ttsStatus == TtsStatus.PAUSED
@@ -629,7 +633,7 @@ private fun HeritageContentCard(
         ) {
             Text(
                 title,
-                color      = if (isThisActive) AccentYellow else TextPrimary,
+                color      = if (isThisActive) accent.dark else TextPrimary,
                 fontSize   = 15.sp,
                 fontWeight = FontWeight.Bold,
                 modifier   = Modifier.weight(1f)
@@ -646,15 +650,15 @@ private fun HeritageContentCard(
                         modifier = Modifier
                             .size(30.dp)
                             .clip(CircleShape)
-                            .background(Color(0x339B30FF))
-                            .border(0.7.dp, Color(0xFF9B30FF).copy(0.5f), CircleShape)
+                            .background(accent.primary.copy(alpha = 0.18f))
+                            .border(0.7.dp, accent.primary.copy(alpha = 0.45f), CircleShape)
                             .clickable { onTogglePause() },
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             if (isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
                             contentDescription = if (isPaused) "Resume" else "Pause",
-                            tint     = Color(0xFF9B30FF),
+                            tint     = accent.primary,
                             modifier = Modifier.size(14.dp)
                         )
                     }
@@ -664,7 +668,7 @@ private fun HeritageContentCard(
                             .size(30.dp)
                             .clip(CircleShape)
                             .background(Color(0x33FF5252))
-                            .border(0.7.dp, Color(0xFFFF5252).copy(0.5f), CircleShape)
+                            .border(0.7.dp, Color(0xFFFF5252).copy(alpha = 0.5f), CircleShape)
                             .clickable { onStop() },
                         contentAlignment = Alignment.Center
                     ) {
@@ -681,10 +685,10 @@ private fun HeritageContentCard(
                         modifier = Modifier
                             .size(32.dp)
                             .clip(CircleShape)
-                            .background(Color(0x221A0050))
+                            .background(accent.tint.copy(alpha = 0.55f))
                             .border(
                                 0.7.dp,
-                                Color(0xFF9B30FF).copy(alpha = 0.4f),
+                                accent.primary.copy(alpha = 0.35f),
                                 CircleShape
                             )
                             .clickable { onSpeak() },
@@ -693,7 +697,7 @@ private fun HeritageContentCard(
                         Icon(
                             Icons.Default.VolumeUp,
                             contentDescription = "Listen to $title",
-                            tint     = Color(0xFF9B30FF),
+                            tint     = accent.primary,
                             modifier = Modifier.size(16.dp)
                         )
                     }
@@ -709,13 +713,15 @@ private fun HeritageContentCard(
                 .clip(RoundedCornerShape(16.dp))
                 .background(
                     if (isThisActive)
-                        Brush.linearGradient(listOf(Color(0x221A0050), Color(0x110D0030)))
+                        Brush.linearGradient(
+                            listOf(accent.tint.copy(alpha = 0.75f), tokens.surfaceMuted)
+                        )
                     else
                         Brush.linearGradient(listOf(GlassWhite10, GlassWhite10))
                 )
                 .border(
                     if (isThisActive) 1.dp else 0.7.dp,
-                    if (isThisActive) Color(0xFF9B30FF).copy(alpha = if (isSpeaking) glow else 0.4f)
+                    if (isThisActive) accent.primary.copy(alpha = if (isSpeaking) glow else 0.35f)
                     else GlassBorder,
                     RoundedCornerShape(16.dp)
                 )
@@ -761,7 +767,7 @@ private fun HeritageHeroGallery(siteName: String, images: List<SiteImage>, onBac
                     images.forEachIndexed { i, _ ->
                         Box(
                             Modifier.size(if (i == currentIndex) 10.dp else 6.dp).clip(CircleShape)
-                                .background(if (i == currentIndex) AccentYellow else Color.White.copy(alpha = 0.5f))
+                                .background(if (i == currentIndex) LocalAccent.current.primary else Color.White.copy(alpha = 0.5f))
                         )
                     }
                 }
@@ -797,24 +803,27 @@ private fun HeritageHeroGallery(siteName: String, images: List<SiteImage>, onBac
 
 @Composable
 private fun HeritageWeatherCard(weather: WeatherService.WeatherResult) {
+    val accent = LocalAccent.current
+    val tokens = LocalAppColors.current
     val suggestions = remember(weather) { WeatherService.weatherSuggestions(weather.tempC, weather.weatherCode) }
-    Box(
-        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp))
-            .background(Brush.linearGradient(listOf(Color(0xFF1E3A5F), Color(0xFF0D2137))))
-            .border(1.dp, Color(0xFF2E5A8F).copy(alpha = 0.5f), RoundedCornerShape(20.dp)).padding(20.dp)
+    GlassCard(
+        modifier = Modifier.fillMaxWidth(),
+        cornerRadius = 20.dp,
+        tint = accent.primary.copy(alpha = 0.10f),
+        borderColor = accent.primary.copy(alpha = 0.22f)
     ) {
-        Column {
+        Column(Modifier.padding(20.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Column {
-                    Text("%.0f°C".format(weather.tempC), color = TextPrimary, fontSize = 32.sp, fontWeight = FontWeight.Bold)
-                    Text(weather.description, color = TextSecondary, fontSize = 14.sp)
+                    Text("%.0f°C".format(weather.tempC), color = tokens.textPrimary, fontSize = 32.sp, fontWeight = FontWeight.Bold)
+                    Text(weather.description, color = tokens.textSecondary, fontSize = 14.sp)
                 }
                 Text("🌡️", fontSize = 40.sp)
             }
             if (suggestions.isNotEmpty()) {
                 Spacer(Modifier.height(14.dp))
-                Text("Suggestions:", color = TextTertiary, fontSize = 12.sp)
-                suggestions.forEach { Text("• $it", color = AccentYellow, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp)) }
+                Text("Suggestions:", color = tokens.textTertiary, fontSize = 12.sp)
+                suggestions.forEach { Text("• $it", color = accent.primary, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp)) }
             }
         }
     }
@@ -849,37 +858,47 @@ private fun HeritageForecastSection(forecast: List<WeatherService.ForecastDay>) 
 
 @Composable
 private fun HeritageBuyTicketCard(onClick: () -> Unit) {
+    val accent = LocalAccent.current
+    val tokens = LocalAppColors.current
     val inf     = rememberInfiniteTransition(label = "ticket")
     val glow    by inf.animateFloat(0.4f, 0.9f, infiniteRepeatable(tween(1200, easing = EaseInOutSine), RepeatMode.Reverse), "tg")
     val shimmer by inf.animateFloat(0f, 1f, infiniteRepeatable(tween(2800, easing = LinearEasing), RepeatMode.Restart), "ts")
 
     Box(
         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp))
-            .background(Brush.linearGradient(listOf(Color(0xFF0A2340), Color(0xFF061628), Color(0xFF0D2845))))
+            .background(
+                Brush.linearGradient(
+                    listOf(
+                        accent.dark.copy(alpha = 0.08f),
+                        accent.tint.copy(alpha = 0.9f),
+                        tokens.surface
+                    )
+                )
+            )
             .border(1.5.dp, Brush.linearGradient(colorStops = arrayOf(
-                (shimmer + 0.0f).rem(1f) to Color(0xFF4A90D9).copy(alpha = glow),
-                (shimmer + 0.4f).rem(1f) to Color(0xFF7BB8F0).copy(alpha = glow * 0.5f),
-                (shimmer + 0.8f).rem(1f) to Color(0xFF4A90D9).copy(alpha = glow)
+                (shimmer + 0.0f).rem(1f) to accent.primary.copy(alpha = glow),
+                (shimmer + 0.4f).rem(1f) to accent.dark.copy(alpha = glow * 0.5f),
+                (shimmer + 0.8f).rem(1f) to accent.primary.copy(alpha = glow)
             )), RoundedCornerShape(20.dp))
             .clickable { onClick() }.padding(horizontal = 20.dp, vertical = 18.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             Box(
                 modifier = Modifier.size(50.dp).clip(CircleShape)
-                    .background(Brush.radialGradient(listOf(Color(0xFF4A90D9).copy(0.25f), Color(0xFF2255AA).copy(0.1f))))
-                    .border(1.dp, Color(0xFF4A90D9).copy(0.4f), CircleShape),
+                    .background(Brush.radialGradient(listOf(accent.primary.copy(alpha = 0.22f), accent.tint.copy(alpha = 0.4f))))
+                    .border(1.dp, accent.primary.copy(alpha = 0.35f), CircleShape),
                 contentAlignment = Alignment.Center
             ) { Text("🎟️", fontSize = 22.sp) }
             Spacer(Modifier.size(16.dp))
             Column(Modifier.weight(1f)) {
-                Text("Buy Entry Ticket", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                Text("Skip the queue • Fast-track entry", color = Color(0xFF7BB8F0).copy(alpha = 0.8f), fontSize = 12.sp)
+                Text("Buy Entry Ticket", color = tokens.textPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text("Skip the queue • Fast-track entry", color = accent.dark.copy(alpha = 0.75f), fontSize = 12.sp)
             }
             Box(
-                modifier = Modifier.clip(RoundedCornerShape(50)).background(Color(0xFF4A90D9).copy(alpha = 0.15f))
-                    .border(0.5.dp, Color(0xFF4A90D9).copy(0.35f), RoundedCornerShape(50)).padding(horizontal = 10.dp, vertical = 6.dp),
+                modifier = Modifier.clip(RoundedCornerShape(50)).background(accent.primary.copy(alpha = 0.12f))
+                    .border(0.5.dp, accent.primary.copy(alpha = 0.3f), RoundedCornerShape(50)).padding(horizontal = 10.dp, vertical = 6.dp),
                 contentAlignment = Alignment.Center
-            ) { Text("›", color = Color(0xFF7BB8F0), fontSize = 20.sp, fontWeight = FontWeight.Light) }
+            ) { Text("›", color = accent.primary, fontSize = 20.sp, fontWeight = FontWeight.Light) }
         }
     }
 }
@@ -892,6 +911,8 @@ private fun HeritageBuyTicketCard(onClick: () -> Unit) {
 @Composable
 private fun HeritageTicketBottomSheet(siteName: String, onDismiss: () -> Unit) {
     val context    = LocalContext.current
+    val accent     = LocalAccent.current
+    val tokens     = LocalAppColors.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     data class TicketTier(val emoji: String, val name: String, val price: String, val desc: String)
     val tiers = listOf(
@@ -904,36 +925,37 @@ private fun HeritageTicketBottomSheet(siteName: String, onDismiss: () -> Unit) {
 
     ModalBottomSheet(
         onDismissRequest = onDismiss, sheetState = sheetState,
-        containerColor = Color(0xFF080F1E),
+        containerColor = tokens.surface,
+        contentColor   = tokens.textPrimary,
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
         dragHandle = {
             Box(Modifier.padding(top = 12.dp, bottom = 8.dp).size(width = 36.dp, height = 4.dp)
-                .clip(RoundedCornerShape(50)).background(Color(0x4DFFFFFF)))
+                .clip(RoundedCornerShape(50)).background(tokens.divider))
         }
     ) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 36.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     modifier = Modifier.size(52.dp).clip(CircleShape)
-                        .background(Brush.linearGradient(listOf(Color(0xFF1A3A6B), Color(0xFF0D2040))))
-                        .border(1.dp, Color(0xFF4A90D9).copy(0.4f), CircleShape),
+                        .background(Brush.linearGradient(listOf(accent.tint, tokens.surfaceMuted)))
+                        .border(1.dp, accent.primary.copy(alpha = 0.35f), CircleShape),
                     contentAlignment = Alignment.Center
                 ) { Text("🎟️", fontSize = 24.sp) }
                 Spacer(Modifier.size(14.dp))
                 Column {
-                    Text("Entry Tickets", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                    Text(siteName, color = Color(0x73FFFFFF), fontSize = 13.sp)
+                    Text("Entry Tickets", color = tokens.textPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    Text(siteName, color = tokens.textTertiary, fontSize = 13.sp)
                 }
             }
             Spacer(Modifier.height(14.dp))
             Box(
                 modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-                    .background(Color(0x1A4A90D9)).border(0.7.dp, Color(0xFF4A90D9).copy(0.2f), RoundedCornerShape(12.dp))
+                    .background(accent.tint.copy(alpha = 0.45f)).border(0.7.dp, accent.primary.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
                     .padding(horizontal = 14.dp, vertical = 10.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("ℹ️", fontSize = 14.sp); Spacer(Modifier.size(8.dp))
-                    Text("Tickets valid for same-day entry only. Carry valid ID proof.", color = Color(0xFF7BB8F0), fontSize = 12.sp, lineHeight = 17.sp)
+                    Text("Tickets valid for same-day entry only. Carry valid ID proof.", color = accent.dark.copy(alpha = 0.85f), fontSize = 12.sp, lineHeight = 17.sp)
                 }
             }
             Spacer(Modifier.height(16.dp))
@@ -941,31 +963,31 @@ private fun HeritageTicketBottomSheet(siteName: String, onDismiss: () -> Unit) {
                 val isSelected = selected == i
                 Box(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clip(RoundedCornerShape(16.dp))
-                        .background(if (isSelected) Brush.linearGradient(listOf(Color(0x331A5FA8), Color(0x220D3A6B))) else Brush.linearGradient(listOf(Color(0x1AFFFFFF), Color(0x1AFFFFFF))))
-                        .border(if (isSelected) 1.5.dp else 0.7.dp, if (isSelected) Color(0xFF4A90D9).copy(alpha = 0.7f) else Color(0x33FFFFFF), RoundedCornerShape(16.dp))
+                        .background(if (isSelected) accent.tint.copy(alpha = 0.75f) else tokens.surfaceMuted)
+                        .border(if (isSelected) 1.5.dp else 0.7.dp, if (isSelected) accent.primary.copy(alpha = 0.55f) else tokens.border, RoundedCornerShape(16.dp))
                         .clickable { selected = i }.padding(horizontal = 16.dp, vertical = 14.dp)
                 ) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Box(
                             modifier = Modifier.size(22.dp).clip(CircleShape)
-                                .background(if (isSelected) Color(0xFF4A90D9) else Color(0x1AFFFFFF))
-                                .border(1.5.dp, if (isSelected) Color(0xFF4A90D9) else Color(0x44FFFFFF), CircleShape),
+                                .background(if (isSelected) accent.primary else tokens.surface)
+                                .border(1.5.dp, if (isSelected) accent.primary else tokens.borderStrong, CircleShape),
                             contentAlignment = Alignment.Center
-                        ) { if (isSelected) Text("✓", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                        ) { if (isSelected) Text("✓", color = accent.onAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
                         Spacer(Modifier.size(12.dp)); Text(tier.emoji, fontSize = 20.sp); Spacer(Modifier.size(10.dp))
                         Column(Modifier.weight(1f)) {
-                            Text(tier.name, color = if (isSelected) Color(0xFF7BB8F0) else Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                            Text(tier.desc, color = Color(0x73FFFFFF), fontSize = 11.sp)
+                            Text(tier.name, color = if (isSelected) accent.dark else tokens.textPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                            Text(tier.desc, color = tokens.textTertiary, fontSize = 11.sp)
                         }
-                        Text(tier.price, color = if (isSelected) Color(0xFF7BB8F0) else Color(0xB3FFFFFF), fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                        Text(tier.price, color = if (isSelected) accent.primary else tokens.textSecondary, fontSize = 17.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
             Spacer(Modifier.height(24.dp))
             Box(
                 modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(50))
-                    .background(Brush.linearGradient(listOf(Color(0xFF2A6CC8), Color(0xFF1A4A90))))
-                    .border(1.dp, Color(0xFF7BB8F0).copy(alpha = 0.4f), RoundedCornerShape(50))
+                    .background(Brush.linearGradient(listOf(accent.primary, accent.dark)))
+                    .border(1.dp, accent.primary.copy(alpha = 0.35f), RoundedCornerShape(50))
                     .clickable {
                         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://tickets.dharoharsetu.in/buy?site=$siteName&tier=${tiers[selected].name}")))
                         onDismiss()
@@ -974,15 +996,15 @@ private fun HeritageTicketBottomSheet(siteName: String, onDismiss: () -> Unit) {
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("🎟️", fontSize = 16.sp); Spacer(Modifier.size(10.dp))
-                    Text("Proceed to Payment  •  ${tiers[selected].price}", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                    Text("Proceed to Payment  •  ${tiers[selected].price}", color = accent.onAccent, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                 }
             }
             Spacer(Modifier.height(10.dp))
             Box(
-                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(50)).background(Color(0x1AFFFFFF))
-                    .border(0.7.dp, Color(0x33FFFFFF), RoundedCornerShape(50)).clickable { onDismiss() }.padding(vertical = 14.dp),
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(50)).background(tokens.surfaceMuted)
+                    .border(0.7.dp, tokens.border, RoundedCornerShape(50)).clickable { onDismiss() }.padding(vertical = 14.dp),
                 contentAlignment = Alignment.Center
-            ) { Text("Cancel", color = Color(0x73FFFFFF), fontSize = 14.sp) }
+            ) { Text("Cancel", color = tokens.textSecondary, fontSize = 14.sp) }
         }
     }
 }
@@ -993,23 +1015,29 @@ private fun HeritageTicketBottomSheet(siteName: String, onDismiss: () -> Unit) {
 
 @Composable
 private fun HeritageVideoCard(label: String, onClick: () -> Unit) {
+    val accent = LocalAccent.current
+    val tokens = LocalAppColors.current
     Box(
         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp))
-            .background(Brush.linearGradient(listOf(Color(0xFF120038), Color(0xFF06001E))))
-            .border(1.dp, Color(0xFF9B30FF).copy(alpha = 0.5f), RoundedCornerShape(18.dp))
+            .background(
+                Brush.linearGradient(
+                    listOf(accent.tint.copy(alpha = 0.85f), tokens.surface)
+                )
+            )
+            .border(1.dp, accent.primary.copy(alpha = 0.45f), RoundedCornerShape(18.dp))
             .clickable(onClick = onClick).padding(18.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             Box(
-                Modifier.size(48.dp).clip(CircleShape).background(Brush.linearGradient(listOf(Color(0xFF9B30FF), Color(0xFF5B5FFF)))),
+                Modifier.size(48.dp).clip(CircleShape).background(Brush.linearGradient(listOf(accent.primary, accent.dark))),
                 contentAlignment = Alignment.Center
-            ) { Icon(Icons.Default.PlayArrow, null, tint = Color.White, modifier = Modifier.size(26.dp)) }
+            ) { Icon(Icons.Default.PlayArrow, null, tint = accent.onAccent, modifier = Modifier.size(26.dp)) }
             Spacer(Modifier.size(16.dp))
             Column(Modifier.weight(1f)) {
-                Text(label, color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                Text("Tap to watch", color = TextTertiary, fontSize = 12.sp)
+                Text(label, color = tokens.textPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text("Tap to watch", color = tokens.textTertiary, fontSize = 12.sp)
             }
-            Icon(Icons.Default.ChevronRight, null, tint = Color(0xFF9B30FF).copy(alpha = 0.8f), modifier = Modifier.size(24.dp))
+            Icon(Icons.Default.ChevronRight, null, tint = accent.primary.copy(alpha = 0.8f), modifier = Modifier.size(24.dp))
         }
     }
 }
@@ -1033,7 +1061,7 @@ private fun HeritageNodesSection(nodes: List<Node>) {
                         Box(
                             Modifier.size(36.dp).clip(CircleShape).background(Color(0xFF2E5A8F).copy(alpha = 0.5f)),
                             contentAlignment = Alignment.Center
-                        ) { Text("${node.sequenceOrder}", color = AccentYellow, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                        ) { Text("${node.sequenceOrder}", color = LocalAccent.current.primary, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
                         Spacer(Modifier.size(12.dp))
                         Text(node.name, color = TextPrimary, fontSize = 14.sp)
                     }
@@ -1049,19 +1077,25 @@ private fun HeritageNodesSection(nodes: List<Node>) {
 
 @Composable
 private fun HeritageHelplineCard(number: String, onClick: () -> Unit) {
+    val accent = LocalAccent.current
+    val tokens = LocalAppColors.current
     Box(
         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
-            .background(Brush.linearGradient(listOf(Color(0xFF0D2825), Color(0xFF051F1E))))
-            .border(1.dp, Color(0xFF2DD4BF).copy(alpha = 0.4f), RoundedCornerShape(16.dp))
+            .background(
+                Brush.linearGradient(
+                    listOf(accent.tint.copy(alpha = 0.6f), tokens.surface)
+                )
+            )
+            .border(1.dp, accent.primary.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
             .clickable(onClick = onClick).padding(16.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             Text("📞", fontSize = 28.sp); Spacer(Modifier.size(14.dp))
             Column(Modifier.weight(1f)) {
-                Text("Helpline", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                Text(number, color = TextSecondary, fontSize = 13.sp)
+                Text("Helpline", color = tokens.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Text(number, color = tokens.textSecondary, fontSize = 13.sp)
             }
-            Icon(Icons.Default.ChevronRight, null, tint = Color(0xFF2DD4BF).copy(alpha = 0.7f), modifier = Modifier.size(20.dp))
+            Icon(Icons.Default.ChevronRight, null, tint = accent.primary.copy(alpha = 0.7f), modifier = Modifier.size(20.dp))
         }
     }
 }
@@ -1073,24 +1107,33 @@ private fun HeritageHelplineCard(number: String, onClick: () -> Unit) {
 @Composable
 private fun HeritageActionCard(
     icon: String, title: String, subtitle: String,
-    gradientColors: List<Color>, borderColor: Color,
     onClick: () -> Unit
 ) {
+    val accent = LocalAccent.current
+    val tokens = LocalAppColors.current
     val inf  = rememberInfiniteTransition(label = "action")
     val glow by inf.animateFloat(0.35f, 0.65f, infiniteRepeatable(tween(1500, easing = EaseInOutSine), RepeatMode.Reverse), "glow")
     Box(
         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
-            .background(Brush.linearGradient(gradientColors))
-            .border(1.dp, borderColor.copy(alpha = glow), RoundedCornerShape(16.dp))
+            .background(
+                Brush.linearGradient(
+                    listOf(
+                        accent.tint.copy(alpha = 0.88f),
+                        tokens.surface,
+                        tokens.surfaceMuted
+                    )
+                )
+            )
+            .border(1.dp, accent.primary.copy(alpha = glow), RoundedCornerShape(16.dp))
             .clickable(onClick = onClick).padding(16.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(icon, fontSize = 28.sp); Spacer(Modifier.size(14.dp))
             Column(Modifier.weight(1f)) {
-                Text(title, color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                Text(subtitle, color = TextTertiary, fontSize = 11.sp)
+                Text(title, color = tokens.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Text(subtitle, color = tokens.textTertiary, fontSize = 11.sp)
             }
-            Icon(Icons.Default.ChevronRight, null, tint = borderColor.copy(alpha = 0.7f), modifier = Modifier.size(20.dp))
+            Icon(Icons.Default.ChevronRight, null, tint = accent.primary.copy(alpha = 0.7f), modifier = Modifier.size(20.dp))
         }
     }
 }
@@ -1102,10 +1145,11 @@ private fun HeritageActionCard(
 @Composable
 private fun HeritageChatbotFab(siteName: String, siteId: Int, modifier: Modifier = Modifier) {
     val context = LocalContext.current
+    val accent = LocalAccent.current
     Box(modifier = modifier) {
         Box(
             modifier = Modifier.size(64.dp).clip(CircleShape)
-                .background(Brush.linearGradient(listOf(Color(0xFFFFD54F), Color(0xFFFFC107))))
+                .background(Brush.linearGradient(listOf(accent.primary, accent.dark)))
                 .border(2.dp, Brush.linearGradient(listOf(Color(0x66FFFFFF), Color(0x22FFFFFF))), CircleShape)
                 .clickable {
                     context.startActivity(Intent(context, ChatbotActivity::class.java).apply {
@@ -1117,8 +1161,8 @@ private fun HeritageChatbotFab(siteName: String, siteId: Int, modifier: Modifier
             contentAlignment = Alignment.Center
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(Icons.AutoMirrored.Filled.Chat, null, tint = Color(0xFF050D1A), modifier = Modifier.size(22.dp))
-                Text("Ask", color = Color(0xFF050D1A), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Icon(Icons.AutoMirrored.Filled.Chat, null, tint = accent.onAccent, modifier = Modifier.size(22.dp))
+                Text("Ask", color = accent.onAccent, fontSize = 9.sp, fontWeight = FontWeight.Bold)
             }
         }
     }

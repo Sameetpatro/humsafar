@@ -41,6 +41,9 @@ fun ReviewScreen(
     onSkip: () -> Unit,
     viewModel: ReviewViewModel = viewModel()
 ) {
+    val accent = LocalAccent.current
+    val tokens = LocalAppColors.current
+
     var starRating  by remember { mutableStateOf(0) }
     var q1          by remember { mutableStateOf(0) }
     var q2          by remember { mutableStateOf(0) }
@@ -77,17 +80,17 @@ fun ReviewScreen(
                     modifier = Modifier
                         .size(42.dp)
                         .clip(CircleShape)
-                        .background(Color(0xBB000000))
-                        .border(0.5.dp, GlassBorder, CircleShape)
+                        .background(tokens.surface)
+                        .border(0.5.dp, tokens.border, CircleShape)
                         .clickable { onSkip() },
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = Color.White, modifier = Modifier.size(20.dp))
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = tokens.textPrimary, modifier = Modifier.size(20.dp))
                 }
                 Spacer(Modifier.width(12.dp))
                 Text(
                     "Rate Your Experience",
-                    color = AccentYellow,
+                    color = accent.primary,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -100,7 +103,7 @@ fun ReviewScreen(
                     .fillMaxWidth()
                     .padding(horizontal = 24.dp),
                 cornerRadius = 16.dp,
-                tint = Color(0x22FFD54F)
+                tint = accent.primary.copy(alpha = 0.14f)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(siteName, color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
@@ -135,12 +138,12 @@ fun ReviewScreen(
                             .size(48.dp)
                             .clip(CircleShape)
                             .background(
-                                if (selected) AccentYellow.copy(alpha = 0.5f)
+                                if (selected) accent.primary.copy(alpha = 0.5f)
                                 else GlassWhite10
                             )
                             .border(
                                 0.7.dp,
-                                if (selected) AccentYellow else GlassBorder,
+                                if (selected) accent.primary else GlassBorder,
                                 CircleShape
                             )
                             .clickable { starRating = stars },
@@ -149,7 +152,7 @@ fun ReviewScreen(
                         Icon(
                             Icons.Default.Star,
                             null,
-                            tint = if (selected) AccentYellow else TextTertiary,
+                            tint = if (selected) accent.primary else TextTertiary,
                             modifier = Modifier.size(24.dp)
                         )
                     }
@@ -281,6 +284,7 @@ private fun QuestionRow(
     selected: Int,
     onSelect: (Int) -> Unit
 ) {
+    val accent = LocalAccent.current
     Column(modifier = Modifier.padding(horizontal = 24.dp)) {
         Spacer(Modifier.height(20.dp))
         Text(question, color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
@@ -295,15 +299,15 @@ private fun QuestionRow(
                     modifier = Modifier
                         .weight(1f)
                         .clip(RoundedCornerShape(12.dp))
-                        .background(if (sel) AccentYellow.copy(alpha = 0.3f) else GlassWhite10)
-                        .border(0.7.dp, if (sel) AccentYellow else GlassBorder, RoundedCornerShape(12.dp))
+                        .background(if (sel) accent.primary.copy(alpha = 0.3f) else GlassWhite10)
+                        .border(0.7.dp, if (sel) accent.primary else GlassBorder, RoundedCornerShape(12.dp))
                         .clickable { onSelect(i) }
                         .padding(vertical = 10.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         labels[i - 1],
-                        color = if (sel) AccentYellow else TextSecondary,
+                        color = if (sel) accent.primary else TextSecondary,
                         fontSize = 11.sp,
                         textAlign = TextAlign.Center,
                         maxLines = 2

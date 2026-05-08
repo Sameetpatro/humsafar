@@ -134,7 +134,7 @@ fun TripCompletionScreen(
                             contentAlignment = Alignment.Center
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                CircularProgressIndicator(color = AccentYellow)
+                                CircularProgressIndicator(color = LocalAccent.current.primary)
                                 Spacer(Modifier.height(12.dp))
                                 Text(
                                     "Loading recommendations...",
@@ -255,7 +255,7 @@ private fun CompletionHeader(
 
         Text(
             text = "Namaskar",
-            color = AccentYellow,
+            color = LocalAccent.current.primary,
             fontSize = 32.sp,
             fontWeight = FontWeight.Black,
             textAlign = TextAlign.Center
@@ -276,7 +276,7 @@ private fun CompletionHeader(
         GlassCard(
             modifier = Modifier.fillMaxWidth(),
             cornerRadius = 16.dp,
-            tint = Color(0x22FFD54F)
+            tint = LocalAccent.current.primary.copy(alpha = 0.13f)
         ) {
             Column(
                 modifier = Modifier.padding(16.dp),
@@ -284,7 +284,7 @@ private fun CompletionHeader(
             ) {
                 Text(
                     text = siteName,
-                    color = AccentYellow,
+                    color = LocalAccent.current.primary,
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center
@@ -324,7 +324,7 @@ private fun StatItem(
 ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, null, tint = AccentYellow, modifier = Modifier.size(16.dp))
+            Icon(icon, null, tint = LocalAccent.current.primary, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(4.dp))
             Text(value, color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
         }
@@ -372,6 +372,7 @@ private fun RecommendationCard(
     recommendation: RecommendationResponse,
     context: android.content.Context
 ) {
+    val accent = LocalAccent.current
     val icon = when (recommendation.type) {
         "monument" -> "🏛️"
         "hotel" -> "🏨"
@@ -405,7 +406,7 @@ private fun RecommendationCard(
                     .height(100.dp)
                     .background(
                         Brush.linearGradient(
-                            listOf(Color(0xFF0D1F3C), Color(0xFF1E3050))
+                            listOf(accent.primary.copy(alpha = 0.85f), accent.dark.copy(alpha = 0.9f))
                         )
                     ),
                 contentAlignment = Alignment.Center
@@ -443,12 +444,13 @@ private fun BottomButtonsSection(
     onExploreRecommendations: () -> Unit,
     onSkip: () -> Unit
 ) {
+    val tokens = LocalAppColors.current
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .background(
                 Brush.verticalGradient(
-                    listOf(Color.Transparent, Color(0xF0050D1A))
+                    listOf(Color.Transparent, tokens.bgWarm.copy(alpha = 0.96f))
                 )
             )
             .padding(horizontal = 24.dp)
@@ -519,7 +521,7 @@ private fun FarewellMessage(
 
             Text(
                 text = "Visit Again",
-                color = AccentYellow,
+                color = LocalAccent.current.primary,
                 fontSize = 28.sp,
                 fontWeight = FontWeight.Black,
                 textAlign = TextAlign.Center
@@ -555,7 +557,7 @@ private fun FarewellMessage(
                         modifier = Modifier
                             .size(8.dp)
                             .clip(CircleShape)
-                            .background(AccentYellow.copy(alpha = alpha))
+                            .background(LocalAccent.current.primary.copy(alpha = alpha))
                     )
                 }
             }

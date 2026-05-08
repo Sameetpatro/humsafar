@@ -13,7 +13,7 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -387,12 +387,17 @@ fun DirectionsScreen(
 
 @Composable
 private fun DirectionsTopBar(siteName: String, onBack: () -> Unit) {
+    val tokens = LocalAppColors.current
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Brush.verticalGradient(listOf(Color(0xF0050D1A), Color(0xBB050D1A))))
+            .background(
+                Brush.verticalGradient(
+                    listOf(tokens.surface.copy(alpha = 0.95f), tokens.surface.copy(alpha = 0.7f))
+                )
+            )
             .drawBehind {
-                drawLine(GlassBorder, Offset(0f, size.height), Offset(size.width, size.height), 0.5.dp.toPx())
+                drawLine(tokens.border, Offset(0f, size.height), Offset(size.width, size.height), 0.5.dp.toPx())
             }
             .statusBarsPadding()
             .padding(horizontal = 20.dp)
@@ -434,7 +439,8 @@ private fun MapLegend(
     showAmenities: Boolean,
     modifier: Modifier = Modifier
 ) {
-    GlassCard(modifier = modifier, cornerRadius = 12.dp, tint = Color(0xDD050D1A)) {
+    val tokens = LocalAppColors.current
+    GlassCard(modifier = modifier, cornerRadius = 12.dp, tint = tokens.surfaceMuted) {
         Column(
             modifier = Modifier.padding(10.dp),
             verticalArrangement = Arrangement.spacedBy(5.dp)
@@ -487,6 +493,7 @@ private fun NodesProgressList(
     amenities:     List<AmenityResponse>,
     modifier:      Modifier = Modifier
 ) {
+    val accent = LocalAccent.current
     val washrooms = amenities.count { it.type == "washroom" }
     val shops     = amenities.count { it.type == "shop" }
 
@@ -506,7 +513,7 @@ private fun NodesProgressList(
                 ) {
                     Text(
                         "${visitedIds.size}/${nodes.size} visited",
-                        color = AccentYellow, fontSize = 12.sp, fontWeight = FontWeight.Medium
+                        color = accent.dark, fontSize = 12.sp, fontWeight = FontWeight.Medium
                     )
                 }
             }
@@ -527,9 +534,10 @@ private fun NodesProgressList(
             Spacer(Modifier.height(12.dp))
 
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(nodes) { node ->
+                itemsIndexed(nodes) { index, node ->
                     NodeProgressItem(
                         node      = node,
+                        stopIndex = index + 1,
                         isKing    = node.isKing,
                         isVisited = node.id in visitedIds,
                         isCurrent = node.id == currentNodeId
@@ -567,17 +575,19 @@ private fun AmenityChip(emoji: String, count: Int, label: String) {
 @Composable
 private fun NodeProgressItem(
     node:      NodePositionResponse,
+    stopIndex: Int,
     isKing:    Boolean,
     isVisited: Boolean,
     isCurrent: Boolean
 ) {
+    val accent = LocalAccent.current
     val backgroundColor = when {
-        isCurrent -> Color(0x33FFD54F)
-        isVisited -> Color(0x224ADE80)
+        isCurrent -> accent.tint
+        isVisited -> Color(0x1F16A34A)
         else      -> GlassWhite10
     }
     val borderColor = when {
-        isCurrent -> AccentYellow.copy(alpha = 0.5f)
+        isCurrent -> accent.primary.copy(alpha = 0.5f)
         isVisited -> VisitedNodeColor.copy(alpha = 0.3f)
         else      -> GlassBorder
     }
@@ -605,7 +615,7 @@ private fun NodeProgressItem(
             when {
                 isKing    -> Text("👑", fontSize = 14.sp)
                 isVisited -> Icon(Icons.Default.Check, null, tint = VisitedNodeColor, modifier = Modifier.size(16.dp))
-                else      -> Text("${node.sequenceOrder}", color = UnvisitedNodeColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                else      -> Text("$stopIndex", color = UnvisitedNodeColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
         }
 
@@ -615,7 +625,7 @@ private fun NodeProgressItem(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     node.name,
-                    color      = if (isCurrent) AccentYellow else TextPrimary,
+                    color      = if (isCurrent) accent.dark else TextPrimary,
                     fontSize   = 14.sp,
                     fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium
                 )
@@ -623,8 +633,8 @@ private fun NodeProgressItem(
                     Spacer(Modifier.width(6.dp))
                     Box(
                         modifier = Modifier.clip(RoundedCornerShape(50))
-                            .background(AccentYellow).padding(horizontal = 6.dp, vertical = 2.dp)
-                    ) { Text("NOW", color = DeepNavy, fontSize = 8.sp, fontWeight = FontWeight.ExtraBold) }
+                            .background(accent.primary).padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) { Text("NOW", color = accent.onAccent, fontSize = 8.sp, fontWeight = FontWeight.ExtraBold) }
                 }
             }
             Text(

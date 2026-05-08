@@ -26,6 +26,12 @@ import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.common.api.ApiException
 import kotlinx.coroutines.launch
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase C: LoginScreen refreshed for light theme + dynamic accent.
+// All Firebase / Google / email-link logic is unchanged from the previous
+// version — only colours and a few entrance animations were updated.
+// ─────────────────────────────────────────────────────────────────────────────
+
 @Composable
 fun LoginScreen(
     onSignupClick: () -> Unit,
@@ -34,6 +40,8 @@ fun LoginScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val accent = LocalAccent.current
+    val tokens = LocalAppColors.current
 
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -107,7 +115,7 @@ fun LoginScreen(
         AnimatedOrbBackground(modifier = Modifier.fillMaxSize())
 
         Canvas(modifier = Modifier.fillMaxSize()) {
-            val lineColor = Color(0x06FFFFFF)
+            val lineColor = Color(0x0A0E1014)
             val step = 60.dp.toPx()
             var y = 0f
             while (y < size.height) {
@@ -134,12 +142,12 @@ fun LoginScreen(
                     modifier = Modifier
                         .size(80.dp)
                         .clip(RoundedCornerShape(28.dp))
-                        .background(Brush.linearGradient(listOf(Color(0xFFFFD54F), Color(0xFFFFC107))))
-                        .border(1.dp, Brush.verticalGradient(listOf(Color(0x66FFFFFF), Color(0x11FFFFFF))), RoundedCornerShape(28.dp)),
+                        .background(Brush.linearGradient(listOf(accent.primary, accent.dark)))
+                        .border(1.dp, Brush.verticalGradient(listOf(Color(0x66FFFFFF), Color(0x11000000))), RoundedCornerShape(28.dp)),
                     contentAlignment = Alignment.Center
                 ) {
                     Box(Modifier.fillMaxSize().clip(RoundedCornerShape(28.dp))
-                        .background(Brush.verticalGradient(listOf(Color(0x55FFFFFF), Color.Transparent))))
+                        .background(Brush.verticalGradient(listOf(Color(0x33FFFFFF), Color.Transparent))))
                     Text("🏛️", fontSize = 36.sp)
                 }
 
@@ -147,12 +155,12 @@ fun LoginScreen(
 
                 Text(
                     text = "धरोहरसेतु",
-                    color = TextPrimary, fontSize = 38.sp,
+                    color = tokens.textPrimary, fontSize = 38.sp,
                     fontWeight = FontWeight.Black, letterSpacing = (-1).sp
                 )
                 Text(
                     text = "Your Heritage Companion",
-                    color = TextSecondary, fontSize = 14.sp,
+                    color = tokens.textSecondary, fontSize = 14.sp,
                     fontWeight = FontWeight.Light, letterSpacing = 0.5.sp
                 )
 
@@ -189,7 +197,7 @@ fun LoginScreen(
                         ) {
                             Text(
                                 text = if (forgotSent) "✓ Reset email sent!" else "Forgot Password?",
-                                color = if (forgotSent) Color(0xFF4ADE80) else AccentYellow,
+                                color = if (forgotSent) Color(0xFF15803D) else accent.primary,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Medium,
                                 modifier = Modifier.clickable {
@@ -207,7 +215,7 @@ fun LoginScreen(
 
                             Text(
                                 text = if (emailLinkSent) "✓ Link sent!" else "Email Link",
-                                color = if (emailLinkSent) Color(0xFF4ADE80) else Color(0xFF2196F3),
+                                color = if (emailLinkSent) Color(0xFF15803D) else accent.dark,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Medium,
                                 modifier = Modifier.clickable {
@@ -233,7 +241,7 @@ fun LoginScreen(
                             Spacer(Modifier.height(8.dp))
                             Text(
                                 "Check your email and click the sign-in link",
-                                color = Color(0xFF4ADE80),
+                                color = Color(0xFF15803D),
                                 fontSize = 12.sp,
                                 textAlign = TextAlign.Center,
                                 modifier = Modifier.fillMaxWidth()
@@ -244,7 +252,7 @@ fun LoginScreen(
                             Spacer(Modifier.height(8.dp))
                             Text(
                                 errorMessage,
-                                color = Color(0xFFFF6B6B),
+                                color = Color(0xFFC23B3B),
                                 fontSize = 13.sp,
                                 textAlign = TextAlign.Center,
                                 modifier = Modifier.fillMaxWidth()
@@ -255,7 +263,7 @@ fun LoginScreen(
 
                         if (isLoading) {
                             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                                CircularProgressIndicator(color = AccentYellow, modifier = Modifier.size(32.dp))
+                                CircularProgressIndicator(color = accent.primary, modifier = Modifier.size(32.dp))
                             }
                         } else {
                             GlassPrimaryButton(
@@ -283,9 +291,9 @@ fun LoginScreen(
                 Spacer(Modifier.height(20.dp))
 
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    Box(Modifier.weight(1f).height(0.5.dp).background(GlassBorder))
-                    Text("  or  ", color = TextTertiary, fontSize = 13.sp)
-                    Box(Modifier.weight(1f).height(0.5.dp).background(GlassBorder))
+                    Box(Modifier.weight(1f).height(0.7.dp).background(tokens.border))
+                    Text("  or  ", color = tokens.textTertiary, fontSize = 13.sp)
+                    Box(Modifier.weight(1f).height(0.7.dp).background(tokens.border))
                 }
 
                 Spacer(Modifier.height(20.dp))
@@ -294,13 +302,12 @@ fun LoginScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // ── FIX: Use getGoogleSignInIntent which resets stale session first ──
                     Box(
                         modifier = Modifier
                             .weight(1f)
                             .clip(RoundedCornerShape(16.dp))
-                            .background(GlassWhite15)
-                            .border(0.7.dp, GlassBorder, RoundedCornerShape(16.dp))
+                            .background(tokens.surface)
+                            .border(0.8.dp, tokens.border, RoundedCornerShape(16.dp))
                             .clickable(enabled = !isLoading) {
                                 errorMessage = ""
                                 isLoading = true
@@ -315,15 +322,15 @@ fun LoginScreen(
                             .padding(vertical = 16.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("G  Google", color = TextSecondary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                        Text("G  Google", color = tokens.textSecondary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                     }
 
                     Box(
                         modifier = Modifier
                             .weight(1f)
                             .clip(RoundedCornerShape(16.dp))
-                            .background(GlassWhite15)
-                            .border(0.7.dp, GlassBorder, RoundedCornerShape(16.dp))
+                            .background(tokens.surface)
+                            .border(0.8.dp, tokens.border, RoundedCornerShape(16.dp))
                             .clickable(enabled = !isLoading) {
                                 scope.launch {
                                     isLoading = true
@@ -337,17 +344,17 @@ fun LoginScreen(
                             .padding(vertical = 16.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("Guest", color = TextSecondary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                        Text("Guest", color = tokens.textSecondary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                     }
                 }
 
                 Spacer(Modifier.height(36.dp))
 
                 Row {
-                    Text("No account? ", color = TextTertiary, fontSize = 14.sp)
+                    Text("No account? ", color = tokens.textTertiary, fontSize = 14.sp)
                     Text(
                         "Create one",
-                        color = AccentYellow, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                        color = accent.primary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.clickable { onSignupClick() }
                     )
                 }
