@@ -155,7 +155,31 @@ fun AppNavigation() {
                 },
                 onNavigateToAmenity    = { amenityId ->
                     navController.navigate(amenityDetailRoute(amenityId))
+                },
+                onNavigateToComments   = { cNodeId, cSiteId, cNodeName ->
+                    navController.navigate(nodeCommentsRoute(cNodeId, cSiteId, cNodeName))
                 }
+            )
+        }
+
+        // ── Node Comments ─────────────────────────────────────────────────
+        composable(
+            route     = "node_comments/{nodeId}/{siteId}/{nodeName}",
+            arguments = listOf(
+                navArgument("nodeId")   { type = NavType.IntType },
+                navArgument("siteId")   { type = NavType.IntType },
+                navArgument("nodeName") { type = NavType.StringType }
+            )
+        ) { backStack ->
+            val nodeId   = backStack.arguments?.getInt("nodeId") ?: 0
+            val siteId   = backStack.arguments?.getInt("siteId") ?: 0
+            val nodeName = backStack.arguments?.getString("nodeName")
+                ?.let { URLDecoder.decode(it, "UTF-8") } ?: "this spot"
+            NodeCommentsScreen(
+                nodeId   = nodeId,
+                siteId   = siteId,
+                nodeName = nodeName,
+                onBack   = { navController.popBackStack() }
             )
         }
 
@@ -386,3 +410,8 @@ fun reviewRoute(tripId: Int, siteId: Int, siteName: String, visitedCount: Int, t
 
 fun amenityDetailRoute(amenityId: Int): String =
     "amenity/$amenityId"
+
+fun nodeCommentsRoute(nodeId: Int, siteId: Int, nodeName: String): String {
+    val encoded = URLEncoder.encode(nodeName, "UTF-8")
+    return "node_comments/$nodeId/$siteId/$encoded"
+}

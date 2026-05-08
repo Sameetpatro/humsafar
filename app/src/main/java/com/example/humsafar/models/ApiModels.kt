@@ -290,6 +290,32 @@ data class FeedbackResponse(
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
+// /community/comments  →  Node comments (with replies)
+// ─────────────────────────────────────────────────────────────────────────────
+data class NodeCommentCreateRequest(
+    @SerializedName("firebase_uid")      val firebaseUid: String,
+    @SerializedName("site_id")           val siteId: Int,
+    @SerializedName("node_id")           val nodeId: Int,
+    @SerializedName("content")           val content: String,
+    @SerializedName("parent_comment_id") val parentCommentId: Int? = null
+)
+
+data class NodeCommentResponse(
+    @SerializedName("id")                val id: Int = 0,
+    @SerializedName("user_id")           val userId: String = "",
+    @SerializedName("site_id")           val siteId: Int = 0,
+    @SerializedName("node_id")           val nodeId: Int = 0,
+    @SerializedName("parent_comment_id") val parentCommentId: Int? = null,
+    @SerializedName("content")           val content: String = "",
+    @SerializedName("is_flagged")        val isFlagged: Boolean = false,
+    @SerializedName("created_at")        val createdAt: String = "",
+    @SerializedName("display_name")      val displayName: String? = null,
+    @SerializedName("avatar_url")        val avatarUrl: String? = null,
+    @SerializedName("reply_count")       val replyCount: Int = 0,
+    @SerializedName("is_own")            val isOwn: Boolean = false
+)
+
+// ─────────────────────────────────────────────────────────────────────────────
 // /sites/{site_id}/recommendations  →  GET /sites/{site_id}/recommendations
 // ─────────────────────────────────────────────────────────────────────────────
 data class RecommendationResponse(

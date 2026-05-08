@@ -42,7 +42,7 @@ interface SiteApiService {
 }
 
 object SiteClient {
-    private const val BASE_URL = "https://humsafar-backend-5u74.onrender.com/"
+    private const val BASE_URL = "https://humsafar-backend-5u74.onrender.com"
 
     private val httpClient = OkHttpClient.Builder()
         .addInterceptor(

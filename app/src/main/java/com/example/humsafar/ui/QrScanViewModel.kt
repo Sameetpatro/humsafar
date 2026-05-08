@@ -88,18 +88,11 @@ class QrScanViewModel : ViewModel() {
     // ── User tapped "Start Trip" in the popup ─────────────────────────────
     fun confirmStartTripFromNormalNode(result: QrScanResult, site: SiteDetail?) {
         viewModelScope.launch {
-            // We don't have the King node QR to call /trips/start properly,
-            // so we activate a local trip state without a server trip_id (0).
-            // The trip will still track visited nodes and enable node navigation.
-            TripManager.activateTrip(
-                tripId   = 0,   // no server trip — guest shortcut
-                siteId   = result.siteId ?: 0,
-                siteName = site?.name ?: "",
-                nodeId   = result.nodeId ?: 0,
-                nodeName = result.nodeName ?: ""
-            )
-            isProcessing.set(false)
-            _uiState.value = QrUiState.Success(result, site)
+            // Backend now accepts any node QR for /trips/start, so we go through
+            // the same flow as a king node — this guarantees a real server-side
+            // trip_id, which is required for /trips/end and /reviews/submit.
+            _uiState.value = QrUiState.Validating
+            startTrip(result, site)
         }
     }
 

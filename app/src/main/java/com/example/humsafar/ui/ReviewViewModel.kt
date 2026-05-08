@@ -32,6 +32,15 @@ class ReviewViewModel : ViewModel() {
         onSuccess: () -> Unit,
         onError: (String) -> Unit
     ) = viewModelScope.launch {
+        // Guard against an unsynced/legacy local trip (tripId == 0). Without a
+        // real server trip_id, /reviews/submit fails the FK check on trip_reviews.
+        if (tripId <= 0) {
+            val msg = "This trip wasn't synced with the server. " +
+                    "Please rescan a node QR to start a fresh trip before reviewing."
+            _submitState.value = ReviewSubmitState.Error(msg)
+            onError(msg)
+            return@launch
+        }
         _submitState.value = ReviewSubmitState.Submitting
         try {
             val request = ReviewSubmitRequest(

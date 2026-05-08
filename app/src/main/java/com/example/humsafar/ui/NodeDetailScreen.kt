@@ -70,6 +70,7 @@ fun NodeDetailScreen(
     onNavigateToDirections: ((Int, String) -> Unit)? = null,
     onNavigateToReview:     ((Int, Int, String, Int, Int) -> Unit)? = null,
     onNavigateToAmenity:    (Int) -> Unit = {},          // ← NEW
+    onNavigateToComments:   ((Int, Int, String) -> Unit)? = null,   // (nodeId, siteId, nodeName)
     viewModel:              NodeDetailViewModel = viewModel()
 ) {
     val context   = LocalContext.current
@@ -275,6 +276,14 @@ fun NodeDetailScreen(
                                     )
                                     Spacer(Modifier.height(14.dp))
                                 }
+
+                                // ── Comments entry point ──────────────────────
+                                CommentsEntryCard(
+                                    onClick = {
+                                        onNavigateToComments?.invoke(node.id, siteId, node.name)
+                                    }
+                                )
+                                Spacer(Modifier.height(14.dp))
 
                                 // ── Trip Progress ─────────────────────────────
                                 if (tripState.isTripActive && allNodes.isNotEmpty()) {
@@ -1151,6 +1160,60 @@ private fun TripProgressSection(
                     fontSize = 13.sp
                 )
             }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Comments entry point card — opens NodeCommentsScreen
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun CommentsEntryCard(onClick: () -> Unit) {
+    val inf       = rememberInfiniteTransition(label = "commentsCard")
+    val glowAlpha by inf.animateFloat(
+        0.3f, 0.55f,
+        infiniteRepeatable(tween(1600, easing = EaseInOutSine), RepeatMode.Reverse),
+        "ga"
+    )
+    val borderColor = Color(0xFF8AC7FF)
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(Brush.linearGradient(listOf(Color(0xFF001E3C), Color(0xFF000F22))))
+            .border(1.dp, borderColor.copy(alpha = glowAlpha), RoundedCornerShape(16.dp))
+            .clickable { onClick() }
+            .padding(16.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp).clip(CircleShape)
+                    .background(borderColor.copy(alpha = 0.18f))
+                    .border(1.dp, borderColor.copy(alpha = 0.45f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("💬", fontSize = 20.sp)
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "Comments",
+                    color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold
+                )
+                Text(
+                    "Share what you noticed · reply to other travellers",
+                    color = borderColor.copy(alpha = 0.85f),
+                    fontSize = 11.sp
+                )
+            }
+            Icon(
+                Icons.Default.ChevronRight, null,
+                tint     = borderColor,
+                modifier = Modifier.size(20.dp)
+            )
         }
     }
 }

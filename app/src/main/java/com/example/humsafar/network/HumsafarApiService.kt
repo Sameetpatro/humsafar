@@ -8,6 +8,8 @@ import com.example.humsafar.models.ChatResponse
 import com.example.humsafar.models.FeedbackCreateRequest
 import com.example.humsafar.models.FeedbackResponse
 import com.example.humsafar.models.NearbySite
+import com.example.humsafar.models.NodeCommentCreateRequest
+import com.example.humsafar.models.NodeCommentResponse
 import com.example.humsafar.models.NodePositionResponse
 import com.example.humsafar.models.NodeRatingRequest
 import com.example.humsafar.models.QrScanResult
@@ -141,6 +143,44 @@ interface HumsafarApiService {
     suspend fun submitFeedback(
         @Body request: FeedbackCreateRequest
     ): Response<FeedbackResponse>
+
+    /** Root comments for a node (most-recent-first). Pass firebase_uid to
+     *  populate `is_own` on each comment so the UI can show a delete affordance. */
+    @GET("community/comments/node/{node_id}")
+    suspend fun getNodeComments(
+        @Path("node_id")        nodeId: Int,
+        @Query("page")          page: Int = 1,
+        @Query("page_size")     pageSize: Int = 20,
+        @Query("firebase_uid")  firebaseUid: String? = null
+    ): Response<List<NodeCommentResponse>>
+
+    /** Replies of a single root comment, oldest first. */
+    @GET("community/comments/{comment_id}/replies")
+    suspend fun getCommentReplies(
+        @Path("comment_id")     commentId: Int,
+        @Query("page")          page: Int = 1,
+        @Query("page_size")     pageSize: Int = 50,
+        @Query("firebase_uid")  firebaseUid: String? = null
+    ): Response<List<NodeCommentResponse>>
+
+    /** Post a comment. Set `parent_comment_id` to make it a reply. */
+    @POST("community/comments")
+    suspend fun postNodeComment(
+        @Body request: NodeCommentCreateRequest
+    ): Response<NodeCommentResponse>
+
+    /** Delete one of the caller's own comments. Replies cascade. */
+    @DELETE("community/comments/{comment_id}")
+    suspend fun deleteNodeComment(
+        @Path("comment_id")    commentId: Int,
+        @Query("firebase_uid") firebaseUid: String
+    ): Response<Unit>
+
+    /** Flag a comment (anyone can flag; backend hides flagged content). */
+    @POST("community/comments/{comment_id}/flag")
+    suspend fun flagNodeComment(
+        @Path("comment_id") commentId: Int
+    ): Response<Unit>
 
     // ── Chat ──────────────────────────────────────────────────────────────
     // Use "chat/" WITH trailing slash so OkHttp never needs to redirect.
