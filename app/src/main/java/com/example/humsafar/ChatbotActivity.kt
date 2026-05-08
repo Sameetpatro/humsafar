@@ -31,12 +31,15 @@ import androidx.compose.ui.graphics.*
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.*
+import com.example.humsafar.auth.AuthManager
 import com.example.humsafar.data.ActiveSiteManager
 import com.example.humsafar.data.ActiveSiteManager.activeNodeId
+import com.example.humsafar.data.TripManager
 import com.example.humsafar.models.ChatMessage as UiChatMessage  // ← RENAMED for UI
 import com.example.humsafar.models.ChatHistoryItem as ApiChatMessage  // ← matches API schema
 import com.example.humsafar.models.ChatRequest
 import com.example.humsafar.network.HumsafarClient
+import com.example.humsafar.prefs.LanguagePreferences
 import com.example.humsafar.ui.components.AnimatedOrbBackground
 import com.example.humsafar.ui.theme.*
 import kotlinx.coroutines.Dispatchers
@@ -117,7 +120,8 @@ suspend fun callChatApi(
     message : String,
     siteId  : String,
     nodeId  : String?,
-    history : List<UiChatMessage>  // ← CHANGED: use UiChatMessage type alias
+    history : List<UiChatMessage>,
+    langCode: String? = null
 ): String = withContext(Dispatchers.IO) {
     try {
         val siteIdInt = siteId.toIntOrNull()
@@ -141,11 +145,21 @@ suspend fun callChatApi(
                 )
             }
 
+        // Resolve persistence fields (best-effort — backend silently skips
+        // history writes if the user isn't registered).
+        val firebaseUser = AuthManager.currentUser.value
+        val firebaseUid  = firebaseUser?.uid
+        val activeTrip   = TripManager.current()
+        val tripId       = activeTrip.tripId.takeIf { it != 0 }
+
         val request = ChatRequest(
-            siteId  = siteIdInt,        // heritage_sites.id PK — from DB via GPS
-            nodeId  = nodeIdInt,        // nodes.id PK — set after QR scan, null otherwise
-            message = message,
-            history = historyItems      // ← Now correctly typed as List<ApiChatMessage>
+            siteId       = siteIdInt,    // heritage_sites.id PK — from DB via GPS
+            nodeId       = nodeIdInt,    // nodes.id PK — set after QR scan, null otherwise
+            message      = message,
+            history      = historyItems,
+            firebaseUid  = firebaseUid,  // ← drives user_chat_history persistence
+            tripId       = tripId,       // ← null when no active trip
+            langCode     = langCode      // ← e.g. "en-IN" / "hi-IN"
         )
         Log.d("ChatbotActivity", "API_REQUEST_DEBUG: siteId=$siteIdInt nodeId=$nodeIdInt message=${message.take(30)}")
         val resp = HumsafarClient.api.sendChat(request)
@@ -198,6 +212,9 @@ fun ChatbotScreen(
         )
     }
 
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val langPrefs = remember(context) { LanguagePreferences(context) }
+
     fun sendMessage(userText: String) {
         if (userText.isBlank()) return
         messages.add(UiChatMessage(text = userText, isUser = true))  // ← Use UiChatMessage
@@ -208,10 +225,11 @@ fun ChatbotScreen(
         scope.launch {
             listState.animateScrollToItem(messages.size - 1)
             val reply = callChatApi(
-                message = userText,
-                siteId  = siteId,
-                nodeId  = nodeId,
-                history = historySnapshot
+                message  = userText,
+                siteId   = siteId,
+                nodeId   = nodeId,
+                history  = historySnapshot,
+                langCode = langPrefs.selectedLanguage.bcp47Code
             )
             val botMsg = UiChatMessage(text = reply, isUser = false)  // ← Use UiChatMessage
             val idx = messages.indexOf(loadingMsg)
@@ -335,7 +353,6 @@ fun ChatbotScreen(
 
             // ── Input bar ─────────────────────────────────────────────────
             val canSend = inputText.isNotBlank()
-            val context = androidx.compose.ui.platform.LocalContext.current
             Box(
                 modifier = Modifier
                     .fillMaxWidth()

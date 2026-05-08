@@ -8,7 +8,9 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.humsafar.audio.AudioPlayer
 import com.example.humsafar.audio.AudioRecorder
+import com.example.humsafar.auth.AuthManager
 import com.example.humsafar.data.ActiveSiteManager
+import com.example.humsafar.data.TripManager
 import com.example.humsafar.models.VoiceChatResponse
 import com.example.humsafar.models.VoiceUiState
 import com.example.humsafar.network.VoiceRetrofitClient
@@ -80,7 +82,12 @@ class VoiceChatViewModel(app: Application) : AndroidViewModel(app) {
             ActiveSiteManager.activeNodeId.value?.toString() ?: ""
         }
 
-        Log.i(TAG, "Sending voice: site=$resolvedSiteId node=$resolvedNodeId lang=${lang.name}")
+        // Persistence fields — backend silently skips history writes if the
+        // user isn't yet registered on the backend.
+        val firebaseUid = AuthManager.currentUser.value?.uid.orEmpty()
+        val tripId      = TripManager.current().tripId.takeIf { it != 0 }?.toString().orEmpty()
+
+        Log.i(TAG, "Sending voice: site=$resolvedSiteId node=$resolvedNodeId lang=${lang.name} uid=$firebaseUid trip=$tripId")
 
         try {
             val audioPart = MultipartBody.Part.createFormData(
@@ -89,13 +96,16 @@ class VoiceChatViewModel(app: Application) : AndroidViewModel(app) {
                 body     = wavBytes.toRequestBody("audio/wav".toMediaType())
             )
 
+            val plain = "text/plain".toMediaType()
             val response = VoiceRetrofitClient.api.sendVoiceMessage(
-                audio    = audioPart,
-                siteName = currentSiteName.toRequestBody("text/plain".toMediaType()),
-                siteId   = resolvedSiteId.toRequestBody("text/plain".toMediaType()),
-                language = lang.bcp47Code.toRequestBody("text/plain".toMediaType()),
-                langName = lang.name.toRequestBody("text/plain".toMediaType()),
-                nodeId   = resolvedNodeId.toRequestBody("text/plain".toMediaType())
+                audio       = audioPart,
+                siteName    = currentSiteName.toRequestBody(plain),
+                siteId      = resolvedSiteId.toRequestBody(plain),
+                language    = lang.bcp47Code.toRequestBody(plain),
+                langName    = lang.name.toRequestBody(plain),
+                nodeId      = resolvedNodeId.toRequestBody(plain),
+                firebaseUid = firebaseUid.toRequestBody(plain),
+                tripId      = tripId.toRequestBody(plain)
             )
 
             Log.i(TAG, "Response: userText='${response.userText.take(60)}'")

@@ -41,10 +41,11 @@ fun ReviewScreen(
     onSkip: () -> Unit,
     viewModel: ReviewViewModel = viewModel()
 ) {
-    var starRating by remember { mutableStateOf(0) }
-    var q1 by remember { mutableStateOf(0) }
-    var q2 by remember { mutableStateOf(0) }
-    var q3 by remember { mutableStateOf(0) }
+    var starRating  by remember { mutableStateOf(0) }
+    var q1          by remember { mutableStateOf(0) }
+    var q2          by remember { mutableStateOf(0) }
+    var q3          by remember { mutableStateOf(0) }
+    var suggestion  by remember { mutableStateOf("") }
     val submitState by viewModel.submitState.collectAsStateWithLifecycle()
 
     LaunchedEffect(submitState) {
@@ -174,6 +175,46 @@ fun ReviewScreen(
                 onSelect = { q3 = it }
             )
 
+            Spacer(Modifier.height(20.dp))
+
+            Text(
+                "Anything else you'd like to share? (optional)",
+                color    = TextPrimary,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(horizontal = 24.dp)
+            )
+            Spacer(Modifier.height(10.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(GlassWhite10)
+                    .border(0.7.dp, GlassBorder, RoundedCornerShape(16.dp))
+                    .padding(14.dp)
+            ) {
+                androidx.compose.foundation.text.BasicTextField(
+                    value         = suggestion,
+                    onValueChange = { suggestion = it.take(500) },
+                    textStyle     = androidx.compose.ui.text.TextStyle(
+                        color    = TextPrimary,
+                        fontSize = 14.sp
+                    ),
+                    modifier      = Modifier.fillMaxWidth().heightIn(min = 64.dp),
+                    decorationBox = { inner ->
+                        if (suggestion.isEmpty()) {
+                            Text(
+                                "Suggestions, observations, or things we should improve…",
+                                color    = TextTertiary,
+                                fontSize = 14.sp
+                            )
+                        }
+                        inner()
+                    }
+                )
+            }
+
             Spacer(Modifier.height(24.dp))
 
             when (val s = submitState) {
@@ -193,7 +234,17 @@ fun ReviewScreen(
                 text = if (submitState is ReviewSubmitState.Submitting) "Submitting…" else "Submit",
                 onClick = {
                     if (starRating in 1..5 && q1 in 1..5 && q2 in 1..5 && q3 in 1..5) {
-                        viewModel.submitReview(tripId, siteId, starRating, q1, q2, q3, { }, { })
+                        viewModel.submitReview(
+                            tripId         = tripId,
+                            siteId         = siteId,
+                            starRating     = starRating,
+                            q1             = q1,
+                            q2             = q2,
+                            q3             = q3,
+                            suggestionText = suggestion.trim().ifBlank { null },
+                            onSuccess      = { },
+                            onError        = { }
+                        )
                     }
                 },
                 modifier = Modifier

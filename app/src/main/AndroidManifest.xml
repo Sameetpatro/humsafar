@@ -61,6 +61,12 @@
             android:exported="false"
             android:theme="@style/Theme.Humsafar" />
 
+        <!-- Voice Chat Activity (launched from Chatbot's mic button) -->
+        <activity
+            android:name=".VoiceChatActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Humsafar" />
+
         <!-- Geofence Transition Receiver -->
         <receiver
             android:name=".geofence.GeofenceTransitionReceiver"

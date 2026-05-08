@@ -28,20 +28,21 @@ class ReviewViewModel : ViewModel() {
         q1: Int,
         q2: Int,
         q3: Int,
+        suggestionText: String? = null,
         onSuccess: () -> Unit,
         onError: (String) -> Unit
     ) = viewModelScope.launch {
         _submitState.value = ReviewSubmitState.Submitting
         try {
             val request = ReviewSubmitRequest(
-                tripId = tripId,
-                siteId = siteId,
-                userId = TripManager.USER_ID,
-                starRating = starRating,
-                q1 = q1,
-                q2 = q2,
-                q3 = q3,
-                suggestionText = null
+                tripId         = tripId,
+                siteId         = siteId,
+                firebaseUid    = TripManager.USER_ID,
+                starRating     = starRating,
+                q1             = q1,
+                q2             = q2,
+                q3             = q3,
+                suggestionText = suggestionText?.takeIf { it.isNotBlank() }
             )
             val resp = HumsafarClient.api.submitReview(request)
             if (resp.isSuccessful) {

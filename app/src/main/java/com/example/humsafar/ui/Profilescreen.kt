@@ -30,7 +30,9 @@ import com.example.humsafar.ui.theme.*
 @Composable
 fun ProfileScreen(
     onBack: () -> Unit,
-    onSignOut: () -> Unit = {}
+    onSignOut:      () -> Unit = {},
+    onOpenHistory:  () -> Unit = {},
+    onOpenFeedback: () -> Unit = {}
 ) {
     var visible   by remember { mutableStateOf(false) }
     val scroll    = rememberScrollState()
@@ -74,6 +76,15 @@ fun ProfileScreen(
 
                     Spacer(Modifier.height(24.dp))
 
+                    SectionLabel("Your Journey")
+                    Spacer(Modifier.height(12.dp))
+                    JourneyCard(
+                        onOpenHistory  = onOpenHistory,
+                        onOpenFeedback = onOpenFeedback
+                    )
+
+                    Spacer(Modifier.height(24.dp))
+
                     SectionLabel("Language & Region")
                     Spacer(Modifier.height(12.dp))
                     LanguageCard()
@@ -89,8 +100,9 @@ fun ProfileScreen(
                     SectionLabel("About")
                     Spacer(Modifier.height(12.dp))
                     AboutCard(
-                        expanded = showAbout,
-                        onToggle = { showAbout = !showAbout }
+                        expanded     = showAbout,
+                        onToggle     = { showAbout = !showAbout },
+                        onReportBug  = onOpenFeedback
                     )
 
                     Spacer(Modifier.height(24.dp))
@@ -313,6 +325,72 @@ private fun ProfileDivider() {
     )
 }
 
+// ── Journey Card (history + feedback) ────────────────────────────────────────
+
+@Composable
+private fun JourneyCard(
+    onOpenHistory:  () -> Unit,
+    onOpenFeedback: () -> Unit
+) {
+    GlassCard(Modifier.fillMaxWidth(), cornerRadius = 20.dp) {
+        Column(Modifier.padding(4.dp)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onOpenHistory() }
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "📜",
+                    fontSize = 18.sp,
+                    modifier = Modifier.size(24.dp),
+                    textAlign = TextAlign.Center
+                )
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "Visit History",
+                        color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        "Every site you've explored",
+                        color = TextTertiary, fontSize = 12.sp
+                    )
+                }
+                Icon(Icons.Default.ChevronRight, null, tint = AccentYellow, modifier = Modifier.size(18.dp))
+            }
+            ProfileDivider()
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onOpenFeedback() }
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "💬",
+                    fontSize = 18.sp,
+                    modifier = Modifier.size(24.dp),
+                    textAlign = TextAlign.Center
+                )
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "Send Feedback",
+                        color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        "Found a bug or have a suggestion?",
+                        color = TextTertiary, fontSize = 12.sp
+                    )
+                }
+                Icon(Icons.Default.ChevronRight, null, tint = TextTertiary, modifier = Modifier.size(16.dp))
+            }
+        }
+    }
+}
+
 // ── Language Card ─────────────────────────────────────────────────────────────
 
 @Composable
@@ -413,7 +491,11 @@ private fun AppSettingsCard() {
 // ── About Card ────────────────────────────────────────────────────────────────
 
 @Composable
-private fun AboutCard(expanded: Boolean, onToggle: () -> Unit) {
+private fun AboutCard(
+    expanded:    Boolean,
+    onToggle:    () -> Unit,
+    onReportBug: () -> Unit = {}
+) {
     GlassCard(Modifier.fillMaxWidth(), cornerRadius = 20.dp) {
         Column(Modifier.padding(4.dp)) {
             Row(
@@ -438,24 +520,35 @@ private fun AboutCard(expanded: Boolean, onToggle: () -> Unit) {
 
             ProfileDivider()
 
-            listOf(
-                "⭐" to "Rate the App",
-                "📤" to "Share App",
-                "🐛" to "Report a Bug"
-            ).forEachIndexed { i, (icon, label) ->
+            data class AboutItem(
+                val icon:    String,
+                val label:   String,
+                val onClick: () -> Unit
+            )
+
+            val items = listOf(
+                AboutItem("⭐", "Rate the App", { /* future: launch Play Store */ }),
+                AboutItem("📤", "Share App",    { /* future: share intent */ }),
+                AboutItem("🐛", "Report a Bug", onReportBug)
+            )
+
+            items.forEachIndexed { i, item ->
                 Row(
-                    modifier          = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { item.onClick() }
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(icon, fontSize = 18.sp, modifier = Modifier.size(24.dp), textAlign = TextAlign.Center)
+                    Text(item.icon, fontSize = 18.sp, modifier = Modifier.size(24.dp), textAlign = TextAlign.Center)
                     Spacer(Modifier.width(12.dp))
                     Text(
-                        label, color = TextPrimary, fontSize = 14.sp,
+                        item.label, color = TextPrimary, fontSize = 14.sp,
                         fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f)
                     )
                     Icon(Icons.Default.ChevronRight, null, tint = TextTertiary, modifier = Modifier.size(16.dp))
                 }
-                if (i < 2) ProfileDivider()
+                if (i < items.size - 1) ProfileDivider()
             }
         }
     }

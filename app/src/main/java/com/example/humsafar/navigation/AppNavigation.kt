@@ -265,14 +265,33 @@ fun AppNavigation() {
         // ── Profile ───────────────────────────────────────────────────────
         composable("profile") {
             ProfileScreen(
-                onBack    = { navController.popBackStack() },
-                onSignOut = {
+                onBack       = { navController.popBackStack() },
+                onSignOut    = {
                     AuthManager.signOut()
                     navController.navigate("login") {
                         popUpTo(0) { inclusive = true }
                         launchSingleTop = true
                     }
+                },
+                onOpenHistory  = { navController.navigate("history") },
+                onOpenFeedback = { navController.navigate("feedback") }
+            )
+        }
+
+        // ── Visit history ─────────────────────────────────────────────────
+        composable("history") {
+            HistoryScreen(
+                onBack        = { navController.popBackStack() },
+                onWriteReview = { tripId, siteId, siteName, visited, total ->
+                    navController.navigate(reviewRoute(tripId, siteId, siteName, visited, total))
                 }
+            )
+        }
+
+        // ── Feedback / bug report ─────────────────────────────────────────
+        composable("feedback") {
+            FeedbackScreen(
+                onBack = { navController.popBackStack() }
             )
         }
 

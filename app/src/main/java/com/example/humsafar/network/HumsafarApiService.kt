@@ -1,18 +1,27 @@
 package com.example.humsafar.network
 
+import com.example.humsafar.models.ActiveTripResponse
 import com.example.humsafar.models.AmenityResponse
+import com.example.humsafar.models.ChatHistoryItem
 import com.example.humsafar.models.ChatRequest
 import com.example.humsafar.models.ChatResponse
-import com.example.humsafar.models.ChatHistoryItem
+import com.example.humsafar.models.FeedbackCreateRequest
+import com.example.humsafar.models.FeedbackResponse
 import com.example.humsafar.models.NearbySite
 import com.example.humsafar.models.NodePositionResponse
+import com.example.humsafar.models.NodeRatingRequest
 import com.example.humsafar.models.QrScanResult
+import com.example.humsafar.models.RatingResponse
 import com.example.humsafar.models.RecommendationResponse
 import com.example.humsafar.models.ReviewSubmitRequest
 import com.example.humsafar.models.ReviewSubmitResponse
+import com.example.humsafar.models.ReviewSummary
+import com.example.humsafar.models.SiteRatingRequest
 import com.example.humsafar.models.TripEndResponse
 import com.example.humsafar.models.TripStartResponse
-import com.example.humsafar.network.SiteDetail
+import com.example.humsafar.models.UserRegisterRequest
+import com.example.humsafar.models.UserResponse
+import com.example.humsafar.models.VisitHistoryItem
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.logging.HttpLoggingInterceptor
@@ -23,6 +32,20 @@ import retrofit2.http.*
 import java.util.concurrent.TimeUnit
 
 interface HumsafarApiService {
+
+    // ── Users ─────────────────────────────────────────────────────────────
+    // Backend pattern: every Firebase user must be registered via this endpoint
+    // before any /trips, /reviews, or chat-history-bearing call will succeed.
+    // Idempotent — safe to call on every app launch.
+    @POST("users/register")
+    suspend fun registerUser(
+        @Body request: UserRegisterRequest
+    ): Response<UserResponse>
+
+    @GET("users/{firebase_uid}")
+    suspend fun getUser(
+        @Path("firebase_uid") firebaseUid: String
+    ): Response<UserResponse>
 
     // ── Sites ─────────────────────────────────────────────────────────────
 
@@ -57,19 +80,31 @@ interface HumsafarApiService {
 
     // ── Trips ─────────────────────────────────────────────────────────────
 
+    /**
+     * Start a trip by scanning the King QR code.
+     * Backend resolves firebase_uid → users.id (UUID); call /users/register first.
+     */
     @POST("trips/start")
     suspend fun startTrip(
-        @Query("user_id")  userId: String,
-        @Query("qr_value") qrValue: String
+        @Query("firebase_uid") firebaseUid: String,
+        @Query("qr_value")     qrValue: String,
+        @Query("entry_lat")    entryLat: Double? = null,
+        @Query("entry_lng")    entryLng: Double? = null
     ): Response<TripStartResponse>
 
     @POST("trips/end")
     suspend fun endTrip(
-        @Query("trip_id") tripId: Int,
+        @Query("trip_id")       tripId: Int,
         @Query("visited_nodes") visitedNodes: String? = null,
-        @Query("entry_lat") entryLat: Double? = null,
-        @Query("entry_lng") entryLng: Double? = null
+        @Query("entry_lat")     entryLat: Double? = null,
+        @Query("entry_lng")     entryLng: Double? = null
     ): Response<TripEndResponse>
+
+    /** Returns the user's currently active trip (used to resume on app reopen). */
+    @GET("trips/active/{firebase_uid}")
+    suspend fun getActiveTrip(
+        @Path("firebase_uid") firebaseUid: String
+    ): Response<ActiveTripResponse>
 
     // ── Reviews ─────────────────────────────────────────────────────────────
 
@@ -77,6 +112,35 @@ interface HumsafarApiService {
     suspend fun submitReview(
         @Body request: ReviewSubmitRequest
     ): Response<ReviewSubmitResponse>
+
+    @POST("reviews/sites/rate")
+    suspend fun rateSite(
+        @Body request: SiteRatingRequest
+    ): Response<RatingResponse>
+
+    @POST("reviews/nodes/rate")
+    suspend fun rateNode(
+        @Body request: NodeRatingRequest
+    ): Response<RatingResponse>
+
+    @GET("reviews/sites/{site_id}/summary")
+    suspend fun getSiteReviewSummary(
+        @Path("site_id") siteId: Int
+    ): Response<ReviewSummary>
+
+    /** Visit history for the user (drives the History screen). */
+    @GET("reviews/users/{firebase_uid}/history")
+    suspend fun getUserVisitHistory(
+        @Path("firebase_uid") firebaseUid: String
+    ): Response<List<VisitHistoryItem>>
+
+    // ── Community ──────────────────────────────────────────────────────────
+
+    /** Submit feedback / bug report. firebase_uid is optional (null = anonymous). */
+    @POST("community/feedback")
+    suspend fun submitFeedback(
+        @Body request: FeedbackCreateRequest
+    ): Response<FeedbackResponse>
 
     // ── Chat ──────────────────────────────────────────────────────────────
     // Use "chat/" WITH trailing slash so OkHttp never needs to redirect.

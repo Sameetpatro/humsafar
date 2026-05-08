@@ -9,8 +9,10 @@ import androidx.activity.enableEdgeToEdge
 import androidx.lifecycle.lifecycleScope
 import com.example.humsafar.auth.AuthManager
 import com.example.humsafar.data.TripManager
+import com.example.humsafar.data.UserRepository
 import com.example.humsafar.navigation.AppNavigation
 import com.example.humsafar.ui.theme.HumsafarTheme
+import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -19,6 +21,22 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         TripManager.init(applicationContext)
+        UserRepository.init(applicationContext)
+
+        // Sync the currently-signed-in Firebase user with our backend so that
+        // any subsequent call needing firebase_uid (trips, reviews, chat history)
+        // succeeds. Fires whenever the Firebase user changes (login / logout).
+        lifecycleScope.launch {
+            AuthManager.currentUser
+                .distinctUntilChangedBy { it?.uid }
+                .collect { user ->
+                    if (user == null) {
+                        UserRepository.clear()
+                    } else {
+                        UserRepository.syncFirebaseUser(user)
+                    }
+                }
+        }
 
         // Handle email link if present
         handleEmailLinkIntent(intent)
@@ -58,7 +76,6 @@ class MainActivity : ComponentActivity() {
                         }
                         .onFailure { error ->
                             Log.e("MainActivity", "Email link sign-in failed", error)
-                            // Show error to user (you can use a Toast or Snackbar)
                             android.widget.Toast.makeText(
                                 this@MainActivity,
                                 "Sign-in failed: ${error.message}",
@@ -67,10 +84,7 @@ class MainActivity : ComponentActivity() {
                         }
                 }
             } else {
-                // Email not found - ask user to enter it
                 Log.w("MainActivity", "Email not found in storage, user needs to re-enter")
-                // You can show a dialog or navigate to a screen to collect email
-                // For now, show a toast
                 android.widget.Toast.makeText(
                     this,
                     "Please enter your email to complete sign-in",

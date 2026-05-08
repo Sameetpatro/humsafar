@@ -118,14 +118,27 @@ class QrScanViewModel : ViewModel() {
     // ── Private helper: start trip via backend ────────────────────────────
     private suspend fun startTrip(result: QrScanResult, site: SiteDetail?) {
         try {
+            // Make sure the firebase user has been mirrored to our backend
+            // before calling /trips/start, otherwise it 404s with "User not found".
+            val firebaseUser = com.example.humsafar.auth.AuthManager.currentUser.value
+            if (firebaseUser != null) {
+                com.example.humsafar.data.UserRepository.syncFirebaseUserSuspend(firebaseUser)
+            }
+
+            val trip = TripManager.current()
+            val entryLat = trip.lastLat.takeIf { it != 0.0 }
+            val entryLng = trip.lastLng.takeIf { it != 0.0 }
+
             val tripResp = HumsafarClient.api.startTrip(
-                userId   = TripManager.USER_ID,
-                qrValue  = lastScannedQr
+                firebaseUid = TripManager.USER_ID,
+                qrValue     = lastScannedQr,
+                entryLat    = entryLat,
+                entryLng    = entryLng
             )
             if (tripResp.isSuccessful && tripResp.body() != null) {
-                val trip = tripResp.body()!!
+                val tripBody = tripResp.body()!!
                 TripManager.activateTrip(
-                    tripId   = trip.tripId,
+                    tripId   = tripBody.tripId,
                     siteId   = result.siteId ?: 0,
                     siteName = site?.name ?: "",
                     nodeId   = result.nodeId ?: 0,
