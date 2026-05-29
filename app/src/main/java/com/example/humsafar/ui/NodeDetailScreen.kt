@@ -71,6 +71,7 @@ fun NodeDetailScreen(
     onNavigateToReview:     ((Int, Int, String, Int, Int) -> Unit)? = null,
     onNavigateToAmenity:    (Int) -> Unit = {},          // ← NEW
     onNavigateToComments:   ((Int, Int, String) -> Unit)? = null,   // (nodeId, siteId, nodeName)
+    onNavigateToInsights:   ((Int, String) -> Unit)? = null,        // (siteId, siteName)
     viewModel:              NodeDetailViewModel = viewModel()
 ) {
     val context   = LocalContext.current
@@ -282,6 +283,13 @@ fun NodeDetailScreen(
                                     onClick = {
                                         onNavigateToComments?.invoke(node.id, siteId, node.name)
                                     }
+                                )
+                                Spacer(Modifier.height(14.dp))
+
+                                // ── Per-spot insights ─────────────────────────
+                                NodeInsightsEntryCard(
+                                    nodeId   = node.id,
+                                    onOpenFull = { onNavigateToInsights?.invoke(siteId, site.name) }
                                 )
                                 Spacer(Modifier.height(14.dp))
 
@@ -1241,7 +1249,7 @@ private fun CommentsEntryCard(onClick: () -> Unit) {
             Column(Modifier.weight(1f)) {
                 Text(
                     "Comments",
-                    color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold
+                    color = GlassWhite10, fontSize = 14.sp, fontWeight = FontWeight.Bold
                 )
                 Text(
                     "Share what you noticed · reply to other travellers",
@@ -1254,6 +1262,77 @@ private fun CommentsEntryCard(onClick: () -> Unit) {
                 tint     = borderColor,
                 modifier = Modifier.size(20.dp)
             )
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Per-spot insights entry card — shows this node's engagement + opens full dashboard
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun NodeInsightsEntryCard(nodeId: Int, onOpenFull: () -> Unit) {
+    val accent = LocalAccent.current
+    val tokens = LocalAppColors.current
+    var insight by remember(nodeId) { mutableStateOf<com.example.humsafar.models.NodeInsights?>(null) }
+
+    LaunchedEffect(nodeId) {
+        runCatching {
+            val resp = com.example.humsafar.network.HumsafarClient.api.getNodeInsights(nodeId)
+            if (resp.isSuccessful) insight = resp.body()
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(Brush.linearGradient(listOf(accent.tint.copy(alpha = 0.7f), tokens.surface)))
+            .border(1.dp, accent.primary.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
+            .clickable { onOpenFull() }
+            .padding(16.dp)
+    ) {
+        Column {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp).clip(CircleShape)
+                        .background(accent.primary.copy(alpha = 0.16f))
+                        .border(1.dp, accent.primary.copy(alpha = 0.4f), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) { Text("📊", fontSize = 20.sp) }
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Insights for this spot", color = tokens.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        insight?.ml?.insightText?.takeIf { it.isNotBlank() }
+                            ?: "How explorers engage with this spot",
+                        color = accent.dark.copy(alpha = 0.85f), fontSize = 11.sp
+                    )
+                }
+                Icon(Icons.Default.ChevronRight, null, tint = accent.primary, modifier = Modifier.size(20.dp))
+            }
+            insight?.let { ni ->
+                Spacer(Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    NodeInsightChip("⚡ ${ni.ml.engagementScore.toInt()}/100", "engagement")
+                    NodeInsightChip("👣 ${ni.visits}", "visits")
+                    NodeInsightChip("🔥 ${ni.popularityPct.toInt()}%", "reach")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun NodeInsightChip(value: String, label: String) {
+    val tokens = LocalAppColors.current
+    Box(
+        Modifier.clip(RoundedCornerShape(12.dp)).background(tokens.surfaceMuted).padding(horizontal = 12.dp, vertical = 8.dp)
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(value, color = tokens.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            Text(label, color = tokens.textTertiary, fontSize = 9.sp)
         }
     }
 }

@@ -36,7 +36,8 @@ import kotlinx.coroutines.launch
 fun LoginScreen(
     onSignupClick: () -> Unit,
     onBypassClick: () -> Unit,
-    onLoginSuccess: () -> Unit = {}
+    onLoginSuccess: () -> Unit = {},
+    onNeedPhoneNumber: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -90,7 +91,13 @@ fun LoginScreen(
                 }
 
                 AuthManager.signInWithGoogle(idToken)
-                    .onSuccess { onLoginSuccess() }
+                    .onSuccess { user ->
+                        // Google never returns a phone number — ask for it once.
+                        if (com.example.humsafar.data.UserRepository.needsPhoneNumber(user))
+                            onNeedPhoneNumber()
+                        else
+                            onLoginSuccess()
+                    }
                     .onFailure { e ->
                         errorMessage = "Google sign-in failed: ${e.message}"
                     }
@@ -154,9 +161,9 @@ fun LoginScreen(
                 Spacer(Modifier.height(24.dp))
 
                 Text(
-                    text = "धरोहरसेतु",
-                    color = tokens.textPrimary, fontSize = 38.sp,
-                    fontWeight = FontWeight.Black, letterSpacing = (-1).sp
+                    text = "Dharohar Setu",
+                    color = tokens.textPrimary, fontSize = 34.sp,
+                    fontWeight = FontWeight.Black, letterSpacing = (-0.5).sp
                 )
                 Text(
                     text = "Your Heritage Companion",

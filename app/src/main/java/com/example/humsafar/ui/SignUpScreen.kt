@@ -32,7 +32,8 @@ import kotlinx.coroutines.launch
 fun SignUpScreen(
     onLoginClick: () -> Unit,
     onBypassClick: () -> Unit,
-    onSignUpSuccess: () -> Unit = {}
+    onSignUpSuccess: () -> Unit = {},
+    onNeedPhoneNumber: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -50,24 +51,53 @@ fun SignUpScreen(
     LaunchedEffect(Unit) { visible = true }
 
     // ── Google Sign-In launcher ───────────────────────────────────────────────
+    // Mirrors LoginScreen: handle cancellation, map common ApiException codes,
+    // and route to the phone-collection step when no number is on record.
     val googleLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
-            val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+        if (result.resultCode != Activity.RESULT_OK) {
+            isLoading = false
+            return@rememberLauncherForActivityResult
+        }
+        val data = result.data
+        if (data == null) {
+            errorMessage = "Google sign-in returned no data. Please try again."
+            isLoading = false
+            return@rememberLauncherForActivityResult
+        }
+        scope.launch {
+            isLoading = true
+            errorMessage = ""
             try {
-                val account = task.getResult(ApiException::class.java)
-                val idToken = account?.idToken ?: return@rememberLauncherForActivityResult
-                scope.launch {
-                    isLoading = true
-                    errorMessage = ""
-                    AuthManager.signInWithGoogle(idToken)
-                        .onSuccess { onSignUpSuccess() }
-                        .onFailure { errorMessage = it.message ?: "Google sign-in failed" }
+                val account = GoogleSignIn.getSignedInAccountFromIntent(data)
+                    .getResult(ApiException::class.java)
+                val idToken = account?.idToken
+                if (idToken == null) {
+                    errorMessage = "Google sign-in failed: no ID token received.\n" +
+                            "Check that the SHA-1 fingerprint is added in the Firebase console."
                     isLoading = false
+                    return@launch
                 }
+                AuthManager.signInWithGoogle(idToken)
+                    .onSuccess { user ->
+                        if (com.example.humsafar.data.UserRepository.needsPhoneNumber(user))
+                            onNeedPhoneNumber()
+                        else
+                            onSignUpSuccess()
+                    }
+                    .onFailure { errorMessage = "Google sign-in failed: ${it.message}" }
             } catch (e: ApiException) {
-                errorMessage = "Google sign-in failed: ${e.message}"
+                errorMessage = when (e.statusCode) {
+                    10    -> "Developer error: check the SHA-1 fingerprint in Firebase console and that the OAuth client ID matches."
+                    12501 -> "Sign-in cancelled."
+                    7     -> "Network error. Check your connection."
+                    else  -> "Google sign-in error (code ${e.statusCode}): ${e.message}"
+                }
+            } catch (e: Exception) {
+                errorMessage = "Unexpected error: ${e.message}"
+            } finally {
+                isLoading = false
             }
         }
     }
@@ -193,13 +223,19 @@ fun SignUpScreen(
                                             scope.launch {
                                                 isLoading = true
                                                 errorMessage = ""
-                                                AuthManager.signUp(
-                                                    name = name.trim(),
-                                                    email = email.trim(),
-                                                    phone = phone.trim(),
-                                                    password = password
-                                                ).onSuccess { onSignUpSuccess() }
-                                                    .onFailure { errorMessage = signUpError(it.message) }
+                                            AuthManager.signUp(
+                                                name = name.trim(),
+                                                email = email.trim(),
+                                                phone = phone.trim(),
+                                                password = password
+                                            ).onSuccess { user ->
+                                                // Email signup already collects the phone — persist it
+                                                // to the backend so it's stored against the user.
+                                                com.example.humsafar.data.UserRepository
+                                                    .syncFirebaseUserSuspend(user, phone.trim())
+                                                onSignUpSuccess()
+                                            }
+                                                .onFailure { errorMessage = signUpError(it.message) }
                                                 isLoading = false
                                             }
                                         }
@@ -218,9 +254,15 @@ fun SignUpScreen(
                                 .clip(RoundedCornerShape(16.dp))
                                 .background(tokens.surface)
                                 .border(0.8.dp, tokens.border, RoundedCornerShape(16.dp))
-                                .clickable {
-                                    val client = AuthManager.getGoogleSignInClient(context)
-                                    googleLauncher.launch(client.signInIntent)
+                                .clickable(enabled = !isLoading) {
+                                    errorMessage = ""
+                                    isLoading = true
+                                    try {
+                                        googleLauncher.launch(AuthManager.getGoogleSignInIntent(context))
+                                    } catch (e: Exception) {
+                                        errorMessage = "Could not start Google Sign-In: ${e.message}"
+                                        isLoading = false
+                                    }
                                 }
                                 .padding(vertical = 16.dp),
                             contentAlignment = Alignment.Center

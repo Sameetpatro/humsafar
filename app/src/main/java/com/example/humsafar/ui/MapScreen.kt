@@ -273,6 +273,7 @@ fun MapContent(
         }
 
         if (!showWelcome) {
+            val liveStats by com.example.humsafar.data.StatsRepository.stats.collectAsStateWithLifecycle()
             // Top status bar
             Column(
                 modifier = Modifier
@@ -319,6 +320,38 @@ fun MapContent(
                                     else                -> "Nearby sites found"
                                 },
                                 color = tokens.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.width(10.dp))
+
+                    // Live explorers chip
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(tokens.surface)
+                            .border(0.7.dp, tokens.border, RoundedCornerShape(50))
+                            .padding(horizontal = 12.dp, vertical = 11.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            val onlinePulse by rememberInfiniteTransition(label = "online").animateFloat(
+                                0.4f, 1f,
+                                infiniteRepeatable(tween(1000, easing = EaseInOut), RepeatMode.Reverse),
+                                label = "op"
+                            )
+                            Box(
+                                Modifier.size(7.dp).scale(onlinePulse).clip(CircleShape)
+                                    .background(Color(0xFF4ADE80))
+                            )
+                            Spacer(Modifier.width(7.dp))
+                            Text(
+                                "${liveStats.activeUsers.coerceAtLeast(1)}",
+                                color = tokens.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                " online",
+                                color = tokens.textTertiary, fontSize = 11.sp
                             )
                         }
                     }

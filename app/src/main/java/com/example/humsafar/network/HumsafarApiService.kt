@@ -7,13 +7,17 @@ import com.example.humsafar.models.ChatRequest
 import com.example.humsafar.models.ChatResponse
 import com.example.humsafar.models.FeedbackCreateRequest
 import com.example.humsafar.models.FeedbackResponse
+import com.example.humsafar.models.LiveStats
 import com.example.humsafar.models.NearbySite
+import com.example.humsafar.models.NodeInsights
 import com.example.humsafar.models.NodeCommentCreateRequest
 import com.example.humsafar.models.NodeCommentResponse
 import com.example.humsafar.models.NodePositionResponse
 import com.example.humsafar.models.NodeRatingRequest
+import com.example.humsafar.models.PhoneUpdateRequest
 import com.example.humsafar.models.QrScanResult
 import com.example.humsafar.models.RatingResponse
+import com.example.humsafar.models.SiteInsights
 import com.example.humsafar.models.RecommendationResponse
 import com.example.humsafar.models.ReviewSubmitRequest
 import com.example.humsafar.models.ReviewSubmitResponse
@@ -48,6 +52,38 @@ interface HumsafarApiService {
     suspend fun getUser(
         @Path("firebase_uid") firebaseUid: String
     ): Response<UserResponse>
+
+    /** Set / update the user's mobile number (used after a Google sign-in). */
+    @PATCH("users/{firebase_uid}/phone")
+    suspend fun updatePhone(
+        @Path("firebase_uid") firebaseUid: String,
+        @Body request: PhoneUpdateRequest
+    ): Response<UserResponse>
+
+    // ── Live stats (active users + lifetime visitors) ───────────────────────
+    @GET("stats/live")
+    suspend fun getLiveStats(): Response<LiveStats>
+
+    @POST("stats/heartbeat")
+    suspend fun heartbeat(
+        @Query("firebase_uid") firebaseUid: String? = null
+    ): Response<LiveStats>
+
+    @POST("stats/visit")
+    suspend fun recordVisit(
+        @Query("firebase_uid") firebaseUid: String? = null
+    ): Response<LiveStats>
+
+    // ── Insights (per-site + per-node analytics with on-the-fly ML) ─────────
+    @GET("insights/sites/{site_id}")
+    suspend fun getSiteInsights(
+        @Path("site_id") siteId: Int
+    ): Response<SiteInsights>
+
+    @GET("insights/nodes/{node_id}")
+    suspend fun getNodeInsights(
+        @Path("node_id") nodeId: Int
+    ): Response<NodeInsights>
 
     // ── Sites ─────────────────────────────────────────────────────────────
 

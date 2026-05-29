@@ -32,7 +32,9 @@ fun ProfileScreen(
     onBack: () -> Unit,
     onSignOut:      () -> Unit = {},
     onOpenHistory:  () -> Unit = {},
-    onOpenFeedback: () -> Unit = {}
+    onOpenFeedback: () -> Unit = {},
+    onReplayOnboarding: () -> Unit = {},
+    onAccentChange: (Accent) -> Unit = {}
 ) {
     var visible   by remember { mutableStateOf(false) }
     val scroll    = rememberScrollState()
@@ -91,6 +93,15 @@ fun ProfileScreen(
 
                     Spacer(Modifier.height(24.dp))
 
+                    SectionLabel("Personalize")
+                    Spacer(Modifier.height(12.dp))
+                    PersonalizeCard(
+                        onReplayOnboarding = onReplayOnboarding,
+                        onAccentChange     = onAccentChange
+                    )
+
+                    Spacer(Modifier.height(24.dp))
+
                     SectionLabel("App Settings")
                     Spacer(Modifier.height(12.dp))
                     AppSettingsCard()
@@ -133,7 +144,7 @@ fun ProfileScreen(
                     Spacer(Modifier.height(16.dp))
 
                     Text(
-                        text      = "धरोहरसेतु v1.0  •  Prototype Build",
+                        text      = "Dharohar Setu v1.0  •  Prototype Build",
                         color     = TextTertiary,
                         fontSize  = 12.sp,
                         textAlign = TextAlign.Center,
@@ -444,6 +455,97 @@ private fun LanguageCard() {
                         .padding(horizontal = 10.dp, vertical = 4.dp)
                 )
             }
+        }
+    }
+}
+
+// ── Personalize (replay intro + change theme colour) ──────────────────────────
+
+@Composable
+private fun PersonalizeCard(
+    onReplayOnboarding: () -> Unit,
+    onAccentChange: (Accent) -> Unit
+) {
+    val accent = LocalAccent.current
+    GlassCard(Modifier.fillMaxWidth(), cornerRadius = 20.dp) {
+        Column(Modifier.padding(4.dp)) {
+
+            // ── Inline accent colour picker ───────────────────────────────────
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("🎨", fontSize = 16.sp, modifier = Modifier.size(24.dp), textAlign = TextAlign.Center)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Accent Colour", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                        Text(accent.name, color = TextTertiary, fontSize = 12.sp)
+                    }
+                }
+                Spacer(Modifier.height(14.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Accents.forEach { a ->
+                        AccentDot(
+                            accent   = a,
+                            selected = a.name == accent.name,
+                            onClick  = { onAccentChange(a) }
+                        )
+                    }
+                }
+            }
+
+            ProfileDivider()
+
+            // ── Replay tutorial ───────────────────────────────────────────────
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onReplayOnboarding() }
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("🧭", fontSize = 16.sp, modifier = Modifier.size(24.dp), textAlign = TextAlign.Center)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Replay Intro Tour", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    Text("Watch the welcome walkthrough again", color = TextTertiary, fontSize = 12.sp)
+                }
+                Icon(Icons.Default.ChevronRight, null, tint = accent.primary, modifier = Modifier.size(18.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun AccentDot(
+    accent: Accent,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    val scale by animateFloatAsState(
+        targetValue = if (selected) 1.12f else 1f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+        label = "accentDot"
+    )
+    Box(
+        modifier = Modifier
+            .size(40.dp)
+            .scale(scale)
+            .clip(CircleShape)
+            .background(Brush.linearGradient(listOf(accent.primary, accent.dark)))
+            .border(
+                width = if (selected) 2.dp else 1.dp,
+                color = if (selected) accent.onAccent.copy(alpha = 0.9f) else GlassBorder,
+                shape = CircleShape
+            )
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        if (selected) {
+            Text("✓", color = accent.onAccent, fontSize = 16.sp, fontWeight = FontWeight.Black)
         }
     }
 }

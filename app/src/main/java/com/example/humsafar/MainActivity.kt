@@ -12,6 +12,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
 import com.example.humsafar.auth.AuthManager
+import com.example.humsafar.data.StatsRepository
 import com.example.humsafar.data.TripManager
 import com.example.humsafar.data.UserRepository
 import com.example.humsafar.navigation.AppNavigation
@@ -28,6 +29,8 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         TripManager.init(applicationContext)
         UserRepository.init(applicationContext)
+        // Record this app open + keep the user counted as "active now".
+        StatsRepository.start()
 
         val appPrefs = AppPreferences(applicationContext)
 

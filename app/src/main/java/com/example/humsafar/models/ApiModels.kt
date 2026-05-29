@@ -344,3 +344,83 @@ data class AmenityResponse(
     @SerializedName("is_paid")          val isPaid:         Boolean = false,
     @SerializedName("distance_meters")  val distanceMeters: Double? = null
 )
+
+// ─────────────────────────────────────────────────────────────────────────────
+// /users/{firebase_uid}/phone  →  PATCH (set mobile number after Google sign-in)
+// ─────────────────────────────────────────────────────────────────────────────
+data class PhoneUpdateRequest(
+    @SerializedName("phone") val phone: String
+)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// /stats/live · /stats/heartbeat · /stats/visit
+// ─────────────────────────────────────────────────────────────────────────────
+data class LiveStats(
+    @SerializedName("active_users")    val activeUsers: Int    = 0,
+    @SerializedName("lifetime_visits") val lifetimeVisits: Int = 0,
+    @SerializedName("total_users")     val totalUsers: Int     = 0
+)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// /insights/sites/{site_id}
+// ─────────────────────────────────────────────────────────────────────────────
+data class DailyVisit(
+    @SerializedName("date")  val date: String = "",
+    @SerializedName("count") val count: Int   = 0
+)
+
+data class NodePopularity(
+    @SerializedName("node_id")          val nodeId: Int        = 0,
+    @SerializedName("name")             val name: String       = "",
+    @SerializedName("visits")           val visits: Int        = 0,
+    @SerializedName("avg_rating")       val avgRating: Double  = 0.0,
+    @SerializedName("rating_count")     val ratingCount: Int   = 0,
+    @SerializedName("engagement_score") val engagementScore: Double = 0.0
+)
+
+data class SiteMlInsight(
+    @SerializedName("model")                        val model: String = "linear_regression",
+    @SerializedName("trained_on")                   val trainedOn: Int = 0,
+    @SerializedName("predicted_visits_next_day")    val predictedVisitsNextDay: Int = 0,
+    @SerializedName("visits_trend")                 val visitsTrend: String = "steady",
+    @SerializedName("mins_per_extra_node")          val minsPerExtraNode: Double = 0.0,
+    @SerializedName("predicted_full_duration_mins") val predictedFullDurationMins: Double = 0.0,
+    @SerializedName("engagement_score")             val engagementScore: Double = 0.0,
+    @SerializedName("insight_text")                 val insightText: String = ""
+)
+
+data class SiteInsights(
+    @SerializedName("site_id")             val siteId: Int = 0,
+    @SerializedName("site_name")           val siteName: String = "",
+    @SerializedName("total_visits")        val totalVisits: Int = 0,
+    @SerializedName("unique_visitors")     val uniqueVisitors: Int = 0,
+    @SerializedName("avg_duration_mins")   val avgDurationMins: Double = 0.0,
+    @SerializedName("avg_nodes_completed") val avgNodesCompleted: Double = 0.0,
+    @SerializedName("completion_rate")     val completionRate: Double = 0.0,
+    @SerializedName("total_interactions")  val totalInteractions: Int = 0,
+    @SerializedName("avg_rating")          val avgRating: Double = 0.0,
+    @SerializedName("daily_visits")        val dailyVisits: List<DailyVisit> = emptyList(),
+    @SerializedName("node_popularity")     val nodePopularity: List<NodePopularity> = emptyList(),
+    @SerializedName("ml")                  val ml: SiteMlInsight = SiteMlInsight()
+)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// /insights/nodes/{node_id}
+// ─────────────────────────────────────────────────────────────────────────────
+data class NodeMlInsight(
+    @SerializedName("engagement_score") val engagementScore: Double = 0.0,
+    @SerializedName("insight_text")     val insightText: String = ""
+)
+
+data class NodeInsights(
+    @SerializedName("node_id")        val nodeId: Int = 0,
+    @SerializedName("site_id")        val siteId: Int = 0,
+    @SerializedName("name")           val name: String = "",
+    @SerializedName("visits")         val visits: Int = 0,
+    @SerializedName("avg_rating")     val avgRating: Double = 0.0,
+    @SerializedName("rating_count")   val ratingCount: Int = 0,
+    @SerializedName("comments")       val comments: Int = 0,
+    @SerializedName("interactions")   val interactions: Int = 0,
+    @SerializedName("popularity_pct") val popularityPct: Double = 0.0,
+    @SerializedName("ml")             val ml: NodeMlInsight = NodeMlInsight()
+)

@@ -107,6 +107,7 @@ fun HeritageDetailScreen(
     onBack: () -> Unit,
     onNavigateToVoice: (String, String) -> Unit,
     onNavigateToQrScan: (String) -> Unit,
+    onNavigateToInsights: (Int, String) -> Unit = { _, _ -> },
     viewModel: HeritageDetailViewModel = viewModel()
 ) {
     val context = LocalContext.current
@@ -275,6 +276,12 @@ fun HeritageDetailScreen(
                                 icon = "📷", title = "Scan Node to Start Trip",
                                 subtitle = "Scan QR & explore nodes"
                             ) { onNavigateToQrScan(siteId) }
+                            Spacer(Modifier.height(16.dp))
+
+                            HeritageActionCard(
+                                icon = "📊", title = "Insights about this site",
+                                subtitle = "Visitor trends, time spent & AI engagement"
+                            ) { onNavigateToInsights(site.id, site.name) }
                             Spacer(Modifier.height(16.dp))
 
                             site.introVideoUrl?.takeIf { it.isNotBlank() }?.let { url ->

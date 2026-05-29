@@ -18,6 +18,7 @@ package com.example.humsafar.data
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
+import com.example.humsafar.models.PhoneUpdateRequest
 import com.example.humsafar.models.UserRegisterRequest
 import com.example.humsafar.network.HumsafarClient
 import com.google.firebase.auth.FirebaseUser
@@ -72,10 +73,14 @@ object UserRepository {
      * Suspend version for callers (e.g. login flow) that want to wait for the
      * sync to complete before proceeding.
      */
-    suspend fun syncFirebaseUserSuspend(user: FirebaseUser): Boolean = mutex.withLock {
+    suspend fun syncFirebaseUserSuspend(
+        user: FirebaseUser,
+        phoneOverride: String? = null
+    ): Boolean = mutex.withLock {
         val uid = user.uid
         val cached = prefs.getString(KEY_LAST_UID, null)
-        if (cached == uid && _isRegistered.value) {
+        // A phoneOverride always forces a fresh sync so the number is persisted.
+        if (phoneOverride.isNullOrBlank() && cached == uid && _isRegistered.value) {
             Log.d(TAG, "User $uid already registered (cached), skipping")
             return@withLock true
         }
@@ -85,7 +90,8 @@ object UserRepository {
                 firebaseUid   = uid,
                 displayName   = user.displayName?.takeIf { it.isNotBlank() },
                 email         = user.email?.takeIf { it.isNotBlank() },
-                phone         = user.phoneNumber?.takeIf { it.isNotBlank() },
+                phone         = phoneOverride?.takeIf { it.isNotBlank() }
+                    ?: user.phoneNumber?.takeIf { it.isNotBlank() },
                 avatarUrl     = user.photoUrl?.toString(),
                 preferredLang = "en-IN",
                 isAnonymous   = user.isAnonymous
@@ -106,6 +112,33 @@ object UserRepository {
             _isRegistered.value = false
             false
         }
+    }
+
+    /**
+     * Ensures the user is registered, then reports whether we still need to ask
+     * for a mobile number (true when the backend has no phone on record).
+     * Non-anonymous users only — guests are never prompted.
+     */
+    suspend fun needsPhoneNumber(user: FirebaseUser): Boolean {
+        if (user.isAnonymous) return false
+        syncFirebaseUserSuspend(user)
+        return try {
+            val resp = HumsafarClient.api.getUser(user.uid)
+            val phone = resp.body()?.phone
+            resp.isSuccessful && phone.isNullOrBlank()
+        } catch (e: Exception) {
+            Log.w(TAG, "needsPhoneNumber check failed: ${e.message}")
+            false   // never block the user on a network hiccup
+        }
+    }
+
+    /** Persist a mobile number for the signed-in user. */
+    suspend fun updatePhone(uid: String, phone: String): Boolean = try {
+        val resp = HumsafarClient.api.updatePhone(uid, PhoneUpdateRequest(phone.trim()))
+        resp.isSuccessful
+    } catch (e: Exception) {
+        Log.e(TAG, "updatePhone failed: ${e.message}", e)
+        false
     }
 
     fun clear() {

@@ -23,7 +23,7 @@ import com.example.humsafar.ui.theme.LocalAccent
 import com.example.humsafar.ui.theme.LocalAppColors
 import kotlinx.coroutines.delay
 
-private const val SPLASH_DURATION_MS = 1600L
+private const val SPLASH_DURATION_MS = 2000L
 
 @Composable
 fun SplashScreen(onDone: () -> Unit) {
@@ -124,7 +124,7 @@ fun SplashScreen(onDone: () -> Unit) {
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "धरो",
+                        text = "DS",
                         color = accent.onAccent,
                         fontSize = 34.sp,
                         fontWeight = FontWeight.Black
@@ -134,7 +134,7 @@ fun SplashScreen(onDone: () -> Unit) {
 
             Spacer(Modifier.height(28.dp))
 
-            val appTitle = "धरोहरसेतु"
+            val appTitle = "Dharohar Setu"
             Row(
                 modifier = Modifier.scale(0.9f + 0.1f * titleAlpha.value),
                 horizontalArrangement = Arrangement.Center,
@@ -151,9 +151,9 @@ fun SplashScreen(onDone: () -> Unit) {
                             text = ch.toString(),
                             color = tokens.textPrimary
                                 .copy(alpha = titleAlpha.value * letterAlpha.value),
-                            fontSize = 40.sp,
+                            fontSize = 34.sp,
                             fontWeight = FontWeight.Black,
-                            letterSpacing = (-1).sp
+                            letterSpacing = (-0.5).sp
                         )
                     }
                 }

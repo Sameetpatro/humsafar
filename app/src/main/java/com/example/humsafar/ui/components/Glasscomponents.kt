@@ -215,7 +215,9 @@ fun GlassTextField(
     onValueChange: (String) -> Unit,
     placeholder: String,
     modifier: Modifier = Modifier,
-    isPassword: Boolean = false
+    isPassword: Boolean = false,
+    keyboardType: androidx.compose.ui.text.input.KeyboardType =
+        androidx.compose.ui.text.input.KeyboardType.Text
 ) {
     val tokens = LocalAppColors.current
     val accent = LocalAccent.current
@@ -241,6 +243,9 @@ fun GlassTextField(
             onValueChange = onValueChange,
             singleLine = true,
             cursorBrush = SolidColor(accent.primary),
+            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                keyboardType = keyboardType
+            ),
             visualTransformation = if (isPassword)
                 androidx.compose.ui.text.input.PasswordVisualTransformation()
             else
