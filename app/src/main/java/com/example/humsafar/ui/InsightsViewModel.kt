@@ -2,8 +2,10 @@ package com.example.humsafar.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.humsafar.auth.AuthManager
 import com.example.humsafar.models.NodeInsights
 import com.example.humsafar.models.SiteInsights
+import com.example.humsafar.models.UserInsights
 import com.example.humsafar.network.HumsafarClient
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -16,6 +18,12 @@ sealed interface InsightsUiState {
     data class Error(val message: String) : InsightsUiState
 }
 
+sealed interface MyInsightsUiState {
+    data object Loading : MyInsightsUiState
+    data class Ready(val me: UserInsights) : MyInsightsUiState
+    data class Error(val message: String) : MyInsightsUiState
+}
+
 class InsightsViewModel : ViewModel() {
 
     private val _uiState = MutableStateFlow<InsightsUiState>(InsightsUiState.Loading)
@@ -23,6 +31,30 @@ class InsightsViewModel : ViewModel() {
 
     private val _nodeInsight = MutableStateFlow<NodeInsights?>(null)
     val nodeInsight: StateFlow<NodeInsights?> = _nodeInsight.asStateFlow()
+
+    private val _myState = MutableStateFlow<MyInsightsUiState>(MyInsightsUiState.Loading)
+    val myState: StateFlow<MyInsightsUiState> = _myState.asStateFlow()
+
+    fun loadMyInsights() {
+        _myState.value = MyInsightsUiState.Loading
+        val uid = AuthManager.currentUser.value?.uid
+        if (uid.isNullOrBlank()) {
+            _myState.value = MyInsightsUiState.Error("Sign in to see your personal insights.")
+            return
+        }
+        viewModelScope.launch {
+            runCatching {
+                val resp = HumsafarClient.api.getUserInsights(uid)
+                if (resp.isSuccessful && resp.body() != null) {
+                    _myState.value = MyInsightsUiState.Ready(resp.body()!!)
+                } else {
+                    _myState.value = MyInsightsUiState.Error("Couldn't load your insights (HTTP ${resp.code()})")
+                }
+            }.onFailure {
+                _myState.value = MyInsightsUiState.Error(it.message ?: "Network error")
+            }
+        }
+    }
 
     fun loadSite(siteId: Int) {
         _uiState.value = InsightsUiState.Loading

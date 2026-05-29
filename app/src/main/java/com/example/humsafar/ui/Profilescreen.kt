@@ -33,6 +33,7 @@ fun ProfileScreen(
     onSignOut:      () -> Unit = {},
     onOpenHistory:  () -> Unit = {},
     onOpenFeedback: () -> Unit = {},
+    onOpenMyInsights: () -> Unit = {},
     onReplayOnboarding: () -> Unit = {},
     onAccentChange: (Accent) -> Unit = {}
 ) {
@@ -81,8 +82,9 @@ fun ProfileScreen(
                     SectionLabel("Your Journey")
                     Spacer(Modifier.height(12.dp))
                     JourneyCard(
-                        onOpenHistory  = onOpenHistory,
-                        onOpenFeedback = onOpenFeedback
+                        onOpenHistory   = onOpenHistory,
+                        onOpenFeedback  = onOpenFeedback,
+                        onOpenMyInsights = onOpenMyInsights
                     )
 
                     Spacer(Modifier.height(24.dp))
@@ -348,7 +350,8 @@ private fun ProfileDivider() {
 @Composable
 private fun JourneyCard(
     onOpenHistory:  () -> Unit,
-    onOpenFeedback: () -> Unit
+    onOpenFeedback: () -> Unit,
+    onOpenMyInsights: () -> Unit
 ) {
     GlassCard(Modifier.fillMaxWidth(), cornerRadius = 20.dp) {
         Column(Modifier.padding(4.dp)) {
@@ -373,6 +376,33 @@ private fun JourneyCard(
                     )
                     Text(
                         "Every site you've explored",
+                        color = TextTertiary, fontSize = 12.sp
+                    )
+                }
+                Icon(Icons.Default.ChevronRight, null, tint = LocalAccent.current.primary, modifier = Modifier.size(18.dp))
+            }
+            ProfileDivider()
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onOpenMyInsights() }
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "📊",
+                    fontSize = 18.sp,
+                    modifier = Modifier.size(24.dp),
+                    textAlign = TextAlign.Center
+                )
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "My Insights",
+                        color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        "Your personal heritage footprint",
                         color = TextTertiary, fontSize = 12.sp
                     )
                 }

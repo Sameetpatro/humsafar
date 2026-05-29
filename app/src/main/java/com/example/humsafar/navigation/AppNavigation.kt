@@ -399,8 +399,16 @@ fun AppNavigation(
                 },
                 onOpenHistory  = { navController.navigate("history") },
                 onOpenFeedback = { navController.navigate("feedback") },
+                onOpenMyInsights = { navController.navigate("my_insights") },
                 onReplayOnboarding = { navController.navigate("onboarding") },
                 onAccentChange = onAccentChange
+            )
+        }
+
+        // ── Personal insights ─────────────────────────────────────────────
+        composable("my_insights") {
+            MyInsightsScreen(
+                onBack = { navController.popBackStack() }
             )
         }
 

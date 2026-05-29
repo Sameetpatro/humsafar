@@ -18,6 +18,8 @@ import com.example.humsafar.models.PhoneUpdateRequest
 import com.example.humsafar.models.QrScanResult
 import com.example.humsafar.models.RatingResponse
 import com.example.humsafar.models.SiteInsights
+import com.example.humsafar.models.SiteInsightSnapshot
+import com.example.humsafar.models.UserInsights
 import com.example.humsafar.models.RecommendationResponse
 import com.example.humsafar.models.ReviewSubmitRequest
 import com.example.humsafar.models.ReviewSubmitResponse
@@ -84,6 +86,19 @@ interface HumsafarApiService {
     suspend fun getNodeInsights(
         @Path("node_id") nodeId: Int
     ): Response<NodeInsights>
+
+    /** Stored daily insight snapshots for a site (training-ready time series). */
+    @GET("insights/sites/{site_id}/history")
+    suspend fun getSiteInsightHistory(
+        @Path("site_id") siteId: Int,
+        @Query("days")   days: Int = 90
+    ): Response<List<SiteInsightSnapshot>>
+
+    /** Personal heritage footprint for the signed-in user ("my insights"). */
+    @GET("insights/users/{firebase_uid}")
+    suspend fun getUserInsights(
+        @Path("firebase_uid") firebaseUid: String
+    ): Response<UserInsights>
 
     // ── Sites ─────────────────────────────────────────────────────────────
 

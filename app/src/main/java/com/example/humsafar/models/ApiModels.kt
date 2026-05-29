@@ -424,3 +424,42 @@ data class NodeInsights(
     @SerializedName("popularity_pct") val popularityPct: Double = 0.0,
     @SerializedName("ml")             val ml: NodeMlInsight = NodeMlInsight()
 )
+
+// ─────────────────────────────────────────────────────────────────────────────
+// /insights/sites/{site_id}/history  →  stored daily snapshots (training series)
+// ─────────────────────────────────────────────────────────────────────────────
+data class SiteInsightSnapshot(
+    @SerializedName("snapshot_date")                val snapshotDate: String = "",
+    @SerializedName("total_visits")                 val totalVisits: Int = 0,
+    @SerializedName("unique_visitors")              val uniqueVisitors: Int = 0,
+    @SerializedName("avg_duration_mins")            val avgDurationMins: Double = 0.0,
+    @SerializedName("avg_nodes_completed")          val avgNodesCompleted: Double = 0.0,
+    @SerializedName("completion_rate")              val completionRate: Double = 0.0,
+    @SerializedName("total_interactions")           val totalInteractions: Int = 0,
+    @SerializedName("avg_rating")                   val avgRating: Double = 0.0,
+    @SerializedName("engagement_score")             val engagementScore: Double = 0.0,
+    @SerializedName("predicted_visits_next_day")    val predictedVisitsNextDay: Int = 0,
+    @SerializedName("visits_trend")                 val visitsTrend: String = "steady",
+    @SerializedName("mins_per_extra_node")          val minsPerExtraNode: Double = 0.0,
+    @SerializedName("predicted_full_duration_mins") val predictedFullDurationMins: Double = 0.0
+)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// /insights/users/{firebase_uid}  →  personal heritage footprint ("my insights")
+// ─────────────────────────────────────────────────────────────────────────────
+data class UserInsights(
+    @SerializedName("user_id")                      val userId: String = "",
+    @SerializedName("total_visits")                 val totalVisits: Int = 0,
+    @SerializedName("sites_explored")               val sitesExplored: Int = 0,
+    @SerializedName("total_duration_mins")          val totalDurationMins: Int = 0,
+    @SerializedName("avg_duration_mins")            val avgDurationMins: Double = 0.0,
+    @SerializedName("total_nodes_completed")        val totalNodesCompleted: Int = 0,
+    @SerializedName("avg_completion_rate")          val avgCompletionRate: Double = 0.0,
+    @SerializedName("total_interactions")           val totalInteractions: Int = 0,
+    @SerializedName("favorite_site_id")             val favoriteSiteId: Int? = null,
+    @SerializedName("favorite_site_name")           val favoriteSiteName: String? = null,
+    @SerializedName("engagement_score")             val engagementScore: Double = 0.0,
+    @SerializedName("explorer_level")               val explorerLevel: String = "Newcomer",
+    @SerializedName("predicted_next_duration_mins") val predictedNextDurationMins: Double = 0.0,
+    @SerializedName("insight_text")                 val insightText: String = ""
+)
