@@ -20,6 +20,21 @@ import com.example.humsafar.models.RatingResponse
 import com.example.humsafar.models.SiteInsights
 import com.example.humsafar.models.SiteInsightSnapshot
 import com.example.humsafar.models.UserInsights
+import com.example.humsafar.models.GemBalance
+import com.example.humsafar.models.QuizStartResponse
+import com.example.humsafar.models.QuizAnswerRequest
+import com.example.humsafar.models.QuizAnswerResponse
+import com.example.humsafar.models.QuizCompleteRequest
+import com.example.humsafar.models.QuizCompleteResponse
+import com.example.humsafar.models.QuizAbandonRequest
+import com.example.humsafar.models.StorePartner
+import com.example.humsafar.models.CouponPurchaseRequest
+import com.example.humsafar.models.CouponPurchaseResponse
+import com.example.humsafar.models.Coupon
+import com.example.humsafar.models.BonusOfferRequest
+import com.example.humsafar.models.BonusOfferResponse
+import com.example.humsafar.models.BonusCompleteRequest
+import com.example.humsafar.models.BonusCompleteResponse
 import com.example.humsafar.models.RecommendationResponse
 import com.example.humsafar.models.ReviewSubmitRequest
 import com.example.humsafar.models.ReviewSubmitResponse
@@ -99,6 +114,64 @@ interface HumsafarApiService {
     suspend fun getUserInsights(
         @Path("firebase_uid") firebaseUid: String
     ): Response<UserInsights>
+
+    // ── Gamification: gems wallet ───────────────────────────────────────────
+    @GET("gems/{firebase_uid}")
+    suspend fun getGems(
+        @Path("firebase_uid") firebaseUid: String
+    ): Response<GemBalance>
+
+    // ── Gamification: final quiz ────────────────────────────────────────────
+    @POST("quiz/start")
+    suspend fun startQuiz(
+        @Query("firebase_uid") firebaseUid: String,
+        @Query("trip_id")      tripId: Int
+    ): Response<QuizStartResponse>
+
+    @POST("quiz/answer")
+    suspend fun answerQuiz(
+        @Body request: QuizAnswerRequest
+    ): Response<QuizAnswerResponse>
+
+    @POST("quiz/complete")
+    suspend fun completeQuiz(
+        @Body request: QuizCompleteRequest
+    ): Response<QuizCompleteResponse>
+
+    @POST("quiz/abandon")
+    suspend fun abandonQuiz(
+        @Body request: QuizAbandonRequest
+    ): Response<Unit>
+
+    // ── Gamification: coupon store ──────────────────────────────────────────
+    @GET("store/partners")
+    suspend fun getStorePartners(
+        @Query("site_id")  siteId: Int? = null,
+        @Query("kind")     kind: String = "hotel",
+        @Query("user_lat") userLat: Double? = null,
+        @Query("user_lng") userLng: Double? = null
+    ): Response<List<StorePartner>>
+
+    @POST("store/purchase")
+    suspend fun purchaseCoupon(
+        @Body request: CouponPurchaseRequest
+    ): Response<CouponPurchaseResponse>
+
+    @GET("store/coupons/{firebase_uid}")
+    suspend fun getMyCoupons(
+        @Path("firebase_uid") firebaseUid: String
+    ): Response<List<Coupon>>
+
+    // ── Gamification: bonus "Bingo" challenge ───────────────────────────────
+    @POST("bonus/offer")
+    suspend fun offerBonus(
+        @Body request: BonusOfferRequest
+    ): Response<BonusOfferResponse>
+
+    @POST("bonus/complete")
+    suspend fun completeBonus(
+        @Body request: BonusCompleteRequest
+    ): Response<BonusCompleteResponse>
 
     // ── Sites ─────────────────────────────────────────────────────────────
 

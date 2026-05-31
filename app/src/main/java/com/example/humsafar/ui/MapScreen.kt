@@ -81,7 +81,8 @@ fun MapScreen(
     onNavigateToDetail:   (String, String) -> Unit = { _, _ -> },
     onNavigateToProfile:  () -> Unit = {},
     onNavigateToQrScan:   (Int) -> Unit = {},
-    onNavigateToSiteInfo: (Int, String) -> Unit = { _, _ -> }
+    onNavigateToSiteInfo: (Int, String) -> Unit = { _, _ -> },
+    onNavigateToStore:    () -> Unit = {}
 ) {
     val locationPermission = rememberPermissionState(android.Manifest.permission.ACCESS_FINE_LOCATION)
     LaunchedEffect(Unit) { locationPermission.launchPermissionRequest() }
@@ -92,7 +93,8 @@ fun MapScreen(
             onNavigateToDetail   = onNavigateToDetail,
             onNavigateToProfile  = onNavigateToProfile,
             onNavigateToQrScan   = onNavigateToQrScan,
-            onNavigateToSiteInfo = onNavigateToSiteInfo
+            onNavigateToSiteInfo = onNavigateToSiteInfo,
+            onNavigateToStore    = onNavigateToStore
         )
     } else {
         PermissionGate(locationPermission)
@@ -132,7 +134,8 @@ fun MapContent(
     onNavigateToDetail:   (String, String) -> Unit = { _, _ -> },
     onNavigateToProfile:  () -> Unit = {},
     onNavigateToQrScan:   (Int) -> Unit = {},
-    onNavigateToSiteInfo: (Int, String) -> Unit = { _, _ -> }
+    onNavigateToSiteInfo: (Int, String) -> Unit = { _, _ -> },
+    onNavigateToStore:    () -> Unit = {}
 ) {
     val context        = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -159,6 +162,7 @@ fun MapContent(
     // ── Wire the API once ─────────────────────────────────────────────────
     LaunchedEffect(Unit) {
         LocationBasedSiteDetector.api = HumsafarClient.api
+        com.example.humsafar.data.GamificationRepository.refresh()
     }
 
     // ── Observe detector output ───────────────────────────────────────────
@@ -174,6 +178,17 @@ fun MapContent(
 
     val sortedSites: List<Pair<HeritageSite, Double>> = nearbySites.map { s ->
         HeritageSite(s.id.toString(), s.name, s.latitude, s.longitude, 300.0) to s.distanceMeters
+    }
+
+    // ── Surprise bonus "Bingo" offers while inside a site ──────────────────
+    LaunchedEffect(currentSite?.id) {
+        val sid = currentSite?.id ?: return@LaunchedEffect
+        while (true) {
+            com.example.humsafar.data.BonusGameManager.considerOffer(
+                sid, com.example.humsafar.data.ActiveSiteManager.activeNodeId.value
+            )
+            kotlinx.coroutines.delay(45_000)
+        }
     }
 
     // ── GPS updates ───────────────────────────────────────────────────────
@@ -352,6 +367,28 @@ fun MapContent(
                             Text(
                                 " online",
                                 color = tokens.textTertiary, fontSize = 11.sp
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.width(10.dp))
+
+                    // Gems chip → store
+                    val gems by com.example.humsafar.data.GamificationRepository.gems.collectAsStateWithLifecycle()
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(tokens.surface)
+                            .border(0.7.dp, tokens.border, RoundedCornerShape(50))
+                            .clickable { onNavigateToStore() }
+                            .padding(horizontal = 12.dp, vertical = 11.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("💎", fontSize = 13.sp)
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                "$gems",
+                                color = tokens.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold
                             )
                         }
                     }

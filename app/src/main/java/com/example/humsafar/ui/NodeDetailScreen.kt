@@ -69,6 +69,7 @@ fun NodeDetailScreen(
     onNavigateToVoice:      (String, String) -> Unit,
     onNavigateToDirections: ((Int, String) -> Unit)? = null,
     onNavigateToReview:     ((Int, Int, String, Int, Int) -> Unit)? = null,
+    onNavigateToQuiz:       ((Int, Int, String, Int, Int) -> Unit)? = null,   // (tripId, siteId, siteName, visited, total)
     onNavigateToAmenity:    (Int) -> Unit = {},          // ← NEW
     onNavigateToComments:   ((Int, Int, String) -> Unit)? = null,   // (nodeId, siteId, nodeName)
     onNavigateToInsights:   ((Int, String) -> Unit)? = null,        // (siteId, siteName)
@@ -359,7 +360,14 @@ fun NodeDetailScreen(
                                     lastLat        = tripState.lastLat,
                                     lastLng        = tripState.lastLng
                                 )
-                                onNavigateToReview?.invoke(tripId, tripSiteId, sName, visitedCount, totalCount)
+                                // The geofence-exit path must not also fire this trip's quiz.
+                                com.example.humsafar.data.QuizTrigger.markHandled(tripId)
+                                // Final quiz sits between ending the trip and the review.
+                                if (onNavigateToQuiz != null) {
+                                    onNavigateToQuiz(tripId, tripSiteId, sName, visitedCount, totalCount)
+                                } else {
+                                    onNavigateToReview?.invoke(tripId, tripSiteId, sName, visitedCount, totalCount)
+                                }
                             },
                             modifier = Modifier
                                 .align(Alignment.BottomStart)

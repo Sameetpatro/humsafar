@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -17,9 +18,11 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.*
 import androidx.navigation.navArgument
 import com.example.humsafar.auth.AuthManager
+import com.example.humsafar.data.QuizTrigger
 import com.example.humsafar.data.TripManager
 import com.example.humsafar.prefs.AppPreferences
 import com.example.humsafar.ui.*
+import com.example.humsafar.ui.bonus.BonusGameHost
 import com.example.humsafar.ui.theme.Accent
 import java.net.URLDecoder
 import java.net.URLEncoder
@@ -39,6 +42,19 @@ fun AppNavigation(
         else -> "login"
     }
 
+    // Geofence-exit trigger: when the user leaves a site mid-trip we queue the
+    // final quiz. Route to it here (immediately if foreground, else on resume).
+    val pendingQuiz by QuizTrigger.pending.collectAsState()
+    LaunchedEffect(pendingQuiz) {
+        pendingQuiz?.let { pq ->
+            navController.navigate(
+                quizRoute(pq.tripId, pq.siteId, pq.siteName, pq.visitedCount, pq.totalCount)
+            ) { popUpTo("home") { inclusive = false } }
+            QuizTrigger.consume()
+        }
+    }
+
+    Box(Modifier.fillMaxSize()) {
     NavHost(
         navController = navController,
         startDestination = startDest,
@@ -147,8 +163,46 @@ fun AppNavigation(
                 },
                 onNavigateToSiteInfo = { siteId, siteName ->
                     navController.navigate(siteInfoRoute(siteId, siteName))
+                },
+                onNavigateToStore    = { navController.navigate("store") }
+            )
+        }
+
+        // ── Coupon store + spinning wheels ─────────────────────────────────
+        composable("store") {
+            StoreScreen(
+                onBack = { navController.popBackStack() },
+                onSpin = { tier, kind, sId ->
+                    navController.navigate("spin/$tier/$kind/$sId")
+                },
+                onOpenCoupons = { navController.navigate("coupons") }
+            )
+        }
+        composable(
+            route = "spin/{tier}/{kind}/{siteId}",
+            arguments = listOf(
+                navArgument("tier")   { type = NavType.StringType },
+                navArgument("kind")   { type = NavType.StringType },
+                navArgument("siteId") { type = NavType.IntType }
+            )
+        ) { backStack ->
+            val tier   = backStack.arguments?.getString("tier") ?: "normal"
+            val kind   = backStack.arguments?.getString("kind") ?: "hotel"
+            val siteId = backStack.arguments?.getInt("siteId") ?: -1
+            SpinWheelScreen(
+                tier = tier,
+                kind = kind,
+                siteId = siteId,
+                onBack = { navController.popBackStack() },
+                onViewCoupons = {
+                    navController.navigate("coupons") {
+                        popUpTo("store") { inclusive = false }
+                    }
                 }
             )
+        }
+        composable("coupons") {
+            MyCouponsScreen(onBack = { navController.popBackStack() })
         }
 
         // ── Site Info ─────────────────────────────────────────────────────
@@ -229,6 +283,11 @@ fun AppNavigation(
                 },
                 onNavigateToReview     = { tripId: Int, cSiteId: Int, cSiteName: String, visited: Int, total: Int ->
                     navController.navigate(reviewRoute(tripId, cSiteId, cSiteName, visited, total)) {
+                        popUpTo("home") { inclusive = false }
+                    }
+                },
+                onNavigateToQuiz       = { tripId: Int, cSiteId: Int, cSiteName: String, visited: Int, total: Int ->
+                    navController.navigate(quizRoute(tripId, cSiteId, cSiteName, visited, total)) {
                         popUpTo("home") { inclusive = false }
                     }
                 },
@@ -386,6 +445,33 @@ fun AppNavigation(
             )
         }
 
+        // ── Final Quiz (between end-trip and review) ───────────────────────
+        composable(
+            route = "quiz/{tripId}/{siteId}/{siteName}/{visitedCount}/{totalCount}",
+            arguments = listOf(
+                navArgument("tripId")       { type = NavType.IntType },
+                navArgument("siteId")       { type = NavType.IntType },
+                navArgument("siteName")     { type = NavType.StringType },
+                navArgument("visitedCount") { type = NavType.IntType },
+                navArgument("totalCount")   { type = NavType.IntType }
+            )
+        ) { backStack ->
+            val tripId       = backStack.arguments?.getInt("tripId") ?: 0
+            val siteId       = backStack.arguments?.getInt("siteId") ?: 0
+            val siteName     = backStack.arguments?.getString("siteName")
+                ?.let { URLDecoder.decode(it, "UTF-8") } ?: "Heritage Site"
+            val visitedCount = backStack.arguments?.getInt("visitedCount") ?: 0
+            val totalCount   = backStack.arguments?.getInt("totalCount") ?: 0
+            QuizScreen(
+                tripId = tripId,
+                onFinish = {
+                    navController.navigate(reviewRoute(tripId, siteId, siteName, visitedCount, totalCount)) {
+                        popUpTo("home") { inclusive = false }
+                    }
+                }
+            )
+        }
+
         // ── Profile ───────────────────────────────────────────────────────
         composable("profile") {
             ProfileScreen(
@@ -400,6 +486,8 @@ fun AppNavigation(
                 onOpenHistory  = { navController.navigate("history") },
                 onOpenFeedback = { navController.navigate("feedback") },
                 onOpenMyInsights = { navController.navigate("my_insights") },
+                onOpenStore    = { navController.navigate("store") },
+                onOpenCoupons  = { navController.navigate("coupons") },
                 onReplayOnboarding = { navController.navigate("onboarding") },
                 onAccentChange = onAccentChange
             )
@@ -476,6 +564,9 @@ fun AppNavigation(
             )
         }
     }
+
+        BonusGameHost()
+    }
 }
 
 // ── Route helpers ─────────────────────────────────────────────────────────────
@@ -524,6 +615,11 @@ fun amenityDetailRoute(amenityId: Int): String =
 fun insightsRoute(siteId: Int, siteName: String): String {
     val encoded = URLEncoder.encode(siteName, "UTF-8")
     return "insights/$siteId/$encoded"
+}
+
+fun quizRoute(tripId: Int, siteId: Int, siteName: String, visitedCount: Int, totalCount: Int): String {
+    val encoded = URLEncoder.encode(siteName, "UTF-8")
+    return "quiz/$tripId/$siteId/$encoded/$visitedCount/$totalCount"
 }
 
 fun nodeCommentsRoute(nodeId: Int, siteId: Int, nodeName: String): String {

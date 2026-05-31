@@ -12,6 +12,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
 import com.example.humsafar.auth.AuthManager
+import com.example.humsafar.data.GamificationRepository
 import com.example.humsafar.data.StatsRepository
 import com.example.humsafar.data.TripManager
 import com.example.humsafar.data.UserRepository
@@ -52,6 +53,7 @@ class MainActivity : ComponentActivity() {
                         UserRepository.clear()
                     } else {
                         UserRepository.syncFirebaseUser(user)
+                        GamificationRepository.refresh()
                     }
                 }
         }

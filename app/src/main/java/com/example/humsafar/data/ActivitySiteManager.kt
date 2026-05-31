@@ -74,6 +74,9 @@ object ActiveSiteManager {
         Log.i(TAG, "EXITED site_id=${previous.id} name='${previous.name}'")
         _activeSite.value   = null
         _activeNodeId.value = null
+        // If the user was on a trip at this site, leaving the geofence triggers
+        // the end-of-trip quiz.
+        QuizTrigger.onSiteExit(previous.id)
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -85,6 +88,8 @@ object ActiveSiteManager {
     fun onNodeScanned(nodeId: Int) {
         Log.i(TAG, "Node scanned: node_id=$nodeId for site_id=${activeSiteId}")
         _activeNodeId.value = nodeId
+        // A scan may complete an in-flight bonus "Bingo" challenge.
+        BonusGameManager.onNodeScanned(nodeId)
     }
 
     fun clearNode() {

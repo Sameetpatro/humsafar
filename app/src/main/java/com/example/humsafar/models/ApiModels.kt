@@ -445,6 +445,144 @@ data class SiteInsightSnapshot(
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Gamification — gems wallet · /gems/{firebase_uid}
+// ─────────────────────────────────────────────────────────────────────────────
+data class GemTransactionItem(
+    @SerializedName("delta")         val delta: Int = 0,
+    @SerializedName("reason")        val reason: String = "",
+    @SerializedName("balance_after") val balanceAfter: Int = 0,
+    @SerializedName("created_at")    val createdAt: String = ""
+)
+
+data class GemBalance(
+    @SerializedName("gems")    val gems: Int = 0,
+    @SerializedName("history") val history: List<GemTransactionItem> = emptyList()
+)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Gamification — final quiz · /quiz/*
+// ─────────────────────────────────────────────────────────────────────────────
+data class QuizQuestionPublic(
+    @SerializedName("question_id") val questionId: Int = 0,
+    @SerializedName("idx")         val idx: Int = 0,
+    @SerializedName("question")    val question: String = "",
+    @SerializedName("options")     val options: List<String> = emptyList(),
+    @SerializedName("answered")    val answered: Boolean = false
+)
+
+data class QuizStartResponse(
+    @SerializedName("session_id")           val sessionId: Int = 0,
+    @SerializedName("status")               val status: String = "active",
+    @SerializedName("seconds_per_question") val secondsPerQuestion: Int = 10,
+    @SerializedName("total_questions")      val totalQuestions: Int = 0,
+    @SerializedName("gems_earned")          val gemsEarned: Int = 0,
+    @SerializedName("questions")            val questions: List<QuizQuestionPublic> = emptyList(),
+    @SerializedName("already_played")       val alreadyPlayed: Boolean = false
+)
+
+data class QuizAnswerRequest(
+    @SerializedName("session_id")     val sessionId: Int,
+    @SerializedName("question_id")    val questionId: Int,
+    @SerializedName("selected_index") val selectedIndex: Int,
+    @SerializedName("seconds_taken")  val secondsTaken: Double
+)
+
+data class QuizAnswerResponse(
+    @SerializedName("correct")       val correct: Boolean = false,
+    @SerializedName("correct_index") val correctIndex: Int = 0,
+    @SerializedName("gems_awarded")  val gemsAwarded: Int = 0,
+    @SerializedName("running_total") val runningTotal: Int = 0
+)
+
+data class QuizCompleteRequest(
+    @SerializedName("session_id") val sessionId: Int
+)
+
+data class QuizCompleteResponse(
+    @SerializedName("status")      val status: String = "",
+    @SerializedName("gems_earned") val gemsEarned: Int = 0,
+    @SerializedName("new_balance") val newBalance: Int = 0
+)
+
+data class QuizAbandonRequest(
+    @SerializedName("session_id") val sessionId: Int
+)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Gamification — coupon store · /store/*
+// ─────────────────────────────────────────────────────────────────────────────
+data class StorePartner(
+    @SerializedName("id")              val id: Int = 0,
+    @SerializedName("name")            val name: String = "",
+    @SerializedName("type")            val type: String = "",
+    @SerializedName("description")     val description: String? = null,
+    @SerializedName("latitude")        val latitude: Double? = null,
+    @SerializedName("longitude")       val longitude: Double? = null,
+    @SerializedName("distance_meters") val distanceMeters: Double? = null
+)
+
+data class CouponPurchaseRequest(
+    @SerializedName("firebase_uid") val firebaseUid: String,
+    @SerializedName("tier")         val tier: String,        // ultimate | special | normal
+    @SerializedName("partner_kind") val partnerKind: String, // hotel | restaurant
+    @SerializedName("site_id")      val siteId: Int? = null,
+    @SerializedName("user_lat")     val userLat: Double? = null,
+    @SerializedName("user_lng")     val userLng: Double? = null
+)
+
+data class Coupon(
+    @SerializedName("id")              val id: Int = 0,
+    @SerializedName("partner_name")    val partnerName: String = "",
+    @SerializedName("partner_type")    val partnerType: String = "",
+    @SerializedName("partner_lat")     val partnerLat: Double? = null,
+    @SerializedName("partner_lng")     val partnerLng: Double? = null,
+    @SerializedName("tier")            val tier: String = "",
+    @SerializedName("discount_pct")    val discountPct: Int = 0,
+    @SerializedName("gems_spent")      val gemsSpent: Int = 0,
+    @SerializedName("code")            val code: String = "",
+    @SerializedName("status")          val status: String = "active",
+    @SerializedName("distance_meters") val distanceMeters: Double? = null,
+    @SerializedName("created_at")      val createdAt: String = "",
+    @SerializedName("expires_at")      val expiresAt: String = ""
+)
+
+data class CouponPurchaseResponse(
+    @SerializedName("coupon")      val coupon: Coupon = Coupon(),
+    @SerializedName("new_balance") val newBalance: Int = 0
+)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Gamification — bonus "Bingo" challenge · /bonus/*
+// ─────────────────────────────────────────────────────────────────────────────
+data class BonusOfferRequest(
+    @SerializedName("firebase_uid")    val firebaseUid: String,
+    @SerializedName("site_id")         val siteId: Int,
+    @SerializedName("exclude_node_id") val excludeNodeId: Int? = null
+)
+
+data class BonusOfferResponse(
+    @SerializedName("challenge_id")     val challengeId: Int = 0,
+    @SerializedName("target_node_id")   val targetNodeId: Int = 0,
+    @SerializedName("target_node_name") val targetNodeName: String = "",
+    @SerializedName("minigame")         val minigame: String = "zip",
+    @SerializedName("deadline_minutes") val deadlineMinutes: Int = 20,
+    @SerializedName("expires_at")       val expiresAt: String = ""
+)
+
+data class BonusCompleteRequest(
+    @SerializedName("firebase_uid")    val firebaseUid: String,
+    @SerializedName("challenge_id")    val challengeId: Int,
+    @SerializedName("scanned_node_id") val scannedNodeId: Int,
+    @SerializedName("solved")          val solved: Boolean
+)
+
+data class BonusCompleteResponse(
+    @SerializedName("status")      val status: String = "",
+    @SerializedName("reward_gems") val rewardGems: Int = 0,
+    @SerializedName("new_balance") val newBalance: Int = 0
+)
+
+// ─────────────────────────────────────────────────────────────────────────────
 // /insights/users/{firebase_uid}  →  personal heritage footprint ("my insights")
 // ─────────────────────────────────────────────────────────────────────────────
 data class UserInsights(

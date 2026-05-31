@@ -52,6 +52,10 @@ class QrScanViewModel : ViewModel() {
                 val siteResp = HumsafarClient.api.getSiteDetail(result.siteId!!)
                 val site = if (siteResp.isSuccessful) siteResp.body() else null
 
+                // Register the scan so it can complete an in-flight bonus challenge,
+                // regardless of whether a trip is active.
+                result.nodeId?.let { com.example.humsafar.data.ActiveSiteManager.onNodeScanned(it) }
+
                 when {
                     // ── KING NODE ──────────────────────────────────────────
                     result.isKingNode -> {

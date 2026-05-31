@@ -34,6 +34,8 @@ fun ProfileScreen(
     onOpenHistory:  () -> Unit = {},
     onOpenFeedback: () -> Unit = {},
     onOpenMyInsights: () -> Unit = {},
+    onOpenStore: () -> Unit = {},
+    onOpenCoupons: () -> Unit = {},
     onReplayOnboarding: () -> Unit = {},
     onAccentChange: (Accent) -> Unit = {}
 ) {
@@ -85,6 +87,15 @@ fun ProfileScreen(
                         onOpenHistory   = onOpenHistory,
                         onOpenFeedback  = onOpenFeedback,
                         onOpenMyInsights = onOpenMyInsights
+                    )
+
+                    Spacer(Modifier.height(24.dp))
+
+                    SectionLabel("Rewards")
+                    Spacer(Modifier.height(12.dp))
+                    RewardsCard(
+                        onOpenStore   = onOpenStore,
+                        onOpenCoupons = onOpenCoupons
                     )
 
                     Spacer(Modifier.height(24.dp))
@@ -434,6 +445,62 @@ private fun JourneyCard(
                     )
                 }
                 Icon(Icons.Default.ChevronRight, null, tint = TextTertiary, modifier = Modifier.size(16.dp))
+            }
+        }
+    }
+}
+
+// ── Rewards Card (gems + store + coupons) ────────────────────────────────────
+
+@Composable
+private fun RewardsCard(
+    onOpenStore: () -> Unit,
+    onOpenCoupons: () -> Unit
+) {
+    val gems by com.example.humsafar.data.GamificationRepository.gems.collectAsState()
+    LaunchedEffect(Unit) { com.example.humsafar.data.GamificationRepository.refresh() }
+
+    GlassCard(Modifier.fillMaxWidth(), cornerRadius = 20.dp) {
+        Column(Modifier.padding(4.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("💎", fontSize = 18.sp, modifier = Modifier.size(24.dp), textAlign = TextAlign.Center)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Gem Wallet", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    Text("Earned by playing the heritage quiz", color = TextTertiary, fontSize = 12.sp)
+                }
+                Text("$gems", color = LocalAccent.current.dark, fontSize = 18.sp, fontWeight = FontWeight.Black)
+            }
+            ProfileDivider()
+            Row(
+                modifier = Modifier.fillMaxWidth().clickable { onOpenStore() }
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("🛍️", fontSize = 18.sp, modifier = Modifier.size(24.dp), textAlign = TextAlign.Center)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Coupon Store", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    Text("Spin gems into hotel & food discounts", color = TextTertiary, fontSize = 12.sp)
+                }
+                Icon(Icons.Default.ChevronRight, null, tint = LocalAccent.current.primary, modifier = Modifier.size(18.dp))
+            }
+            ProfileDivider()
+            Row(
+                modifier = Modifier.fillMaxWidth().clickable { onOpenCoupons() }
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("🎫", fontSize = 18.sp, modifier = Modifier.size(24.dp), textAlign = TextAlign.Center)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("My Coupons", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    Text("View and redeem before they expire", color = TextTertiary, fontSize = 12.sp)
+                }
+                Icon(Icons.Default.ChevronRight, null, tint = LocalAccent.current.primary, modifier = Modifier.size(18.dp))
             }
         }
     }
