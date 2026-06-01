@@ -37,6 +37,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.humsafar.models.QrScanResult
 import com.example.humsafar.network.SiteDetail     // ← network package
 import com.example.humsafar.ui.components.AnimatedOrbBackground
+import com.example.humsafar.ui.components.rememberTripSafeBack
 import com.example.humsafar.ui.theme.*
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
@@ -59,6 +60,7 @@ fun QrScanScreen(
 ) {
     val context        = LocalContext.current
     val uiState        by viewModel.uiState.collectAsState()
+    val safeBack       = rememberTripSafeBack(onBack)
     val camPerm        = rememberPermissionState(Manifest.permission.CAMERA)
     val lifecycleOwner = LocalLifecycleOwner.current
     var flashEnabled   by remember { mutableStateOf(false) }
@@ -168,7 +170,7 @@ fun QrScanScreen(
                         .size(44.dp).clip(CircleShape)
                         .background(Color(0xBB000000))
                         .border(0.7.dp, Color(0x44FFFFFF), CircleShape)
-                        .clickable { onBack() },
+                        .clickable { safeBack() },
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = Color.White, modifier = Modifier.size(20.dp))

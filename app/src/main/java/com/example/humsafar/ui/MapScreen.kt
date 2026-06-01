@@ -180,17 +180,6 @@ fun MapContent(
         HeritageSite(s.id.toString(), s.name, s.latitude, s.longitude, 300.0) to s.distanceMeters
     }
 
-    // ── Surprise bonus "Bingo" offers while inside a site ──────────────────
-    LaunchedEffect(currentSite?.id) {
-        val sid = currentSite?.id ?: return@LaunchedEffect
-        while (true) {
-            com.example.humsafar.data.BonusGameManager.considerOffer(
-                sid, com.example.humsafar.data.ActiveSiteManager.activeNodeId.value
-            )
-            kotlinx.coroutines.delay(45_000)
-        }
-    }
-
     // ── GPS updates ───────────────────────────────────────────────────────
     LaunchedEffect(Unit) {
         locationManager.startUpdates { lat, lng ->

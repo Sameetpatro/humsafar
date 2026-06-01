@@ -45,6 +45,7 @@ import com.example.humsafar.network.NodeImage
 import com.example.humsafar.network.SiteDetail
 import com.example.humsafar.ui.components.AnimatedOrbBackground
 import com.example.humsafar.ui.components.GlassCard
+import com.example.humsafar.ui.components.rememberTripSafeBack
 import com.example.humsafar.ui.components.TripInfoButton
 import com.example.humsafar.ui.theme.*
 import java.util.Locale
@@ -78,6 +79,7 @@ fun NodeDetailScreen(
     val context   = LocalContext.current
     val uiState   by viewModel.uiState.collectAsStateWithLifecycle()
     val tripState by TripManager.state.collectAsStateWithLifecycle()
+    val safeBack  = rememberTripSafeBack(onBack)
 
     // ── TTS State ─────────────────────────────────────────────────────────────
     var ttsStatus          by remember { mutableStateOf(NodeTtsStatus.IDLE) }
@@ -202,7 +204,7 @@ fun NodeDetailScreen(
                             NodeImageGallery(
                                 nodeName = node.name,
                                 images   = nodeImages,
-                                onBack   = onBack
+                                onBack   = safeBack
                             )
 
                             Column(Modifier.padding(horizontal = 20.dp)) {

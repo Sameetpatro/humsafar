@@ -67,6 +67,7 @@ object ActiveSiteManager {
         Log.i(TAG, "ENTERED site_id=${site.id} name='${site.name}'")
         _activeSite.value  = site
         _activeNodeId.value = null   // clear node from previous site
+        BonusGameManager.onSiteEntered(site.id)
     }
 
     fun onExitAllSites() {

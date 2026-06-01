@@ -21,28 +21,44 @@ object Tiers {
     val label = mapOf("ultimate" to "Ultimate Special", "special" to "Special", "normal" to "Normal")
 }
 
+data class SpinWheelData(
+    val partnerLabels: List<String>,
+    val partnerIndex: Int,
+    val discountOptions: List<Int>,
+    val discountIndex: Int,
+    val coupon: Coupon
+)
+
 sealed interface SpinState {
-    data object Idle : SpinState
-    data object Spinning : SpinState
-    data class Result(
-        val coupon: Coupon,
+    /** Wheels show preview labels; user picks hotel/restaurant then spins each wheel. */
+    data class Ready(
+        val tier: String,
+        val kind: String,
+        val siteId: Int?,
         val partnerLabels: List<String>,
-        val partnerIndex: Int,
         val discountOptions: List<Int>,
-        val discountIndex: Int
+        val gemsPrice: Int
     ) : SpinState
+
+    data object PartnerSpinning : SpinState
+    data class PartnerDone(val pending: SpinWheelData) : SpinState
+    data object DiscountSpinning : SpinState
+    data class Complete(val pending: SpinWheelData) : SpinState
     data class Error(val message: String) : SpinState
 }
 
 class StoreViewModel : ViewModel() {
 
-    private val _spin = MutableStateFlow<SpinState>(SpinState.Idle)
+    private val _spin = MutableStateFlow<SpinState>(SpinState.Ready("", "hotel", null, emptyList(), emptyList(), 0))
     val spin: StateFlow<SpinState> = _spin.asStateFlow()
 
     private val _coupons = MutableStateFlow<List<Coupon>>(emptyList())
     val coupons: StateFlow<List<Coupon>> = _coupons.asStateFlow()
 
     private var partners: List<StorePartner> = emptyList()
+    private var currentTier = "normal"
+    private var currentKind = "hotel"
+    private var currentSiteId: Int? = null
 
     fun loadCoupons() {
         val uid = AuthManager.currentUser.value?.uid ?: return
@@ -54,73 +70,140 @@ class StoreViewModel : ViewModel() {
         }
     }
 
-    fun spin(tier: String, kind: String, siteId: Int?) {
+    /** Load partner names onto the partner wheel before spinning. */
+    fun prepare(tier: String, kind: String, siteId: Int?) {
+        currentTier = tier
+        currentKind = kind
+        currentSiteId = siteId
+        val range = Tiers.range[tier] ?: (7..11)
+        val discounts = range.toList()
+        _spin.value = SpinState.Ready(
+            tier = tier,
+            kind = kind,
+            siteId = siteId,
+            partnerLabels = emptyList(),
+            discountOptions = discounts,
+            gemsPrice = Tiers.price[tier] ?: 70
+        )
+        reloadPartnerPreview(kind, siteId)
+    }
+
+    fun setPartnerKind(kind: String) {
+        if (currentKind == kind) return
+        currentKind = kind
+        val cur = _spin.value
+        if (cur is SpinState.Ready) {
+            _spin.value = cur.copy(kind = kind)
+            reloadPartnerPreview(kind, currentSiteId)
+        }
+    }
+
+    private fun reloadPartnerPreview(kind: String, siteId: Int?) {
+        val trip = TripManager.current()
+        val lat = trip.lastLat.takeIf { it != 0.0 }
+        val lng = trip.lastLng.takeIf { it != 0.0 }
+        viewModelScope.launch {
+            runCatching {
+                val resp = HumsafarClient.api.getStorePartners(siteId, kind, lat, lng)
+                if (resp.isSuccessful) {
+                    partners = resp.body() ?: emptyList()
+                    val labels = buildPreviewLabels(partners.map { it.name })
+                    val cur = _spin.value
+                    if (cur is SpinState.Ready) {
+                        _spin.value = cur.copy(partnerLabels = labels, kind = kind)
+                    }
+                }
+            }
+        }
+    }
+
+    /** Step 1: purchase coupon + spin partner wheel to the server result. */
+    fun spinPartnerWheel() {
+        val ready = _spin.value as? SpinState.Ready ?: return
         val uid = AuthManager.currentUser.value?.uid
         if (uid.isNullOrBlank()) {
             _spin.value = SpinState.Error("Sign in to buy coupons.")
             return
         }
-        _spin.value = SpinState.Spinning
+        _spin.value = SpinState.PartnerSpinning
         val trip = TripManager.current()
         val lat = trip.lastLat.takeIf { it != 0.0 }
         val lng = trip.lastLng.takeIf { it != 0.0 }
 
         viewModelScope.launch {
-            // Wheel segment labels (cosmetic) — fetched best-effort.
-            runCatching {
-                val pResp = HumsafarClient.api.getStorePartners(siteId, kind, lat, lng)
-                if (pResp.isSuccessful) partners = pResp.body() ?: emptyList()
-            }
-
             runCatching {
                 val resp = HumsafarClient.api.purchaseCoupon(
                     CouponPurchaseRequest(
                         firebaseUid = uid,
-                        tier = tier,
-                        partnerKind = kind,
-                        siteId = siteId,
+                        tier = ready.tier,
+                        partnerKind = ready.kind,
+                        siteId = ready.siteId,
                         userLat = lat,
                         userLng = lng
                     )
                 )
                 if (!resp.isSuccessful || resp.body() == null) {
                     _spin.value = SpinState.Error(
-                        if (resp.code() == 402) "Not enough gems for this coupon."
-                        else if (resp.code() == 404) "No $kind partners available near here."
-                        else "Purchase failed (HTTP ${resp.code()})."
+                        when (resp.code()) {
+                            402 -> "Not enough gems for this coupon."
+                            404 -> "No ${ready.kind} partners available near here."
+                            else -> "Purchase failed (HTTP ${resp.code()})."
+                        }
                     )
                     return@launch
                 }
                 val body = resp.body()!!
                 GamificationRepository.setBalance(body.newBalance)
-
                 val coupon = body.coupon
-                // Build the partner wheel labels, guaranteeing the winner is on it.
-                val labels = partners.map { it.name }.toMutableList()
-                if (labels.isEmpty()) labels.add(coupon.partnerName)
-                var pIdx = labels.indexOf(coupon.partnerName)
-                if (pIdx < 0) {
-                    labels[0] = coupon.partnerName
-                    pIdx = 0
-                }
-                val cappedLabels = labels.take(8).toMutableList()
-                if (pIdx >= cappedLabels.size) {
-                    cappedLabels[cappedLabels.size - 1] = coupon.partnerName
-                    pIdx = cappedLabels.size - 1
-                }
 
-                val range = Tiers.range[tier] ?: (5..30)
-                val discountOptions = range.toList()
-                val dIdx = discountOptions.indexOf(coupon.discountPct).coerceAtLeast(0)
+                val labels = buildPreviewLabels(
+                    partners.map { it.name }.ifEmpty { listOf(coupon.partnerName) },
+                    winner = coupon.partnerName
+                )
+                val pIdx = labels.indexOf(coupon.partnerName).coerceAtLeast(0)
+                val discounts = ready.discountOptions.ifEmpty {
+                    (Tiers.range[ready.tier] ?: (7..11)).toList()
+                }
+                val dIdx = discounts.indexOf(coupon.discountPct).coerceAtLeast(0)
 
-                _spin.value = SpinState.Result(coupon, cappedLabels, pIdx, discountOptions, dIdx)
+                _spin.value = SpinState.PartnerDone(
+                    SpinWheelData(labels, pIdx, discounts, dIdx, coupon)
+                )
             }.onFailure {
                 _spin.value = SpinState.Error(it.message ?: "Network error")
             }
         }
     }
 
+    /** Step 2: animate discount wheel (result already decided on purchase). */
+    fun spinDiscountWheel() {
+        val done = _spin.value as? SpinState.PartnerDone ?: return
+        _spin.value = SpinState.DiscountSpinning
+        viewModelScope.launch {
+            kotlinx.coroutines.delay(2600)
+            _spin.value = SpinState.Complete(done.pending)
+        }
+    }
+
+    private fun buildPreviewLabels(names: List<String>, winner: String? = null): List<String> {
+        val base = names.filter { it.isNotBlank() }.distinct().take(8).toMutableList()
+        if (base.isEmpty()) base.add(winner ?: "Partner")
+        if (winner != null && winner !in base) {
+            if (base.size >= 8) base[0] = winner else base.add(0, winner)
+        }
+        return base.map { shortenLabel(it) }
+    }
+
+    private fun shortenLabel(name: String): String {
+        val words = name.split(" ").filter { it.isNotBlank() }
+        return when {
+            name.length <= 14 -> name
+            words.size >= 2 -> words.take(2).joinToString("\n")
+            else -> name.take(12) + "…"
+        }
+    }
+
     fun reset() {
-        _spin.value = SpinState.Idle
+        _spin.value = SpinState.Ready("", "hotel", null, emptyList(), emptyList(), 0)
     }
 }

@@ -1,6 +1,9 @@
 package com.example.humsafar
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -10,8 +13,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.example.humsafar.auth.AuthManager
+import com.example.humsafar.data.BonusGameManager
 import com.example.humsafar.data.GamificationRepository
 import com.example.humsafar.data.StatsRepository
 import com.example.humsafar.data.TripManager
@@ -30,6 +35,8 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         TripManager.init(applicationContext)
         UserRepository.init(applicationContext)
+        BonusGameManager.init(applicationContext)
+        requestNotificationPermissionIfNeeded()
         // Record this app open + keep the user counted as "active now".
         StatsRepository.start()
 
@@ -72,6 +79,25 @@ class MainActivity : ComponentActivity() {
                     }
                 )
             }
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        BonusGameManager.onAppForeground()
+    }
+
+    override fun onStop() {
+        BonusGameManager.onAppBackground()
+        super.onStop()
+    }
+
+    private fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1001)
         }
     }
 

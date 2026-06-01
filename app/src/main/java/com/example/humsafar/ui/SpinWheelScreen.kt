@@ -7,7 +7,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,6 +21,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -29,7 +32,8 @@ import com.example.humsafar.ui.components.GlassCard
 import com.example.humsafar.ui.components.GlassPrimaryButton
 import com.example.humsafar.ui.theme.LocalAccent
 import com.example.humsafar.ui.theme.LocalAppColors
-import kotlinx.coroutines.delay
+import kotlin.math.cos
+import kotlin.math.sin
 
 private val WHEEL_COLORS = listOf(
     Color(0xFF6D28D9), Color(0xFFEC4899), Color(0xFFF59E0B),
@@ -51,16 +55,37 @@ fun SpinWheelScreen(
     val state by vm.spin.collectAsState()
 
     DisposableEffect(Unit) { onDispose { vm.reset() } }
-
-    var revealCoupon by remember { mutableStateOf(false) }
-    val result = state as? SpinState.Result
-    LaunchedEffect(result) {
-        if (result != null) {
-            revealCoupon = false
-            delay(2700)   // let both wheels finish spinning before revealing
-            revealCoupon = true
-        }
+    LaunchedEffect(tier, kind, siteId) {
+        vm.prepare(tier, kind, siteId.takeIf { it > 0 })
     }
+
+    val ready = state as? SpinState.Ready
+    val partnerDone = state as? SpinState.PartnerDone
+    val complete = state as? SpinState.Complete
+    val pending = partnerDone?.pending ?: complete?.pending
+
+    val partnerLabels = ready?.partnerLabels?.takeIf { it.isNotEmpty() }
+        ?: pending?.partnerLabels?.takeIf { it.isNotEmpty() }
+        ?: listOf("Hotel A", "Hotel B", "Hotel C", "Place D")
+    val discountOptions = ready?.discountOptions?.takeIf { it.isNotEmpty() }
+        ?: pending?.discountOptions?.takeIf { it.isNotEmpty() }
+        ?: (10..15).toList()
+
+    val partnerIdx = when (state) {
+        is SpinState.PartnerSpinning -> -1
+        is SpinState.PartnerDone -> partnerDone!!.pending.partnerIndex
+        is SpinState.DiscountSpinning -> pending?.partnerIndex ?: -1
+        is SpinState.Complete -> complete!!.pending.partnerIndex
+        else -> -1
+    }
+    val discountIdx = when (state) {
+        is SpinState.DiscountSpinning -> pending?.discountIndex ?: -1
+        is SpinState.Complete -> complete!!.pending.discountIndex
+        else -> -1
+    }
+
+    val selectedKind = ready?.kind ?: pending?.coupon?.partnerType ?: kind
+    val gemsPrice = ready?.gemsPrice ?: Tiers.price[tier] ?: 70
 
     Box(
         Modifier.fillMaxSize()
@@ -68,98 +93,202 @@ fun SpinWheelScreen(
     ) {
         AnimatedOrbBackground(Modifier.fillMaxSize())
         Column(
-            Modifier.fillMaxSize().statusBarsPadding().padding(horizontal = 20.dp),
+            Modifier.fillMaxSize().statusBarsPadding().verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Spacer(Modifier.height(24.dp))
             Text(Tiers.label[tier] ?: "Coupon", color = tokens.textPrimary, fontSize = 24.sp, fontWeight = FontWeight.Black)
-            Text("Spin to reveal your ${if (kind == "hotel") "hotel" else "restaurant"} & discount",
+            Text("Pick hotel or restaurant, then spin each wheel",
                 color = tokens.textSecondary, fontSize = 13.sp, textAlign = TextAlign.Center)
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(20.dp))
 
             when (val s = state) {
-                is SpinState.Error -> ResultCard("Couldn't spin", s.message, "😕", "Back", onBack)
+                is SpinState.Error -> {
+                    ResultCard("Couldn't spin", s.message, "😕", "Back", onBack)
+                }
                 else -> {
-                    val partnerLabels = result?.partnerLabels ?: List(6) { "" }
-                    val partnerIdx = result?.partnerIndex ?: -1
-                    val discountOptions = result?.discountOptions ?: (1..8).toList()
-                    val discountIdx = result?.discountIndex ?: -1
+                    // ── Partner kind toggle ─────────────────────────────────
+                    SectionCaption("Choose partner type")
+                    Spacer(Modifier.height(8.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        SpinKindButton(
+                            label = "🏨 Hotel",
+                            selected = selectedKind == "hotel",
+                            enabled = s is SpinState.Ready,
+                            modifier = Modifier.weight(1f)
+                        ) { vm.setPartnerKind("hotel") }
+                        SpinKindButton(
+                            label = "🍽️ Restaurant",
+                            selected = selectedKind == "restaurant",
+                            enabled = s is SpinState.Ready,
+                            modifier = Modifier.weight(1f)
+                        ) { vm.setPartnerKind("restaurant") }
+                    }
+
+                    Spacer(Modifier.height(20.dp))
 
                     Row(
                         Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalAlignment = Alignment.Top
                     ) {
-                        WheelColumn(
-                            caption = if (kind == "hotel") "🏨 Hotel" else "🍽️ Place",
-                            segmentCount = partnerLabels.size.coerceAtLeast(2),
+                        LabeledWheelColumn(
+                            caption = if (selectedKind == "hotel") "🏨 Partner" else "🍽️ Partner",
+                            labels = partnerLabels,
+                            labelSuffix = "",
                             targetIndex = partnerIdx,
+                            spinning = s is SpinState.PartnerSpinning,
                             modifier = Modifier.weight(1f)
                         )
-                        WheelColumn(
-                            caption = "% Discount",
-                            segmentCount = discountOptions.size.coerceAtLeast(2),
+                        LabeledWheelColumn(
+                            caption = "💰 Discount",
+                            labels = discountOptions.map { "$it%" },
+                            labelSuffix = "",
                             targetIndex = discountIdx,
+                            spinning = s is SpinState.DiscountSpinning,
                             modifier = Modifier.weight(1f)
                         )
                     }
 
-                    Spacer(Modifier.height(28.dp))
+                    Spacer(Modifier.height(24.dp))
 
-                    if (s is SpinState.Idle) {
-                        GlassPrimaryButton(
-                            text = "SPIN  •  💎 ${Tiers.price[tier] ?: 0}",
-                            onClick = { vm.spin(tier, kind, siteId.takeIf { it > 0 }) },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-
-                    if (s is SpinState.Spinning || (result != null && !revealCoupon)) {
-                        Text("Spinning…", color = accent.dark, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                    }
-
-                    if (result != null && revealCoupon) {
-                        Spacer(Modifier.height(4.dp))
-                        CouponRevealCard(result, onViewCoupons, onBack)
+                    when (s) {
+                        is SpinState.Ready -> {
+                            GlassPrimaryButton(
+                                text = "🎡 Spin ${if (selectedKind == "hotel") "Hotel" else "Restaurant"}  •  💎 $gemsPrice",
+                                onClick = { vm.spinPartnerWheel() },
+                                modifier = Modifier.fillMaxWidth(),
+                                enabled = partnerLabels.isNotEmpty()
+                            )
+                            Spacer(Modifier.height(10.dp))
+                            Box(
+                                Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+                                    .background(tokens.surfaceMuted).padding(vertical = 16.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    "Spin discount after partner wheel",
+                                    color = tokens.textTertiary, fontSize = 14.sp, fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                        is SpinState.PartnerSpinning -> {
+                            Text("Spinning partner…", color = accent.dark, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                        }
+                        is SpinState.PartnerDone -> {
+                            Text(
+                                "You got: ${s.pending.coupon.partnerName}!",
+                                color = accent.dark, fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.Center
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            GlassPrimaryButton(
+                                text = "🎡 Spin Discount %",
+                                onClick = { vm.spinDiscountWheel() },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                        is SpinState.DiscountSpinning -> {
+                            Text("Spinning discount…", color = accent.dark, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                        }
+                        is SpinState.Complete -> {
+                            CouponRevealCard(s.pending, onViewCoupons, onBack)
+                        }
+                        else -> {}
                     }
                 }
             }
+            Spacer(Modifier.height(40.dp))
         }
     }
 }
 
 @Composable
-private fun WheelColumn(caption: String, segmentCount: Int, targetIndex: Int, modifier: Modifier = Modifier) {
+private fun SectionCaption(text: String) {
+    Text(
+        text.uppercase(),
+        color = LocalAppColors.current.textTertiary,
+        fontSize = 11.sp,
+        fontWeight = FontWeight.SemiBold,
+        letterSpacing = 1.2.sp
+    )
+}
+
+@Composable
+private fun SpinKindButton(
+    label: String,
+    selected: Boolean,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
     val tokens = LocalAppColors.current
-    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        SpinningWheel(segmentCount = segmentCount, targetIndex = targetIndex)
-        Spacer(Modifier.height(10.dp))
-        Text(caption, color = tokens.textSecondary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+    val accent = LocalAccent.current
+    Box(
+        modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(if (selected) accent.tint else tokens.surface)
+            .border(1.5.dp, if (selected) accent.primary else tokens.border, RoundedCornerShape(14.dp))
+            .clickable(enabled = enabled) { onClick() }
+            .padding(vertical = 14.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            label,
+            color = if (selected) accent.dark else tokens.textSecondary,
+            fontSize = 14.sp,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+        )
     }
 }
 
 @Composable
-private fun SpinningWheel(segmentCount: Int, targetIndex: Int) {
+private fun LabeledWheelColumn(
+    caption: String,
+    labels: List<String>,
+    labelSuffix: String,
+    targetIndex: Int,
+    spinning: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val tokens = LocalAppColors.current
+    val count = labels.size.coerceAtLeast(2)
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        LabeledSpinningWheel(labels = labels, targetIndex = targetIndex, animate = targetIndex >= 0)
+        Spacer(Modifier.height(10.dp))
+        Text(caption, color = tokens.textSecondary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+        if (spinning) {
+            Text("…", color = tokens.textTertiary, fontSize = 12.sp)
+        }
+    }
+}
+
+@Composable
+private fun LabeledSpinningWheel(labels: List<String>, targetIndex: Int, animate: Boolean) {
     val accent = LocalAccent.current
+    val segmentCount = labels.size.coerceAtLeast(2)
     val seg = 360f / segmentCount
 
-    // Land the target segment's center under the top pointer; 0 until we have a target.
-    val targetRotation = if (targetIndex >= 0) 360f * 5 - (targetIndex * seg + seg / 2f) else 0f
+    val targetRotation = if (animate && targetIndex >= 0) {
+        360f * 5 - (targetIndex * seg + seg / 2f)
+    } else 0f
     val rotation by animateFloatAsState(
         targetValue = targetRotation,
-        animationSpec = tween(durationMillis = if (targetIndex >= 0) 2500 else 0),
+        animationSpec = tween(durationMillis = if (animate) 2500 else 0),
         label = "wheel"
     )
 
     Box(contentAlignment = Alignment.TopCenter) {
         Canvas(
-            Modifier
-                .size(150.dp)
-                .rotate(rotation)
+            Modifier.size(168.dp).rotate(rotation)
         ) {
             val d = size.minDimension
+            val cx = size.width / 2f
+            val cy = size.height / 2f
             val topLeft = Offset((size.width - d) / 2f, (size.height - d) / 2f)
             val arcSize = Size(d, d)
+
             for (i in 0 until segmentCount) {
                 drawArc(
                     color = WHEEL_COLORS[i % WHEEL_COLORS.size],
@@ -170,9 +299,35 @@ private fun SpinningWheel(segmentCount: Int, targetIndex: Int) {
                     size = arcSize
                 )
             }
+
+            val paint = android.graphics.Paint().apply {
+                color = android.graphics.Color.WHITE
+                textAlign = android.graphics.Paint.Align.CENTER
+                isFakeBoldText = true
+                textSize = when {
+                    segmentCount > 6 -> 22f
+                    segmentCount > 4 -> 26f
+                    else -> 30f
+                }
+            }
+
+            for (i in 0 until segmentCount) {
+                val midAngle = Math.toRadians((-90 + i * seg + seg / 2).toDouble())
+                val r = d * 0.32f
+                val tx = cx + (cos(midAngle) * r).toFloat()
+                val ty = cy + (sin(midAngle) * r).toFloat()
+                val label = labels.getOrElse(i) { "?" }
+                drawContext.canvas.nativeCanvas.apply {
+                    save()
+                    rotate((-90 + i * seg + seg / 2).toFloat(), tx, ty)
+                    label.split("\n").forEachIndexed { lineIdx, line ->
+                        drawText(line, tx, ty + lineIdx * paint.textSize * 0.85f, paint)
+                    }
+                    restore()
+                }
+            }
         }
-        // Pointer at the top.
-        Canvas(Modifier.size(width = 22.dp, height = 16.dp)) {
+        Canvas(Modifier.size(width = 24.dp, height = 18.dp)) {
             val p = Path().apply {
                 moveTo(size.width / 2f, size.height)
                 lineTo(0f, 0f)
@@ -185,10 +340,10 @@ private fun SpinningWheel(segmentCount: Int, targetIndex: Int) {
 }
 
 @Composable
-private fun CouponRevealCard(result: SpinState.Result, onViewCoupons: () -> Unit, onBack: () -> Unit) {
+private fun CouponRevealCard(data: SpinWheelData, onViewCoupons: () -> Unit, onBack: () -> Unit) {
     val tokens = LocalAppColors.current
     val accent = LocalAccent.current
-    val c = result.coupon
+    val c = data.coupon
     GlassCard(Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth().padding(22.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text("🎉 You won!", color = tokens.textPrimary, fontSize = 20.sp, fontWeight = FontWeight.Black)

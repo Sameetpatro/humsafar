@@ -564,7 +564,9 @@ data class BonusOfferResponse(
     @SerializedName("challenge_id")     val challengeId: Int = 0,
     @SerializedName("target_node_id")   val targetNodeId: Int = 0,
     @SerializedName("target_node_name") val targetNodeName: String = "",
+    @SerializedName("site_name")        val siteName: String = "",
     @SerializedName("minigame")         val minigame: String = "zip",
+    @SerializedName("reward_gems")      val rewardGems: Int = 0,
     @SerializedName("deadline_minutes") val deadlineMinutes: Int = 20,
     @SerializedName("expires_at")       val expiresAt: String = ""
 )
