@@ -129,6 +129,7 @@ data class TripSnapshot(
     val currentNodeId:   Int     = 0,
     val currentNodeName: String  = "",
     val isTripActive:    Boolean = false,
+    val startedAtMs:     Long    = 0L,
     val lastLat:         Double  = 0.0,
     val lastLng:         Double  = 0.0,
     val visitedNodeIds:  List<Int> = emptyList()
@@ -626,6 +627,16 @@ data class BonusCompleteResponse(
     @SerializedName("status")      val status: String = "",
     @SerializedName("reward_gems") val rewardGems: Int = 0,
     @SerializedName("new_balance") val newBalance: Int = 0
+)
+
+data class BonusSiteStatus(
+    @SerializedName("site_id")                val siteId: Int = 0,
+    @SerializedName("site_name")              val siteName: String = "",
+    @SerializedName("played")                 val played: Boolean = false,
+    @SerializedName("reward_gems")            val rewardGems: Int = 0,
+    @SerializedName("status")                 val status: String? = null,
+    @SerializedName("completed_at")           val completedAt: String? = null,
+    @SerializedName("available_after_minutes") val availableAfterMinutes: Int = 0
 )
 
 // ─────────────────────────────────────────────────────────────────────────────

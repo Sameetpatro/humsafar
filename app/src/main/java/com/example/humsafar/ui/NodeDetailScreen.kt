@@ -290,14 +290,6 @@ fun NodeDetailScreen(
                                 )
                                 Spacer(Modifier.height(14.dp))
 
-                                // ── Instants entry point ─────────────────────
-                                InstantsEntryCard(
-                                    onClick = {
-                                        onNavigateToInstants?.invoke(node.id, siteId, node.name)
-                                    }
-                                )
-                                Spacer(Modifier.height(14.dp))
-
                                 // ── Per-spot insights ─────────────────────────
                                 NodeInsightsEntryCard(
                                     nodeId   = node.id,
@@ -349,6 +341,18 @@ fun NodeDetailScreen(
                             )
                     )
 
+                    // ── Instant quick action (Instagram-style wall tab) ────────
+                    FloatingInstantWallTab(
+                        onClick = { onNavigateToInstants?.invoke(node.id, siteId, node.name) },
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .navigationBarsPadding()
+                            .padding(
+                                end = 0.dp,
+                                bottom = if (ttsStatus != NodeTtsStatus.IDLE) 170.dp else 90.dp
+                            )
+                    )
+
                     // ── Trip Info Button ──────────────────────────────────────
                     if (tripState.isTripActive) {
                         TripInfoButton(
@@ -389,6 +393,17 @@ fun NodeDetailScreen(
                                 )
                         )
                     }
+
+                    // ── Trip timer pill (top) ─────────────────────────────────
+                    if (tripState.isTripActive && tripState.startedAtMs > 0L) {
+                        TripTimerPill(
+                            startedAtMs = tripState.startedAtMs,
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .statusBarsPadding()
+                                .padding(top = 10.dp)
+                        )
+                    }
                 }
             }
 
@@ -403,6 +418,52 @@ fun NodeDetailScreen(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun TripTimerPill(
+    startedAtMs: Long,
+    modifier: Modifier = Modifier
+) {
+    val tokens = LocalAppColors.current
+    val accent = LocalAccent.current
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+
+    LaunchedEffect(startedAtMs) {
+        while (true) {
+            now = System.currentTimeMillis()
+            kotlinx.coroutines.delay(1_000)
+        }
+    }
+
+    val elapsed = (now - startedAtMs).coerceAtLeast(0L) / 1000L
+    val hh = elapsed / 3600
+    val mm = (elapsed % 3600) / 60
+    val ss = elapsed % 60
+    val label = if (hh > 0) "%d:%02d:%02d".format(hh, mm, ss) else "%02d:%02d".format(mm, ss)
+
+    Box(
+        modifier
+            .clip(RoundedCornerShape(50))
+            .background(
+                Brush.horizontalGradient(
+                    listOf(accent.primary.copy(alpha = 0.92f), accent.dark.copy(alpha = 0.92f))
+                )
+            )
+            .border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(50))
+            .padding(horizontal = 14.dp, vertical = 8.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("⏱", fontSize = 12.sp)
+            Spacer(Modifier.width(8.dp))
+            Text(
+                "Trip time $label",
+                color = accent.onAccent,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold
+            )
         }
     }
 }
@@ -465,12 +526,11 @@ private fun AmenityRowCard(
     onClick: () -> Unit
 ) {
     val isShop    = amenity.type == "shop"
-    val accent    = if (isShop) LocalAccent.current.primary else Color(0xFF64B5F6)
-    val bgGrad    = if (isShop)
-        listOf(Color(0xFF1A1200), Color(0xFF100C00))
-    else
-        listOf(Color(0xFF001428), Color(0xFF000E1E))
-    val borderClr = if (isShop) LocalAccent.current.primary.copy(alpha = 0.27f) else Color(0x442196F3)
+    val accent    = LocalAccent.current
+    val tokens    = LocalAppColors.current
+    val hue       = if (isShop) accent.primary else Color(0xFF64B5F6)
+    val bgGrad    = listOf(tokens.surface, tokens.surfaceMuted)
+    val borderClr = hue.copy(alpha = 0.28f)
 
     Box(
         modifier = Modifier
@@ -488,8 +548,8 @@ private fun AmenityRowCard(
                 modifier = Modifier
                     .size(44.dp)
                     .clip(CircleShape)
-                    .background(accent.copy(alpha = 0.15f))
-                    .border(1.dp, accent.copy(alpha = 0.4f), CircleShape),
+                    .background(hue.copy(alpha = 0.14f))
+                    .border(1.dp, hue.copy(alpha = 0.40f), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 Text(if (isShop) "🛍️" else "🚻", fontSize = 20.sp)
@@ -518,11 +578,11 @@ private fun AmenityRowCard(
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
-                        .background(accent.copy(alpha = 0.12f))
-                        .border(0.5.dp, accent.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                        .background(hue.copy(alpha = 0.10f))
+                        .border(0.5.dp, hue.copy(alpha = 0.28f), RoundedCornerShape(8.dp))
                         .padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
-                    Text(price, color = accent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text(price, color = hue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
                 Spacer(Modifier.width(8.dp))
             }
@@ -531,6 +591,54 @@ private fun AmenityRowCard(
                 Icons.Default.ChevronRight, null,
                 tint = TextTertiary, modifier = Modifier.size(16.dp)
             )
+        }
+    }
+}
+
+@Composable
+private fun FloatingInstantWallTab(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val accent = LocalAccent.current
+    val tokens = LocalAppColors.current
+    val inf = rememberInfiniteTransition(label = "instantTab")
+    val pulse by inf.animateFloat(
+        initialValue = 0.96f,
+        targetValue = 1.04f,
+        animationSpec = infiniteRepeatable(tween(1400, easing = EaseInOutSine), RepeatMode.Reverse),
+        label = "p"
+    )
+
+    Box(modifier) {
+        Box(
+            Modifier
+                // Push it to the right wall (partially off-screen)
+                .offset(x = 22.dp)
+                .graphicsLayer { scaleX = pulse; scaleY = pulse }
+                .size(width = 64.dp, height = 104.dp)
+                .shadow(16.dp, RoundedCornerShape(28.dp), ambientColor = accent.primary.copy(alpha = 0.18f))
+                .clip(RoundedCornerShape(28.dp))
+                .background(Brush.linearGradient(listOf(accent.primary, accent.dark)))
+                .border(2.dp, Color.White.copy(alpha = 0.22f), RoundedCornerShape(28.dp))
+                .clickable { onClick() }
+                .padding(vertical = 12.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                modifier = Modifier
+                    .align(Alignment.Center),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    "I\nN\nS\nT\nA\nN\nT",
+                    color = Color.White.copy(alpha = 0.95f),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Black,
+                    textAlign = TextAlign.Center,
+                    lineHeight = 11.sp
+                )
+            }
         }
     }
 }
@@ -1237,19 +1345,25 @@ private fun TripProgressSection(
 
 @Composable
 private fun CommentsEntryCard(onClick: () -> Unit) {
+    val accent = LocalAccent.current
+    val tokens = LocalAppColors.current
     val inf       = rememberInfiniteTransition(label = "commentsCard")
     val glowAlpha by inf.animateFloat(
         0.3f, 0.55f,
         infiniteRepeatable(tween(1600, easing = EaseInOutSine), RepeatMode.Reverse),
         "ga"
     )
-    val borderColor = Color(0xFF8AC7FF)
+    val borderColor = accent.primary
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .background(Brush.linearGradient(listOf(Color(0xFF001E3C), Color(0xFF000F22))))
+            .background(
+                Brush.linearGradient(
+                    listOf(accent.tint.copy(alpha = 0.75f), tokens.surface, tokens.surfaceMuted)
+                )
+            )
             .border(1.dp, borderColor.copy(alpha = glowAlpha), RoundedCornerShape(16.dp))
             .clickable { onClick() }
             .padding(16.dp)
@@ -1268,11 +1382,11 @@ private fun CommentsEntryCard(onClick: () -> Unit) {
             Column(Modifier.weight(1f)) {
                 Text(
                     "Comments",
-                    color = GlassWhite10, fontSize = 14.sp, fontWeight = FontWeight.Bold
+                    color = tokens.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold
                 )
                 Text(
                     "Share what you noticed · reply to other travellers",
-                    color = borderColor.copy(alpha = 0.85f),
+                    color = tokens.textSecondary,
                     fontSize = 11.sp
                 )
             }
@@ -1291,19 +1405,25 @@ private fun CommentsEntryCard(onClick: () -> Unit) {
 
 @Composable
 private fun InstantsEntryCard(onClick: () -> Unit) {
+    val accent = LocalAccent.current
+    val tokens = LocalAppColors.current
     val inf = rememberInfiniteTransition(label = "instantsCard")
     val glowAlpha by inf.animateFloat(
         0.35f, 0.65f,
         infiniteRepeatable(tween(1800, easing = EaseInOutSine), RepeatMode.Reverse),
         "iga"
     )
-    val borderColor = Color(0xFFFF4081)
+    val borderColor = accent.primary
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .background(Brush.linearGradient(listOf(Color(0xFF2D0A1E), Color(0xFF1A0520))))
+            .background(
+                Brush.linearGradient(
+                    listOf(accent.tint.copy(alpha = 0.75f), tokens.surface, tokens.surfaceMuted)
+                )
+            )
             .border(1.dp, borderColor.copy(alpha = glowAlpha), RoundedCornerShape(16.dp))
             .clickable { onClick() }
             .padding(16.dp)
@@ -1322,11 +1442,11 @@ private fun InstantsEntryCard(onClick: () -> Unit) {
             Column(Modifier.weight(1f)) {
                 Text(
                     "Instants",
-                    color = GlassWhite10, fontSize = 14.sp, fontWeight = FontWeight.Bold
+                    color = tokens.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold
                 )
                 Text(
                     "See top-loved moments · share yours",
-                    color = borderColor.copy(alpha = 0.85f),
+                    color = tokens.textSecondary,
                     fontSize = 11.sp
                 )
             }

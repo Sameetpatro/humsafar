@@ -1,9 +1,9 @@
 package com.example.humsafar.ui
 
+import android.content.Context
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
@@ -38,6 +38,7 @@ import androidx.compose.ui.util.lerp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.core.content.FileProvider
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.humsafar.models.NodeInstantResponse
@@ -45,6 +46,7 @@ import com.example.humsafar.ui.components.AnimatedOrbBackground
 import com.example.humsafar.ui.components.GlassPrimaryButton
 import com.example.humsafar.ui.theme.LocalAccent
 import com.example.humsafar.ui.theme.LocalAppColors
+import java.io.File
 import kotlin.math.absoluteValue
 
 /** ~3 inch squircle on standard-density screens (288dp ≈ 3"). */
@@ -73,17 +75,23 @@ fun NodeInstantsScreen(
     var showWarning by remember { mutableStateOf(false) }
     var autoShareTriggered by remember { mutableStateOf(false) }
 
-    val photoPicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickVisualMedia()
-    ) { uri ->
-        if (uri != null) {
-            viewModel.postInstant(context.applicationContext, uri) { ok ->
+    var pendingCaptureUri by remember { mutableStateOf<Uri?>(null) }
+
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { ok ->
+        val uri = pendingCaptureUri
+        pendingCaptureUri = null
+        if (ok && uri != null) {
+            viewModel.postInstant(context.applicationContext, uri) { posted ->
                 Toast.makeText(
                     context,
-                    if (ok) "Instant shared!" else (state.postError ?: "Upload failed"),
+                    if (posted) "Instant shared!" else (state.postError ?: "Upload failed"),
                     Toast.LENGTH_LONG
                 ).show()
             }
+        } else {
+            Toast.makeText(context, "Camera cancelled", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -91,7 +99,13 @@ fun NodeInstantsScreen(
 
     fun openPickerAfterWarning() {
         showWarning = false
-        photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+        val uri = createInstantCaptureUri(context)
+        if (uri == null) {
+            Toast.makeText(context, "Couldn't open camera", Toast.LENGTH_LONG).show()
+            return
+        }
+        pendingCaptureUri = uri
+        cameraLauncher.launch(uri)
     }
 
     Box(Modifier.fillMaxSize()) {
@@ -253,7 +267,13 @@ fun NodeInstantsScreen(
                         Text("Uploading your instant…", color = tokens.textSecondary, fontSize = 13.sp)
                     }
                 }
-                ShareInstantButton(enabled = !state.posting, onClick = { launchShareFlow() })
+                Box(Modifier.fillMaxWidth()) {
+                    PopOutShareInstantButton(
+                        enabled = !state.posting,
+                        onClick = { launchShareFlow() },
+                        modifier = Modifier.align(Alignment.CenterEnd)
+                    )
+                }
             }
         }
 
@@ -486,6 +506,71 @@ private fun ShareInstantButton(enabled: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
+private fun PopOutShareInstantButton(
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val accent = LocalAccent.current
+    val tokens = LocalAppColors.current
+    val inf = rememberInfiniteTransition(label = "instantPop")
+    val pulse by inf.animateFloat(
+        initialValue = 0.92f,
+        targetValue = 1.06f,
+        animationSpec = infiniteRepeatable(tween(1400, easing = EaseInOutSine), RepeatMode.Reverse),
+        label = "pulse"
+    )
+
+    Box(modifier = modifier) {
+        // soft glow behind
+        Box(
+            Modifier
+                .offset(x = 22.dp, y = (-2).dp)
+                .size(78.dp)
+                .graphicsLayer { scaleX = pulse; scaleY = pulse }
+                .clip(CircleShape)
+                .background(
+                    Brush.radialGradient(
+                        listOf(accent.primary.copy(alpha = 0.22f), Color.Transparent)
+                    )
+                )
+        )
+
+        // main "pop-out" bubble, slightly off-screen to the right
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier
+                .offset(x = 22.dp, y = (-2).dp)
+        ) {
+            Box(
+                Modifier
+                    .size(66.dp)
+                    .shadow(18.dp, CircleShape, ambientColor = accent.primary.copy(alpha = 0.35f))
+                    .clip(CircleShape)
+                    .background(Brush.linearGradient(listOf(accent.primary, accent.dark)))
+                    .border(2.dp, Color.White.copy(alpha = 0.28f), CircleShape)
+                    .clickable(enabled = enabled) { onClick() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Default.AddAPhoto,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(26.dp)
+                )
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "Instant",
+                color = tokens.textSecondary,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
+
+@Composable
 private fun PostWarningDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
     val tokens = LocalAppColors.current
     Dialog(onDismissRequest = onDismiss) {
@@ -512,7 +597,7 @@ private fun PostWarningDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
                     lineHeight = 19.sp
                 )
                 Spacer(Modifier.height(20.dp))
-                GlassPrimaryButton(text = "I understand — choose photo", onClick = onConfirm, modifier = Modifier.fillMaxWidth())
+                GlassPrimaryButton(text = "I understand — open camera", onClick = onConfirm, modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(8.dp))
                 TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
                     Text("Cancel", color = tokens.textTertiary)
@@ -520,4 +605,16 @@ private fun PostWarningDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
             }
         }
     }
+}
+
+private fun createInstantCaptureUri(context: Context): Uri? {
+    return runCatching {
+        val dir = File(context.cacheDir, "instants").apply { mkdirs() }
+        val file = File.createTempFile("instant_", ".jpg", dir)
+        FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            file
+        )
+    }.getOrNull()
 }

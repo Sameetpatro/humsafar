@@ -22,10 +22,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.*
 import com.example.humsafar.auth.AuthManager
+import com.example.humsafar.network.HumsafarClient
+import com.example.humsafar.models.BonusSiteStatus
 import com.example.humsafar.ui.components.AnimatedOrbBackground
 import com.example.humsafar.ui.components.GlassCard
 import com.example.humsafar.ui.components.SectionLabel
 import com.example.humsafar.ui.theme.*
+import kotlinx.coroutines.launch
 
 @Composable
 fun ProfileScreen(
@@ -47,6 +50,7 @@ fun ProfileScreen(
     val displayName  = currentUser?.displayName?.takeIf { it.isNotBlank() } ?: "Explorer"
     val displayEmail = currentUser?.email?.takeIf { it.isNotBlank() } ?: "guest@dharoharsetu.app"
     val isAnonymous  = currentUser?.isAnonymous ?: true
+    val uid          = currentUser?.uid
 
     LaunchedEffect(Unit) { visible = true }
 
@@ -97,6 +101,12 @@ fun ProfileScreen(
                         onOpenStore   = onOpenStore,
                         onOpenCoupons = onOpenCoupons
                     )
+
+                    Spacer(Modifier.height(24.dp))
+
+                    SectionLabel("Mini Games")
+                    Spacer(Modifier.height(12.dp))
+                    MiniGamesCard(firebaseUid = uid)
 
                     Spacer(Modifier.height(24.dp))
 
@@ -171,6 +181,133 @@ fun ProfileScreen(
     // ── About overlay — outside Box to avoid scope conflict ───────────────────
     if (showAbout) {
         AboutOverlay(onClose = { showAbout = false })
+    }
+}
+
+@Composable
+private fun MiniGamesCard(firebaseUid: String?) {
+    val tokens = LocalAppColors.current
+    val accent = LocalAccent.current
+    val scope = rememberCoroutineScope()
+
+    var loading by remember { mutableStateOf(false) }
+    var items by remember { mutableStateOf<List<BonusSiteStatus>>(emptyList()) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(firebaseUid) {
+        if (firebaseUid.isNullOrBlank()) {
+            items = emptyList()
+            error = null
+            return@LaunchedEffect
+        }
+        loading = true
+        error = null
+        runCatching {
+            val resp = HumsafarClient.api.getBonusStatus(firebaseUid)
+            if (resp.isSuccessful && resp.body() != null) {
+                items = resp.body()!!
+            } else {
+                error = "Couldn't load mini game status (${resp.code()})"
+            }
+        }.onFailure {
+            error = it.message ?: "Network error"
+        }
+        loading = false
+    }
+
+    GlassCard(Modifier.fillMaxWidth(), cornerRadius = 20.dp) {
+        Column(Modifier.padding(4.dp)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("🎮", fontSize = 18.sp, modifier = Modifier.size(24.dp), textAlign = TextAlign.Center)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Site mini games", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    Text(
+                        "One unique mini game per site",
+                        color = TextTertiary,
+                        fontSize = 12.sp
+                    )
+                }
+                if (loading) {
+                    Text("Loading…", color = TextTertiary, fontSize = 12.sp)
+                } else {
+                    Icon(Icons.Default.ChevronRight, null, tint = TextTertiary, modifier = Modifier.size(16.dp))
+                }
+            }
+
+            if (error != null) {
+                ProfileDivider()
+                Text(
+                    error!!,
+                    color = Color(0xFFFF6B6B),
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                )
+                return@GlassCard
+            }
+
+            if (!loading && items.isEmpty()) {
+                ProfileDivider()
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                    Text("No mini games yet", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Visit a heritage site and start a trip to unlock a surprise mini game.",
+                        color = TextTertiary,
+                        fontSize = 12.sp,
+                        lineHeight = 18.sp
+                    )
+                }
+                return@GlassCard
+            }
+
+            items.forEachIndexed { idx, it ->
+                ProfileDivider()
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(accent.primary.copy(alpha = 0.14f))
+                            .border(1.dp, accent.primary.copy(alpha = 0.35f), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(if (it.played) "✅" else "⏳", fontSize = 14.sp)
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(it.siteName, color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        Spacer(Modifier.height(2.dp))
+                        val subtitle = if (it.played) {
+                            "Played · earned ${it.rewardGems} gems"
+                        } else {
+                            val m = it.availableAfterMinutes.coerceAtLeast(1)
+                            "Not played · available in ${m} min"
+                        }
+                        Text(subtitle, color = TextTertiary, fontSize = 12.sp)
+                    }
+                    Text(
+                        if (it.played) "+${it.rewardGems} 💎" else "",
+                        color = if (it.played) accent.dark else Color.Transparent,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                if (idx == items.lastIndex) {
+                    Spacer(Modifier.height(4.dp))
+                }
+            }
+        }
     }
 }
 

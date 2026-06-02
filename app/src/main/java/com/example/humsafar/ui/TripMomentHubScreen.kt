@@ -24,7 +24,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.humsafar.data.QuizPrepareManager
+import com.example.humsafar.data.TripManager
 import com.example.humsafar.ui.components.AnimatedOrbBackground
 import com.example.humsafar.ui.components.GlassPrimaryButton
 import com.example.humsafar.ui.theme.LocalAccent
@@ -47,6 +49,25 @@ fun TripMomentHubScreen(
     val context = LocalContext.current
     val tokens = LocalAppColors.current
     val accent = LocalAccent.current
+    val tripState by TripManager.state.collectAsStateWithLifecycle()
+
+    var nowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(tripState.startedAtMs) {
+        while (true) {
+            nowMs = System.currentTimeMillis()
+            delay(1_000)
+        }
+    }
+
+    fun tripDurationLabel(): String? {
+        val start = tripState.startedAtMs
+        if (start <= 0L) return null
+        val elapsed = ((nowMs - start).coerceAtLeast(0L)) / 1000L
+        val hh = elapsed / 3600
+        val mm = (elapsed % 3600) / 60
+        val ss = elapsed % 60
+        return if (hh > 0) "%d:%02d:%02d".format(hh, mm, ss) else "%02d:%02d".format(mm, ss)
+    }
 
     LaunchedEffect(tripId) { QuizPrepareManager.preloadStart(tripId) }
 
@@ -150,6 +171,24 @@ fun TripMomentHubScreen(
                         lineHeight = 21.sp,
                         modifier = Modifier.padding(horizontal = 8.dp)
                     )
+
+                    tripDurationLabel()?.let { dur ->
+                        Spacer(Modifier.height(10.dp))
+                        Box(
+                            Modifier
+                                .clip(RoundedCornerShape(50))
+                                .background(accent.primary.copy(alpha = 0.12f))
+                                .border(1.dp, accent.primary.copy(alpha = 0.25f), RoundedCornerShape(50))
+                                .padding(horizontal = 14.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                "Trip time: $dur",
+                                color = accent.dark,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
                 }
 
                 Spacer(Modifier.height(28.dp))

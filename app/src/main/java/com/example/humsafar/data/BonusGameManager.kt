@@ -35,7 +35,7 @@ object BonusGameManager {
 
     // ── Change this one value to adjust when the bonus appears ───────────────
     /** Minutes of total foreground app time before the one-time bonus offer. */
-    const val BONUS_OFFER_AFTER_MINUTES = 2
+    const val BONUS_OFFER_AFTER_MINUTES = 30
 
     private val BONUS_OFFER_AFTER_MS = BONUS_OFFER_AFTER_MINUTES * 60_000L
 

@@ -8,6 +8,7 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.os.Bundle
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
@@ -43,7 +44,6 @@ import com.example.humsafar.models.AmenityResponse
 import com.example.humsafar.models.NodePositionResponse
 import com.example.humsafar.network.HumsafarClient
 import com.example.humsafar.ui.components.AnimatedOrbBackground
-import com.example.humsafar.ui.components.rememberTripSafeBack
 import com.example.humsafar.ui.components.GlassCard
 import com.example.humsafar.ui.theme.*
 import kotlinx.coroutines.Dispatchers
@@ -121,7 +121,9 @@ fun DirectionsScreen(
     val context        = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val tripState      by TripManager.state.collectAsStateWithLifecycle()
-    val safeBack       = rememberTripSafeBack(onBack)
+
+    // Directions is a utility screen; always allow going back.
+    BackHandler { onBack() }
 
     // ── Node data ──────────────────────────────────────────────────────────
     var nodes        by remember { mutableStateOf<List<NodePositionResponse>>(emptyList()) }
@@ -329,7 +331,7 @@ fun DirectionsScreen(
 
             else -> {
                 Column(Modifier.fillMaxSize()) {
-                    DirectionsTopBar(siteName = siteName, onBack = safeBack)
+                    DirectionsTopBar(siteName = siteName, onBack = onBack)
 
                     Box(
                         modifier = Modifier

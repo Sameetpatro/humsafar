@@ -40,6 +40,7 @@ import com.example.humsafar.models.BonusOfferRequest
 import com.example.humsafar.models.BonusOfferResponse
 import com.example.humsafar.models.BonusCompleteRequest
 import com.example.humsafar.models.BonusCompleteResponse
+import com.example.humsafar.models.BonusSiteStatus
 import com.example.humsafar.models.RecommendationResponse
 import com.example.humsafar.models.ReviewSubmitRequest
 import com.example.humsafar.models.ReviewSubmitResponse
@@ -184,6 +185,11 @@ interface HumsafarApiService {
     suspend fun completeBonus(
         @Body request: BonusCompleteRequest
     ): Response<BonusCompleteResponse>
+
+    @GET("bonus/status/{firebase_uid}")
+    suspend fun getBonusStatus(
+        @Path("firebase_uid") firebaseUid: String
+    ): Response<List<BonusSiteStatus>>
 
     // ── Sites ─────────────────────────────────────────────────────────────
 

@@ -43,6 +43,9 @@ class QuizViewModel : ViewModel() {
     private val _state = MutableStateFlow<QuizUiState>(QuizUiState.Loading)
     val state: StateFlow<QuizUiState> = _state.asStateFlow()
 
+    private val fixedQuestionCount = 10
+    private val fixedSecondsPerQuestion = 16
+
     private var sessionId: Int = 0
     private var completed = false
 
@@ -84,9 +87,9 @@ class QuizViewModel : ViewModel() {
                 QuizUiState.Error("No questions available for this trip.")
             else -> QuizUiState.Playing(
                 sessionId = body.sessionId,
-                questions = body.questions,
+                questions = body.questions.take(fixedQuestionCount),
                 index = 0,
-                secondsPerQuestion = body.secondsPerQuestion,
+                secondsPerQuestion = fixedSecondsPerQuestion,
                 runningGems = 0,
                 feedback = null,
                 submitting = false

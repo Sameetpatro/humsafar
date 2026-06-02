@@ -44,6 +44,7 @@ object TripManager {
             currentNodeId   = prefs.getInt("currentNodeId", 0),
             currentNodeName = prefs.getString("currentNodeName", "") ?: "",
             isTripActive    = prefs.getBoolean("isTripActive", false),
+            startedAtMs     = prefs.getLong("startedAtMs", 0L),
             lastLat         = prefs.getFloat("lastLat", 0f).toDouble(),
             lastLng         = prefs.getFloat("lastLng", 0f).toDouble(),
             visitedNodeIds  = prefs.getString("visitedNodes", "")
@@ -68,6 +69,7 @@ object TripManager {
                 currentNodeId   = nodeId,
                 currentNodeName = nodeName,
                 isTripActive    = true,
+                startedAtMs     = System.currentTimeMillis(),
                 visitedNodeIds  = listOf(nodeId)
             )
         )
@@ -150,6 +152,7 @@ object TripManager {
             .putInt("currentNodeId",     snapshot.currentNodeId)
             .putString("currentNodeName", snapshot.currentNodeName)
             .putBoolean("isTripActive",  snapshot.isTripActive)
+            .putLong("startedAtMs",      snapshot.startedAtMs)
             .putFloat("lastLat",         snapshot.lastLat.toFloat())
             .putFloat("lastLng",         snapshot.lastLng.toFloat())
             .putString("visitedNodes",   snapshot.visitedNodeIds.joinToString(","))

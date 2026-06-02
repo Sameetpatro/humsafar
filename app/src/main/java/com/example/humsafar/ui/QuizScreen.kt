@@ -93,7 +93,11 @@ fun QuizScreen(
                     emoji = "🏆",
                     onContinue = onFinish
                 )
-                is QuizUiState.Playing -> PlayingContent(s, vm)
+                is QuizUiState.Playing -> PlayingContent(
+                    s = s,
+                    vm = vm,
+                    onEndQuiz = { showQuitDialog = true }
+                )
             }
         }
     }
@@ -111,7 +115,11 @@ fun QuizScreen(
 }
 
 @Composable
-private fun PlayingContent(s: QuizUiState.Playing, vm: QuizViewModel) {
+private fun PlayingContent(
+    s: QuizUiState.Playing,
+    vm: QuizViewModel,
+    onEndQuiz: () -> Unit
+) {
     val tokens = LocalAppColors.current
     val accent = LocalAccent.current
     val q = s.questions[s.index]
@@ -142,9 +150,32 @@ private fun PlayingContent(s: QuizUiState.Playing, vm: QuizViewModel) {
         }
     }
 
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text("Question ${s.index + 1}/${s.questions.size}", color = tokens.textSecondary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-        Text("💎 ${s.runningGems}", color = accent.dark, fontSize = 14.sp, fontWeight = FontWeight.Black)
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            "Question ${s.index + 1}/${s.questions.size}",
+            color = tokens.textSecondary,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "End quiz",
+                color = tokens.textTertiary,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .border(1.dp, tokens.textTertiary.copy(alpha = 0.25f), RoundedCornerShape(10.dp))
+                    .clickable(enabled = s.feedback == null && !s.submitting) { onEndQuiz() }
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
+            )
+            Spacer(Modifier.width(10.dp))
+            Text("💎 ${s.runningGems}", color = accent.dark, fontSize = 14.sp, fontWeight = FontWeight.Black)
+        }
     }
     Spacer(Modifier.height(10.dp))
 
