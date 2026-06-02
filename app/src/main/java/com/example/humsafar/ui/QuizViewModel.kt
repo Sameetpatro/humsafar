@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.humsafar.auth.AuthManager
 import com.example.humsafar.data.GamificationRepository
+import com.example.humsafar.data.QuizPrepareManager
 import com.example.humsafar.models.QuizAbandonRequest
 import com.example.humsafar.models.QuizAnswerRequest
 import com.example.humsafar.models.QuizCompleteRequest
@@ -52,6 +53,14 @@ class QuizViewModel : ViewModel() {
             _state.value = QuizUiState.Error("Sign in to play the quiz.")
             return
         }
+        QuizPrepareManager.consumeError(tripId)?.let {
+            _state.value = QuizUiState.Error(it)
+            return
+        }
+        QuizPrepareManager.consume(tripId)?.let { body ->
+            applyStartBody(body)
+            return
+        }
         viewModelScope.launch {
             runCatching {
                 val resp = HumsafarClient.api.startQuiz(uid, tripId)
@@ -59,26 +68,29 @@ class QuizViewModel : ViewModel() {
                     _state.value = QuizUiState.Error("Couldn't start the quiz (HTTP ${resp.code()}).")
                     return@launch
                 }
-                val body = resp.body()!!
-                sessionId = body.sessionId
-                when {
-                    body.alreadyPlayed ->
-                        _state.value = QuizUiState.AlreadyPlayed(body.status, body.gemsEarned)
-                    body.questions.isEmpty() ->
-                        _state.value = QuizUiState.Error("No questions available for this trip.")
-                    else -> _state.value = QuizUiState.Playing(
-                        sessionId = body.sessionId,
-                        questions = body.questions,
-                        index = 0,
-                        secondsPerQuestion = body.secondsPerQuestion,
-                        runningGems = 0,
-                        feedback = null,
-                        submitting = false
-                    )
-                }
+                applyStartBody(resp.body()!!)
             }.onFailure {
                 _state.value = QuizUiState.Error(it.message ?: "Network error")
             }
+        }
+    }
+
+    private fun applyStartBody(body: com.example.humsafar.models.QuizStartResponse) {
+        sessionId = body.sessionId
+        _state.value = when {
+            body.alreadyPlayed ->
+                QuizUiState.AlreadyPlayed(body.status, body.gemsEarned)
+            body.questions.isEmpty() ->
+                QuizUiState.Error("No questions available for this trip.")
+            else -> QuizUiState.Playing(
+                sessionId = body.sessionId,
+                questions = body.questions,
+                index = 0,
+                secondsPerQuestion = body.secondsPerQuestion,
+                runningGems = 0,
+                feedback = null,
+                submitting = false
+            )
         }
     }
 

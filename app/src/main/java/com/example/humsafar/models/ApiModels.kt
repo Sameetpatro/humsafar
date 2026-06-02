@@ -316,6 +316,39 @@ data class NodeCommentResponse(
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
+// /instants  →  node UGC moments (Instagram-style)
+// ─────────────────────────────────────────────────────────────────────────────
+data class NodeInstantCreateRequest(
+    @SerializedName("firebase_uid") val firebaseUid: String,
+    @SerializedName("site_id")      val siteId: Int,
+    @SerializedName("node_id")       val nodeId: Int,
+    @SerializedName("media_url")     val mediaUrl: String,
+    @SerializedName("media_type")    val mediaType: String = "image",
+    @SerializedName("caption")       val caption: String? = null
+)
+
+data class NodeInstantResponse(
+    @SerializedName("id")           val id: Int = 0,
+    @SerializedName("user_id")       val userId: String = "",
+    @SerializedName("site_id")       val siteId: Int = 0,
+    @SerializedName("node_id")       val nodeId: Int = 0,
+    @SerializedName("media_url")     val mediaUrl: String = "",
+    @SerializedName("media_type")    val mediaType: String = "image",
+    @SerializedName("caption")       val caption: String? = null,
+    @SerializedName("like_count")    val likeCount: Int = 0,
+    @SerializedName("created_at")    val createdAt: String = "",
+    @SerializedName("display_name")  val displayName: String? = null,
+    @SerializedName("avatar_url")    val avatarUrl: String? = null,
+    @SerializedName("liked_by_me")   val likedByMe: Boolean = false
+)
+
+data class NodeInstantLikeResponse(
+    @SerializedName("instant_id") val instantId: Int = 0,
+    @SerializedName("liked")       val liked: Boolean = false,
+    @SerializedName("like_count")  val likeCount: Int = 0
+)
+
+// ─────────────────────────────────────────────────────────────────────────────
 // /sites/{site_id}/recommendations  →  GET /sites/{site_id}/recommendations
 // ─────────────────────────────────────────────────────────────────────────────
 data class RecommendationResponse(
@@ -478,6 +511,17 @@ data class QuizStartResponse(
     @SerializedName("gems_earned")          val gemsEarned: Int = 0,
     @SerializedName("questions")            val questions: List<QuizQuestionPublic> = emptyList(),
     @SerializedName("already_played")       val alreadyPlayed: Boolean = false
+)
+
+data class QuizPrepareRequest(
+    @SerializedName("node_ids") val nodeIds: List<Int>
+)
+
+data class QuizPrepareResponse(
+    @SerializedName("session_id")      val sessionId: Int = 0,
+    @SerializedName("status")          val status: String = "",
+    @SerializedName("total_questions") val totalQuestions: Int = 0,
+    @SerializedName("nodes_prepared")  val nodesPrepared: Int = 0
 )
 
 data class QuizAnswerRequest(

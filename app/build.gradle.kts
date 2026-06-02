@@ -35,6 +35,16 @@ android {
             "MAPTILER_KEY",
             "\"${localProperties.getProperty("MAPTILER_KEY", "")}\""
         )
+        buildConfigField(
+            "String",
+            "CLOUDINARY_CLOUD_NAME",
+            "\"${localProperties.getProperty("CLOUDINARY_CLOUD_NAME", "dw8imuhcz")}\""
+        )
+        buildConfigField(
+            "String",
+            "CLOUDINARY_UPLOAD_PRESET",
+            "\"${localProperties.getProperty("CLOUDINARY_UPLOAD_PRESET", "ds_instants")}\""
+        )
     }
 
     buildTypes {
@@ -103,6 +113,7 @@ dependencies {
 
     // Firebase Analytics (optional but recommended)
     implementation("com.google.firebase:firebase-analytics")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
 
     // Google Play Services for Google Sign-In
     implementation("com.google.android.gms:play-services-auth:21.5.1")

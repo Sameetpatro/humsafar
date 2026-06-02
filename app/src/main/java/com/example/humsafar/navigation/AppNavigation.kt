@@ -48,7 +48,7 @@ fun AppNavigation(
     LaunchedEffect(pendingQuiz) {
         pendingQuiz?.let { pq ->
             navController.navigate(
-                quizRoute(pq.tripId, pq.siteId, pq.siteName, pq.visitedCount, pq.totalCount)
+                tripMomentHubRoute(pq.tripId, pq.siteId, pq.siteName, pq.visitedCount, pq.totalCount)
             ) { popUpTo("home") { inclusive = false } }
             QuizTrigger.consume()
         }
@@ -287,9 +287,12 @@ fun AppNavigation(
                     }
                 },
                 onNavigateToQuiz       = { tripId: Int, cSiteId: Int, cSiteName: String, visited: Int, total: Int ->
-                    navController.navigate(quizRoute(tripId, cSiteId, cSiteName, visited, total)) {
+                    navController.navigate(tripMomentHubRoute(tripId, cSiteId, cSiteName, visited, total)) {
                         popUpTo("home") { inclusive = false }
                     }
+                },
+                onNavigateToInstants   = { iNodeId, iSiteId, iNodeName ->
+                    navController.navigate(nodeInstantsRoute(iNodeId, iSiteId, iNodeName))
                 },
                 onNavigateToAmenity    = { amenityId ->
                     navController.navigate(amenityDetailRoute(amenityId))
@@ -441,6 +444,62 @@ fun AppNavigation(
             InsightsScreen(
                 siteId   = siteId,
                 siteName = siteName,
+                onBack   = { navController.popBackStack() }
+            )
+        }
+
+        // ── Trip moment hub (between end-trip and quiz) ────────────────────
+        composable(
+            route = "trip_moment_hub/{tripId}/{siteId}/{siteName}/{visitedCount}/{totalCount}",
+            arguments = listOf(
+                navArgument("tripId")       { type = NavType.IntType },
+                navArgument("siteId")       { type = NavType.IntType },
+                navArgument("siteName")     { type = NavType.StringType },
+                navArgument("visitedCount") { type = NavType.IntType },
+                navArgument("totalCount")   { type = NavType.IntType }
+            )
+        ) { backStack ->
+            val tripId       = backStack.arguments?.getInt("tripId") ?: 0
+            val siteId       = backStack.arguments?.getInt("siteId") ?: 0
+            val siteName     = backStack.arguments?.getString("siteName")
+                ?.let { URLDecoder.decode(it, "UTF-8") } ?: "Heritage Site"
+            val visitedCount = backStack.arguments?.getInt("visitedCount") ?: 0
+            val totalCount   = backStack.arguments?.getInt("totalCount") ?: 0
+            TripMomentHubScreen(
+                tripId       = tripId,
+                siteName     = siteName,
+                visitedCount = visitedCount,
+                totalCount   = totalCount,
+                onContinue   = {
+                    navController.navigate(quizRoute(tripId, siteId, siteName, visitedCount, totalCount)) {
+                        popUpTo("home") { inclusive = false }
+                    }
+                },
+                onSkipQuiz   = {
+                    navController.navigate(tripCompletionRoute(siteId, siteName, visitedCount, totalCount)) {
+                        popUpTo("home") { inclusive = false }
+                    }
+                }
+            )
+        }
+
+        // ── Node Instants (Instagram-style per-node gallery) ───────────────
+        composable(
+            route     = "node_instants/{nodeId}/{siteId}/{nodeName}",
+            arguments = listOf(
+                navArgument("nodeId")   { type = NavType.IntType },
+                navArgument("siteId")   { type = NavType.IntType },
+                navArgument("nodeName") { type = NavType.StringType }
+            )
+        ) { backStack ->
+            val nodeId   = backStack.arguments?.getInt("nodeId") ?: 0
+            val siteId   = backStack.arguments?.getInt("siteId") ?: 0
+            val nodeName = backStack.arguments?.getString("nodeName")
+                ?.let { URLDecoder.decode(it, "UTF-8") } ?: "this spot"
+            NodeInstantsScreen(
+                nodeId   = nodeId,
+                siteId   = siteId,
+                nodeName = nodeName,
                 onBack   = { navController.popBackStack() }
             )
         }
@@ -615,6 +674,16 @@ fun amenityDetailRoute(amenityId: Int): String =
 fun insightsRoute(siteId: Int, siteName: String): String {
     val encoded = URLEncoder.encode(siteName, "UTF-8")
     return "insights/$siteId/$encoded"
+}
+
+fun tripMomentHubRoute(tripId: Int, siteId: Int, siteName: String, visitedCount: Int, totalCount: Int): String {
+    val encoded = URLEncoder.encode(siteName, "UTF-8")
+    return "trip_moment_hub/$tripId/$siteId/$encoded/$visitedCount/$totalCount"
+}
+
+fun nodeInstantsRoute(nodeId: Int, siteId: Int, nodeName: String): String {
+    val encoded = URLEncoder.encode(nodeName, "UTF-8")
+    return "node_instants/$nodeId/$siteId/$encoded"
 }
 
 fun quizRoute(tripId: Int, siteId: Int, siteName: String, visitedCount: Int, totalCount: Int): String {

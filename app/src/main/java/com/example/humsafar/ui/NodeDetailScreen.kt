@@ -73,6 +73,7 @@ fun NodeDetailScreen(
     onNavigateToQuiz:       ((Int, Int, String, Int, Int) -> Unit)? = null,   // (tripId, siteId, siteName, visited, total)
     onNavigateToAmenity:    (Int) -> Unit = {},          // ← NEW
     onNavigateToComments:   ((Int, Int, String) -> Unit)? = null,   // (nodeId, siteId, nodeName)
+    onNavigateToInstants:   ((Int, Int, String) -> Unit)? = null,   // (nodeId, siteId, nodeName)
     onNavigateToInsights:   ((Int, String) -> Unit)? = null,        // (siteId, siteName)
     viewModel:              NodeDetailViewModel = viewModel()
 ) {
@@ -285,6 +286,14 @@ fun NodeDetailScreen(
                                 CommentsEntryCard(
                                     onClick = {
                                         onNavigateToComments?.invoke(node.id, siteId, node.name)
+                                    }
+                                )
+                                Spacer(Modifier.height(14.dp))
+
+                                // ── Instants entry point ─────────────────────
+                                InstantsEntryCard(
+                                    onClick = {
+                                        onNavigateToInstants?.invoke(node.id, siteId, node.name)
                                     }
                                 )
                                 Spacer(Modifier.height(14.dp))
@@ -1263,6 +1272,60 @@ private fun CommentsEntryCard(onClick: () -> Unit) {
                 )
                 Text(
                     "Share what you noticed · reply to other travellers",
+                    color = borderColor.copy(alpha = 0.85f),
+                    fontSize = 11.sp
+                )
+            }
+            Icon(
+                Icons.Default.ChevronRight, null,
+                tint     = borderColor,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Instants entry point card — opens NodeInstantsScreen
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun InstantsEntryCard(onClick: () -> Unit) {
+    val inf = rememberInfiniteTransition(label = "instantsCard")
+    val glowAlpha by inf.animateFloat(
+        0.35f, 0.65f,
+        infiniteRepeatable(tween(1800, easing = EaseInOutSine), RepeatMode.Reverse),
+        "iga"
+    )
+    val borderColor = Color(0xFFFF4081)
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(Brush.linearGradient(listOf(Color(0xFF2D0A1E), Color(0xFF1A0520))))
+            .border(1.dp, borderColor.copy(alpha = glowAlpha), RoundedCornerShape(16.dp))
+            .clickable { onClick() }
+            .padding(16.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp).clip(CircleShape)
+                    .background(borderColor.copy(alpha = 0.18f))
+                    .border(1.dp, borderColor.copy(alpha = 0.45f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("📸", fontSize = 20.sp)
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "Instants",
+                    color = GlassWhite10, fontSize = 14.sp, fontWeight = FontWeight.Bold
+                )
+                Text(
+                    "See top-loved moments · share yours",
                     color = borderColor.copy(alpha = 0.85f),
                     fontSize = 11.sp
                 )

@@ -59,6 +59,7 @@ object TripManager {
         nodeId:   Int,
         nodeName: String
     ) {
+        QuizPrepareManager.resetForNewTrip()
         write(
             _state.value.copy(
                 tripId          = tripId,
@@ -70,6 +71,7 @@ object TripManager {
                 visitedNodeIds  = listOf(nodeId)
             )
         )
+        QuizPrepareManager.prepareOnNodeScan(tripId, listOf(nodeId))
     }
 
     /** Called after scanning a normal node. */
@@ -82,6 +84,7 @@ object TripManager {
                 visitedNodeIds  = visited
             )
         )
+        QuizPrepareManager.prepareOnNodeScan(_state.value.tripId, visited)
     }
 
     fun updateLocation(lat: Double, lng: Double) {

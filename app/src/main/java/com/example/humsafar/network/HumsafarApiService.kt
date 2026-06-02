@@ -12,6 +12,9 @@ import com.example.humsafar.models.NearbySite
 import com.example.humsafar.models.NodeInsights
 import com.example.humsafar.models.NodeCommentCreateRequest
 import com.example.humsafar.models.NodeCommentResponse
+import com.example.humsafar.models.NodeInstantCreateRequest
+import com.example.humsafar.models.NodeInstantLikeResponse
+import com.example.humsafar.models.NodeInstantResponse
 import com.example.humsafar.models.NodePositionResponse
 import com.example.humsafar.models.NodeRatingRequest
 import com.example.humsafar.models.PhoneUpdateRequest
@@ -21,6 +24,8 @@ import com.example.humsafar.models.SiteInsights
 import com.example.humsafar.models.SiteInsightSnapshot
 import com.example.humsafar.models.UserInsights
 import com.example.humsafar.models.GemBalance
+import com.example.humsafar.models.QuizPrepareRequest
+import com.example.humsafar.models.QuizPrepareResponse
 import com.example.humsafar.models.QuizStartResponse
 import com.example.humsafar.models.QuizAnswerRequest
 import com.example.humsafar.models.QuizAnswerResponse
@@ -122,6 +127,13 @@ interface HumsafarApiService {
     ): Response<GemBalance>
 
     // ── Gamification: final quiz ────────────────────────────────────────────
+    @POST("quiz/prepare")
+    suspend fun prepareQuiz(
+        @Query("firebase_uid") firebaseUid: String,
+        @Query("trip_id")      tripId: Int,
+        @Body request: QuizPrepareRequest
+    ): Response<QuizPrepareResponse>
+
     @POST("quiz/start")
     suspend fun startQuiz(
         @Query("firebase_uid") firebaseUid: String,
@@ -304,6 +316,31 @@ interface HumsafarApiService {
     @POST("community/comments/{comment_id}/flag")
     suspend fun flagNodeComment(
         @Path("comment_id") commentId: Int
+    ): Response<Unit>
+
+    // ── Node Instants (Instagram-style UGC per node) ──────────────────────
+    @GET("instants/node/{node_id}")
+    suspend fun getNodeInstants(
+        @Path("node_id")        nodeId: Int,
+        @Query("limit")         limit: Int = 50,
+        @Query("firebase_uid")  firebaseUid: String? = null
+    ): Response<List<NodeInstantResponse>>
+
+    @POST("instants")
+    suspend fun postNodeInstant(
+        @Body request: NodeInstantCreateRequest
+    ): Response<NodeInstantResponse>
+
+    @POST("instants/{instant_id}/like")
+    suspend fun toggleInstantLike(
+        @Path("instant_id")     instantId: Int,
+        @Query("firebase_uid") firebaseUid: String
+    ): Response<NodeInstantLikeResponse>
+
+    @DELETE("instants/{instant_id}")
+    suspend fun deleteNodeInstant(
+        @Path("instant_id")     instantId: Int,
+        @Query("firebase_uid") firebaseUid: String
     ): Response<Unit>
 
     // ── Chat ──────────────────────────────────────────────────────────────
